@@ -1,6 +1,7 @@
 """
 A Jobserver exposing a Future interface built atop multiprocessing.
 """
+import atexit
 import collections
 import multiprocessing
 import queue
@@ -19,7 +20,7 @@ class Future(typing.Generic[T]):
         self, process: multiprocessing.Process, queue:multiprocessing.Queue
     ) -> None:
         assert process is not None  # None after Process.join(...)
-        assert queue is not None  # None after result read from Queue
+        assert queue is not None  # None after result read and Queue.close(...)
         self.process = process
         self.queue = queue
         self.value = None
@@ -38,7 +39,7 @@ class Future(typing.Generic[T]):
             try:
                 self.value = self.queue.get(block=block, timeout=timeout)
                 self.process.join()
-                self.process = None  # Allow reclaim via garbage collection
+                self.process = None  # Allow reclaiming via garbage collection
                 self.queue.close()
                 self.queue.join_thread()
                 self.queue = None  # Mark done() and allow garbage collection
@@ -70,10 +71,12 @@ class Jobserver:
         Wrap some multiprocessing context and allow some number of slots.
         Throughout API, arguments block/timeout follow queue.Queue semantics.
         """
-        # Prepare required resources
+        # Prepare required resources ensuring their proper tear down
         assert slots >= 0
         self.context = context
         self.slots = self.context.Queue(maxsize=slots)
+        atexit.register(self.slots.join_thread)
+        atexit.register(self.slots.close)
 
         # Issue one token for each requested slot
         for i in range(slots):
@@ -106,7 +109,7 @@ class Jobserver:
             tokens.append(self.slots.get(block=block, timeout=timeout))
         try:
             # Now, with a slot consumed, begin consuming resources...
-            queue = self.context.Queue()
+            queue = self.context.Queue(maxsize=1)
             args = tuple(args) if args else ()
             process = self.context.Process(target=Jobserver._worker_entrypoint,
                                            args=(queue, fn) + args,
