@@ -1,5 +1,6 @@
 import atexit
 import contextlib
+import multiprocessing
 import os
 import signal
 
@@ -10,21 +11,20 @@ class Jobserver:
     All forked children will inherit the same collection of available slots.
     See https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html
     """
-    def __init__(self, slots: int):
+    def __init__(self, context, slots: int):
         assert slots >= 0
-        self.r, self.w = os.pipe2(os.O_CLOEXEC)  # Blocking!
-        os.set_inheritable(self.r, True)  # Per PEP-446
-        os.set_inheritable(self.w, True)  # Per PEP-446
-        os.write(self.w, slots * b'x')  # Mark all slots available
+        self.r, self.w = context.Pipe()  # Cannot be garbage collected
+        os.write(self.w.fileno(), slots * b'x')  # Mark all slots available
 
     @contextlib.contextmanager
     def slot(self) -> None:
+        rfd, wfd = self.r.fileno(), self.w.fileno()
         bs = []
         while not bs:
-            bs.extend(bytes((b,)) for b in os.read(self.r, 1))
+            bs.extend(bytes((b,)) for b in os.read(rfd, 1))
         def cleanup():
             while bs:
-                os.write(self.w, bs.pop())
+                os.write(wfd, bs.pop())
         atexit.register(cleanup)
         try:
             yield
@@ -35,14 +35,15 @@ class Jobserver:
 
 def foo(js):
     with js.slot():
-        print('Hola')
+        print('Hello!')
 
 
 if __name__ == '__main__':
-    print('Hello')
-    js = Jobserver(3)
-    import multiprocessing as mp
-    ctx = mp.get_context('fork')
-    p = ctx.Process(target=foo, args=(js,))
-    p.start()
+    for context_type in ('fork', 'forkserver'):
+        print('Hi {}?'.format(context_type))
+        context = multiprocessing.get_context(context_type)
+        js = Jobserver(context, 3)
+        p = context.Process(target=foo, args=(js,))
+        p.start()
+        p.join()
 
