@@ -176,6 +176,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(3, f.result())
 
 
+# TODO Test submitting more work after first batch completes
 # TODO Test raising inside work raises outside work
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
