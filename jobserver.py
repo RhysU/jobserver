@@ -141,28 +141,30 @@ class Jobserver:
 
 import unittest
 
-
 class JobserverTest(unittest.TestCase):
+    METHODS = ('forkserver', 'fork', 'spawn')
 
     def test_basic(self):
-        # Prepare work
-        context = multiprocessing.get_context('forkserver')
-        js = Jobserver(context=context, slots=3)
-        f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
-        g = js.submit(fn=len, args=((1, 3), ), block=True)
-        h = js.submit(fn=len, args=((1, ), ), block=True)
+        for method in self.METHODS:
+            with self.subTest(method=method):
+                # Prepare work
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+                f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
+                g = js.submit(fn=len, args=((1, 3), ), block=True)
+                h = js.submit(fn=len, args=((1, ), ), block=True)
 
-        # Prepare too much work given fixed slot count
-        self.assertRaises(queue.Empty,
-                          js.submit, fn=len, args=((), ), block=False)
+                # Prepare too much work given fixed slot count
+                self.assertRaises(queue.Empty,
+                                  js.submit, fn=len, args=((), ), block=False)
 
-        # Confirm expected results in reverse order of submission
-        self.assertTrue(h.done())
-        self.assertEqual(1, h.result())
-        self.assertTrue(g.done())
-        self.assertEqual(2, g.result())
-        self.assertTrue(f.done())
-        self.assertEqual(3, f.result())
+                # Confirm expected results in reverse order of submission
+                self.assertTrue(h.done())
+                self.assertEqual(1, h.result())
+                self.assertTrue(g.done())
+                self.assertEqual(2, g.result())
+                self.assertTrue(f.done())
+                self.assertEqual(3, f.result())
 
 
 # TODO Test raising inside work raises outside work
