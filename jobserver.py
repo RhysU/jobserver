@@ -37,9 +37,11 @@ class Future(typing.Generic[T]):
         if self.queue is not None:
             try:
                 self.value = self.queue.get(block=block, timeout=timeout)
-                self.queue = None  # Possibly reclaim via GC
                 self.process.join()
-                self.process = None  # Possibly reclaim via GC
+                self.process = None  # Allow reclaim via garbage collection
+                self.queue.close()
+                self.queue.join_thread()
+                self.queue = None  # Mark done() and allow garbage collection
             except queue.Empty:
                 return False
 
