@@ -1,13 +1,73 @@
-import contextlib
-import enum
-import itertools
+"""
+A Jobserver exposing a Future interface built atop multiprocessing.
+"""
+import collections
 import multiprocessing
-import os
 import queue
-import sys
+import typing
 
+
+T = typing.TypeVar('T')
+
+
+class Future(typing.Generic[T]):
+    """
+    A Future anticipating one result in a Queue emitted by some Process.
+    Throughout API, arguments block/timeout follow queue.Queue semantics.
+    """
+    def __init__(
+        self, process: multiprocessing.Process, queue:multiprocessing.Queue
+    ) -> None:
+        assert process is not None  # None after Process.join(...)
+        assert queue is not None  # None after result read from Queue
+        self.process = process
+        self.queue = queue
+        self.value = None
+        self.callbacks = []
+
+    def add_done_callback(self, fn: typing.Callable, *args, **kwargs) -> None:
+        """Register a function fn for execution after result is ready."""
+        if self.queue is None:
+            fn(*args, **kwargs)
+        else:
+            self.callbacks.append((fn, args, kwargs))
+
+    def done(self, block: bool=True, timeout: float=None) -> bool:
+        """Is result ready?"""
+        if self.queue is not None:
+            try:
+                self.value = self.queue.get(block=block, timeout=timeout)
+                self.queue = None  # Possibly reclaim via GC
+                self.process.join()
+                self.process = None  # Possibly reclaim via GC
+            except queue.Empty:
+                return False
+
+            while self.callbacks:
+                fn, args, kwargs = self.callbacks.pop(0)
+                fn(*args, **kwargs)
+
+        return True
+
+    def result(self, block: bool=True, timeout: float=None) -> T:
+        """Obtain result when ready."""
+        if not self.done(block=block, timeout=timeout):
+            raise queue.Empty()
+
+        if isinstance(self.value, Exception):
+            raise self.value
+
+        return self.value
+
+
+# Throughout, put_nowait(...) denotes places where blocking should not happen.
+# If debugging, consider any related queue.Full exceptions to be logic errors.
 class Jobserver:
     def __init__(self, context, slots: int):
+        """
+        Wrap some multiprocessing context and allow some number of slots.
+        Throughout API, arguments block/timeout follow queue.Queue semantics.
+        """
         # Prepare required resources
         assert slots >= 0
         self.context = context
@@ -15,89 +75,94 @@ class Jobserver:
 
         # Issue one token for each requested slot
         for i in range(slots):
-            self.slots.put(block=False)
+            self.slots.put_nowait(i)
 
-    def submit(self, fn, *args, **kwargs) -> 'Jobserver.Future':
-        # Consume one slot prior to acquiring any resources
-        token = self.slots.get(block=True)
+    # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
+    def submit(
+        self,
+        fn: typing.Callable[..., T],
+        args: typing.Sequence = None,
+        kwargs: typing.Dict[str, typing.Any] = None,
+        block: bool=True,
+        timeout: float=None,
+        consume: int=1,
+    ) -> Future[T]:
+        """Submit running fn(*args, **kwargs) to this Jobserver.
+
+        Non-blocking usage per block/timeout possibly raises Queue.Empty.
+        When consume == 0, no job slot is consumed by the submission.
+        """
+        # Sanity check args and kwargs as misusage is easy and deadly
+        assert args is None or isinstance(args, collections.Sequence)
+        assert kwargs is None or isinstance(kwargs, collections.Mapping)
+
+        # Possibly consume one slot prior to acquiring any resources
+        tokens = []
+        assert consume is 0 or consume is 1, 'Invalid or deadlock possible'
+        for _ in range(consume):
+            tokens.append(self.slots.get(block=block, timeout=timeout))
         try:
             # Prepare required resources
             queue = self.context.Queue()
-            args += (slots, token, queue, fn)
-            process = self.context.Process(target=Jobserver._run,
+            args = tuple(args) if args else ()
+            args = (self.slots, tokens, queue, fn) + args
+            process = self.context.Process(target=Jobserver._worker_entrypoint,
                                            args=args,
-                                           kwargs=kwargs,
+                                           kwargs=kwargs if kwargs else {},
                                            daemon=False)
-            # A process that successfully starts now responsible for token
+            future = Future(process, queue)
+            # Process restores token whenever following start(...) succeeds
             process.start()
         except:
-            self.slots.put(token, block=True)
+            while tokens:
+                self.slots.put_nowait(tokens.pop(0))
             raise
 
-        # Wrap up necessary details for the caller
-        return self.Future(process, queue)
+        return future
 
-    class Future:
-        def __init__(self, process, queue):
-            assert self.process is not None
-            assert self.queue is not None
-            self.process = process
-            self.queue = queue
-            self.result = None
-
-        def done() -> bool:
-            if self.queue is not None:
-                try:
-                    self.result = self.queue.get(block=False)
-                    self.queue = None
-                    self.process.join()
-                    self.process = None
-                except queue.Empty:
-                    return False
-
-            return True
-
-        def result(block=True, timeout=None):
-            # May throw queue.Empty when non-blocking requested
-            if self.queue is not None:
-                self.result = self.queue.get(block=block, timeout=timeout)
-                self.queue = None
-                self.process.join()
-                self.process = None
-
-            # Raise any exception that occurred
-            if isinstance(self.result, Exception):
-                raise self.result
-
-            # Return
-            return result
-
-    # TODO preexec_hook?
+    # TODO Employ PR_SET_PDEATHSIG so child dies should the parent die
     @staticmethod
-    def _run(slots, token, queue, fn, *args, **kwargs) -> None:
+    def _worker_entrypoint(slots, tokens, queue, fn, *args, **kwargs) -> None:
         try:
             result = fn(*args, **kwargs)
-            queue.put(result, block=True)
+            queue.put_nowait(result)
         except queue.Full as e:
-            raise RuntimeError('Logic error') from e
+            raise RuntimeError('Logic error detected') from e
         except Exception as e:
             queue.put(e)
         finally:
-            slots.put(token, block=True)
+            while tokens:
+                slots.put_nowait(tokens.pop(0))
 
 
-# FIXME START HERE
-def foo(js):
-    with js.slot():
-        print('Hello!')
+###########################################################################
+### TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
+###########################################################################
 
 
-if __name__ == '__main__':
-    for context_type in ('fork', 'forkserver'):
-        print('Hi {}?'.format(context_type))
-        context = multiprocessing.get_context(context_type)
-        js = Jobserver(context, 3)
-        p = context.Process(target=foo, args=(js,))
-        p.start()
-        p.join()
+def test_basic():
+    # Prepare work
+    context = multiprocessing.get_context('forkserver')
+    js = Jobserver(context=context, slots=3)
+    f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
+    g = js.submit(fn=len, args=((1, 3), ), block=True)
+    h = js.submit(fn=len, args=((1, ), ), block=True)
 
+    # Prepare too much work given fixed slot count
+    import pytest
+    with pytest.raises(queue.Empty):
+        i = js.submit(fn=len, args=((), ), block=False)
+
+    # Confirm expected results in reverse order of submission
+    assert h.done()
+    assert 1 == h.result()
+    assert g.done()
+    assert 2 == g.result()
+    assert f.done()
+    assert 3 == f.result()
+
+
+# FIXME Broken
+def test_inception():
+    context = multiprocessing.get_context('forkserver')
+    js = Jobserver(context=context, slots=3)
