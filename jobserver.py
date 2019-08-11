@@ -139,30 +139,36 @@ class Jobserver:
 ### TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
 ###########################################################################
 
-
-def test_basic():
-    # Prepare work
-    context = multiprocessing.get_context('forkserver')
-    js = Jobserver(context=context, slots=3)
-    f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
-    g = js.submit(fn=len, args=((1, 3), ), block=True)
-    h = js.submit(fn=len, args=((1, ), ), block=True)
-
-    # Prepare too much work given fixed slot count
-    import pytest
-    with pytest.raises(queue.Empty):
-        i = js.submit(fn=len, args=((), ), block=False)
-
-    # Confirm expected results in reverse order of submission
-    assert h.done()
-    assert 1 == h.result()
-    assert g.done()
-    assert 2 == g.result()
-    assert f.done()
-    assert 3 == f.result()
+import unittest
 
 
-# FIXME Broken
-def test_inception():
-    context = multiprocessing.get_context('forkserver')
-    js = Jobserver(context=context, slots=3)
+class JobserverTest(unittest.TestCase):
+
+    def test_basic(self):
+        # Prepare work
+        context = multiprocessing.get_context('forkserver')
+        js = Jobserver(context=context, slots=3)
+        f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
+        g = js.submit(fn=len, args=((1, 3), ), block=True)
+        h = js.submit(fn=len, args=((1, ), ), block=True)
+
+        # Prepare too much work given fixed slot count
+        self.assertRaises(queue.Empty,
+                          js.submit, fn=len, args=((), ), block=False)
+
+        # Confirm expected results in reverse order of submission
+        self.assertTrue(h.done())
+        self.assertEqual(1, h.result())
+        self.assertTrue(g.done())
+        self.assertEqual(2, g.result())
+        self.assertTrue(f.done())
+        self.assertEqual(3, f.result())
+
+
+# TODO Test raising inside work raises outside work
+# TODO Test non-blocking as expected
+# TODO Test processes inside processes
+
+
+if __name__ == '__main__':
+    unittest.main()
