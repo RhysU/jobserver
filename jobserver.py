@@ -130,11 +130,12 @@ class Jobserver:
     def _worker_entrypoint(queue, fn, *args, **kwargs) -> None:
         try:
             result = fn(*args, **kwargs)
+        except Exception as exception:
+            result = exception
+        finally:
             queue.put_nowait(result)
-        except queue.Full as e:
-            raise RuntimeError('Logic error detected') from e
-        except Exception as e:
-            queue.put(e)
+            queue.close()
+            queue.join_thread()
 
 
 ###########################################################################
