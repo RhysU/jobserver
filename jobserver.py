@@ -102,27 +102,32 @@ class Jobserver:
         for _ in range(consume):
             tokens.append(self.slots.get(block=block, timeout=timeout))
         try:
-            # Prepare required resources
+            # Now, with a slot consumed, begin consuming resources...
             queue = self.context.Queue()
             args = tuple(args) if args else ()
-            args = (self.slots, tokens, queue, fn) + args
             process = self.context.Process(target=Jobserver._worker_entrypoint,
-                                           args=args,
+                                           args=(queue, fn) + args,
                                            kwargs=kwargs if kwargs else {},
                                            daemon=False)
             future = Future(process, queue)
-            # Process restores token whenever following start(...) succeeds
             process.start()
         except:
+            # ...unwinding the consumed slot on unexpected errors.
             while tokens:
                 self.slots.put_nowait(tokens.pop(0))
             raise
+
+        # As the above process.start() succeeded, now Future restores tokens.
+        # This choice causes token release only after future.process.join()
+        # from within Future.done().  It keeps _worker_entrypoint() simple.
+        while tokens:
+            future.add_done_callback(self.slots.put_nowait, tokens.pop(0))
 
         return future
 
     # TODO Employ PR_SET_PDEATHSIG so child dies should the parent die
     @staticmethod
-    def _worker_entrypoint(slots, tokens, queue, fn, *args, **kwargs) -> None:
+    def _worker_entrypoint(queue, fn, *args, **kwargs) -> None:
         try:
             result = fn(*args, **kwargs)
             queue.put_nowait(result)
@@ -130,9 +135,6 @@ class Jobserver:
             raise RuntimeError('Logic error detected') from e
         except Exception as e:
             queue.put(e)
-        finally:
-            while tokens:
-                slots.put_nowait(tokens.pop(0))
 
 
 ###########################################################################
@@ -167,6 +169,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(3, f.result())
 
 
+# TODO Test keyword arguments
 # TODO Test raising inside work raises outside work
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
