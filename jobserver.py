@@ -150,27 +150,26 @@ class JobserverTest(unittest.TestCase):
     def test_basic(self):
         for method in self.METHODS:
             with self.subTest(method=method):
-                # Prepare work
+                # Prepare work filling all slots
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
-                g = js.submit(fn=len, args=((1, 3), ), block=True)
+                g = js.submit(fn=str, kwargs=dict(object=2), block=True)
                 h = js.submit(fn=len, args=((1, ), ), block=True)
 
-                # Prepare too much work given fixed slot count
+                # Try too much work given fixed slot count
                 self.assertRaises(queue.Empty,
                                   js.submit, fn=len, args=((), ), block=False)
 
-                # Confirm expected results in reverse order of submission
+                # Confirm results in something other than submission order
+                self.assertEqual('2', g.result())
+                self.assertTrue(f.done())
                 self.assertTrue(h.done())
                 self.assertEqual(1, h.result())
                 self.assertTrue(g.done())
-                self.assertEqual(2, g.result())
-                self.assertTrue(f.done())
                 self.assertEqual(3, f.result())
 
 
-# TODO Test keyword arguments
 # TODO Test raising inside work raises outside work
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
