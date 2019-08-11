@@ -77,6 +77,7 @@ class Jobserver:
         for i in range(slots):
             self.slots.put_nowait(i)
 
+    # TODO Prior to consuming tokens, scan for any previously done Future.
     # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
     def submit(
         self,
