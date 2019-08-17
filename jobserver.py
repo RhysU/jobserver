@@ -6,6 +6,7 @@ import collections
 import multiprocessing
 import queue
 import typing
+import unittest
 
 
 T = typing.TypeVar('T')
@@ -115,6 +116,9 @@ class Jobserver:
         # Possibly consume one slot prior to acquiring any resources
         tokens = []
         assert consume is 0 or consume is 1, 'Invalid or deadlock possible'
+        # TODO Check if any prior work has completed thus freeing slots.
+        # TODO Somewhat subtle/fun to account for blocking/timeout.
+        # TODO May change the semantics around test_basic
         for _ in range(consume):
             tokens.append(self.slots.get(block=block, timeout=timeout))
         try:
@@ -159,8 +163,10 @@ class Jobserver:
 ###########################################################################
 ### TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
 ###########################################################################
+# TODO Test non-blocking as expected
+# TODO Test processes inside processes
 
-import unittest
+
 
 class JobserverTest(unittest.TestCase):
     METHODS = ('forkserver', 'fork', 'spawn')
@@ -177,8 +183,8 @@ class JobserverTest(unittest.TestCase):
                     h = js.submit(fn=len, args=((1, ), ), block=True)
 
                     # Try too much work given fixed slot count
-                    self.assertRaises(queue.Empty, js.submit,
-                                      fn=len, args=((), ), block=False)
+                    with self.assertRaises(queue.Empty):
+                        js.submit(fn=len, args=((), ), block=False)
 
                     # Confirm results in something other than submission order
                     self.assertEqual('2', g.result())
@@ -187,15 +193,36 @@ class JobserverTest(unittest.TestCase):
                     if check_done:
                         self.assertTrue(h.done())
                     self.assertEqual(1, h.result())
+                    self.assertEqual(1, h.result(), 'Multiple calls OK')
                     if check_done:
                         self.assertTrue(g.done())
+                        self.assertTrue(g.done(), 'Multiple calls OK')
                     self.assertEqual(3, f.result())
 
+    @staticmethod
+    def helper_raise(klass, *args):
+        raise klass(*args)
 
-# TODO Test submitting more work after first batch completes
-# TODO Test raising inside work raises outside work
-# TODO Test non-blocking as expected
-# TODO Test processes inside processes
+    def test_raises(self):
+        for method in self.METHODS:
+            with self.subTest(method=method):
+                # Prepare work interleaving exceptions and success cases
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+
+                # Confirm exception is raised repeatedly
+                f = js.submit(fn=self.helper_raise,
+                              args=(ArithmeticError, 'message123'),
+                              block=True)
+                with self.assertRaises(ArithmeticError) as raised:
+                    f.result()
+                with self.assertRaises(ArithmeticError) as raised:
+                    f.result()
+                self.assertTrue(f.done())
+
+                # Confirm other work processed without issue
+                g = js.submit(fn=str, kwargs=dict(object=2), block=True)
+                self.assertEqual('2', g.result())
 
 
 if __name__ == '__main__':
