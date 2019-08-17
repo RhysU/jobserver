@@ -132,6 +132,8 @@ class Jobserver:
         return future
 
     # TODO Employ PR_SET_PDEATHSIG so child dies should the parent die
+    # TODO Permit running logic prior to beginning requested work?
+    # TODO Consider permitting a context manager to be "installed"
     @staticmethod
     def _worker_entrypoint(queue, fn, *args, **kwargs) -> None:
         try:
