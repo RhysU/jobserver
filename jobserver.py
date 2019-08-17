@@ -40,15 +40,25 @@ class Future(typing.Generic[T]):
                 self.value = self.queue.get(block=block, timeout=timeout)
                 self.process.join()
                 self.process = None  # Allow reclaiming via garbage collection
-                self.queue.close()
-                self.queue.join_thread()
-                self.queue = None  # Mark done() and allow garbage collection
             except queue.Empty:
                 return False
 
-            while self.callbacks:
-                fn, args, kwargs = self.callbacks.pop(0)
-                fn(*args, **kwargs)
+            # Empirically, closing self.queue after callbacks (in particular,
+            # those registered by Jobserver.submit(...) restoring tokens to
+            # resource-tracking slots) *reduces* sporadic BrokenPipeErrors
+            # (SIGPIPEs) which otherwise occur.  Unsatisfying but pragmatic.
+            #
+            # Callback must observe "self.queue is None" (supposing someone
+            # registers some callback using this Future) otherwise our grubby
+            # empiricism around avoiding SIGPIPE "leaks" in treatment below.
+            queue, self.queue = self.queue, None
+            try:
+                while self.callbacks:
+                    fn, args, kwargs = self.callbacks.pop(0)
+                    fn(*args, **kwargs)
+            finally:
+                queue.close()
+                queue.join_thread()
 
         return True
 
