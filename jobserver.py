@@ -34,6 +34,8 @@ class Future(typing.Generic[T]):
         else:
             self.callbacks.append((fn, args, kwargs))
 
+    # TODO Create custom exception to allow reporting a callback issue
+    # TODO Document that detail in both done(...) and result(...).
     def done(self, block: bool=True, timeout: float=None) -> bool:
         """Is result ready?"""
         if self.queue is not None:
@@ -167,20 +169,31 @@ class Jobserver:
 # TODO Test processes inside processes
 
 
-
 class JobserverTest(unittest.TestCase):
     METHODS = ('forkserver', 'fork', 'spawn')
+
+    @staticmethod
+    def helper_callback(lizt, index, increment):
+        lizt[index] += increment
 
     def test_basic(self):
         for method in self.METHODS:
             for check_done in (True, False):
                 with self.subTest(method=method, check_done=check_done):
+                    # Prepare how callbacks will be observed
+                    mutable = [0, 0, 0]
+
                     # Prepare work filling all slots
                     context = multiprocessing.get_context(method)
                     js = Jobserver(context=context, slots=3)
                     f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
+                    f.add_done_callback(self.helper_callback, mutable, 0, 1)
                     g = js.submit(fn=str, kwargs=dict(object=2), block=True)
+                    g.add_done_callback(self.helper_callback, mutable, 1, 2)
+                    g.add_done_callback(self.helper_callback, mutable, 1, 3)
                     h = js.submit(fn=len, args=((1, ), ), block=True)
+                    h.add_done_callback(self.helper_callback,
+                                        lizt=mutable, index=2, increment=7)
 
                     # Try too much work given fixed slot count
                     with self.assertRaises(queue.Empty):
@@ -188,16 +201,24 @@ class JobserverTest(unittest.TestCase):
 
                     # Confirm results in something other than submission order
                     self.assertEqual('2', g.result())
+                    self.assertEqual(mutable[1], 5, 'Two callbacks observed')
                     if check_done:
                         self.assertTrue(f.done())
-                    if check_done:
-                        self.assertTrue(h.done())
+                    self.assertTrue(h.done())  # No check_done guard!
+                    self.assertEqual(mutable[2], 7)
                     self.assertEqual(1, h.result())
                     self.assertEqual(1, h.result(), 'Multiple calls OK')
+                    h.add_done_callback(self.helper_callback,
+                                        lizt=mutable, index=2, increment=11)
+                    self.assertEqual(mutable[2], 18, 'Callback after done')
+                    self.assertEqual(1, h.result())
+                    self.assertTrue(h.done())
+                    self.assertEqual(mutable[2], 18, 'Callbacks idempotent')
                     if check_done:
                         self.assertTrue(g.done())
                         self.assertTrue(g.done(), 'Multiple calls OK')
                     self.assertEqual(3, f.result())
+                    self.assertEqual(mutable[0], 1, 'One callback observed')
 
     @staticmethod
     def helper_raise(klass, *args):
@@ -206,6 +227,9 @@ class JobserverTest(unittest.TestCase):
     def test_raises(self):
         for method in self.METHODS:
             with self.subTest(method=method):
+                # Prepare how callbacks will be observed
+                mutable = [0]
+
                 # Prepare work interleaving exceptions and success cases
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
@@ -214,11 +238,16 @@ class JobserverTest(unittest.TestCase):
                 f = js.submit(fn=self.helper_raise,
                               args=(ArithmeticError, 'message123'),
                               block=True)
-                with self.assertRaises(ArithmeticError) as raised:
+                f.add_done_callback(self.helper_callback, mutable, 0, 1)
+                with self.assertRaises(ArithmeticError):
                     f.result()
-                with self.assertRaises(ArithmeticError) as raised:
+                self.assertEqual(mutable[0], 1, 'One callback observed')
+                f.add_done_callback(self.helper_callback, mutable, 0, 2)
+                self.assertEqual(mutable[0], 3, 'Callback after done')
+                with self.assertRaises(ArithmeticError):
                     f.result()
                 self.assertTrue(f.done())
+                self.assertEqual(mutable[0], 3, 'Callback idempotent')
 
                 # Confirm other work processed without issue
                 g = js.submit(fn=str, kwargs=dict(object=2), block=True)
