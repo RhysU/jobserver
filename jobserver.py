@@ -167,25 +167,29 @@ class JobserverTest(unittest.TestCase):
 
     def test_basic(self):
         for method in self.METHODS:
-            with self.subTest(method=method):
-                # Prepare work filling all slots
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
-                f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
-                g = js.submit(fn=str, kwargs=dict(object=2), block=True)
-                h = js.submit(fn=len, args=((1, ), ), block=True)
+            for check_done in (True, False):
+                with self.subTest(method=method, check_done=check_done):
+                    # Prepare work filling all slots
+                    context = multiprocessing.get_context(method)
+                    js = Jobserver(context=context, slots=3)
+                    f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
+                    g = js.submit(fn=str, kwargs=dict(object=2), block=True)
+                    h = js.submit(fn=len, args=((1, ), ), block=True)
 
-                # Try too much work given fixed slot count
-                self.assertRaises(queue.Empty,
-                                  js.submit, fn=len, args=((), ), block=False)
+                    # Try too much work given fixed slot count
+                    self.assertRaises(queue.Empty, js.submit,
+                                      fn=len, args=((), ), block=False)
 
-                # Confirm results in something other than submission order
-                self.assertEqual('2', g.result())
-                self.assertTrue(f.done())
-                self.assertTrue(h.done())
-                self.assertEqual(1, h.result())
-                self.assertTrue(g.done())
-                self.assertEqual(3, f.result())
+                    # Confirm results in something other than submission order
+                    self.assertEqual('2', g.result())
+                    if check_done:
+                        self.assertTrue(f.done())
+                    if check_done:
+                        self.assertTrue(h.done())
+                    self.assertEqual(1, h.result())
+                    if check_done:
+                        self.assertTrue(g.done())
+                    self.assertEqual(3, f.result())
 
 
 # TODO Test submitting more work after first batch completes
