@@ -71,7 +71,7 @@ class Jobserver:
         Wrap some multiprocessing context and allow some number of slots.
         Throughout API, arguments block/timeout follow queue.Queue semantics.
         """
-        # Prepare required resources ensuring their proper tear down
+        # Prepare required resources ensuring their LIFO-ordered tear down
         assert slots >= 0
         self.context = context
         self.slots = self.context.Queue(maxsize=slots)
