@@ -26,7 +26,7 @@ class Future(typing.Generic[T]):
     Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
     def __init__(
-        self, process: multiprocessing.Process, queue:multiprocessing.Queue
+        self, process: multiprocessing.Process, queue: multiprocessing.Queue
     ) -> None:
         assert process is not None  # None after Process.join(...)
         assert queue is not None  # None after result read and Queue.close(...)
@@ -37,12 +37,11 @@ class Future(typing.Generic[T]):
 
     def add_done_callback(self, fn: typing.Callable, *args, **kwargs) -> None:
         """Register a function fn for execution after result is ready."""
+        self.callbacks.append((fn, args, kwargs))
         if self.queue is None:
-            fn(*args, **kwargs)
-        else:
-            self.callbacks.append((fn, args, kwargs))
+            self._issue_callbacks()
 
-    # TODO What's are the semantics when some callback raises?  Unrecoverable?
+    # TODO What's are the semantics  when some callback raises?  Unrecoverable?
     def done(self, block: bool=True, timeout: float=None) -> bool:
         """Is result ready?  May raise CallbackRaisedException."""
         if self.queue is not None:
@@ -63,16 +62,21 @@ class Future(typing.Generic[T]):
             # empiricism around avoiding SIGPIPE "leaks" in treatment below.
             queue, self.queue = self.queue, None
             try:
-                while self.callbacks:
-                    fn, args, kwargs = self.callbacks.pop(0)
-                    fn(*args, **kwargs)
-            except Exception as e:
-                raise CallbackRaisedException() from e
+                self._issue_callbacks()
             finally:
                 queue.close()
                 queue.join_thread()
 
         return True
+
+    # TODO One 'latching callback exception' behavior is to re-push here
+    def _issue_callbacks(self):
+        try:
+            while self.callbacks:
+                fn, args, kwargs = self.callbacks.pop(0)
+                fn(*args, **kwargs)
+        except Exception as e:
+            raise CallbackRaisedException() from e
 
     def result(self, block: bool=True, timeout: float=None) -> T:
         """Obtain result when ready.  May raise CallbackRaisedException."""
