@@ -12,6 +12,14 @@ import unittest
 T = typing.TypeVar('T')
 
 
+class CallbackRaisedException(Exception):
+    """
+    Reports an Exception raised during callback processing for some Future.
+    Instances of this exception have non-None __cause__ members per PEP 3154.
+    """
+    pass
+
+
 class Future(typing.Generic[T]):
     """
     A Future anticipating one result in a Queue emitted by some Process.
@@ -34,10 +42,9 @@ class Future(typing.Generic[T]):
         else:
             self.callbacks.append((fn, args, kwargs))
 
-    # TODO Create custom exception to allow reporting a callback issue
-    # TODO Document that detail in both done(...) and result(...).
+    # TODO What's are the semantics when some callback raises?  Unrecoverable?
     def done(self, block: bool=True, timeout: float=None) -> bool:
-        """Is result ready?"""
+        """Is result ready?  May raise CallbackRaisedException."""
         if self.queue is not None:
             try:
                 self.value = self.queue.get(block=block, timeout=timeout)
@@ -59,6 +66,8 @@ class Future(typing.Generic[T]):
                 while self.callbacks:
                     fn, args, kwargs = self.callbacks.pop(0)
                     fn(*args, **kwargs)
+            except Exception as e:
+                raise CallbackRaisedException() from e
             finally:
                 queue.close()
                 queue.join_thread()
@@ -66,7 +75,7 @@ class Future(typing.Generic[T]):
         return True
 
     def result(self, block: bool=True, timeout: float=None) -> T:
-        """Obtain result when ready."""
+        """Obtain result when ready.  May raise CallbackRaisedException."""
         if not self.done(block=block, timeout=timeout):
             raise queue.Empty()
 
@@ -167,6 +176,7 @@ class Jobserver:
 ###########################################################################
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
+# TODO Hide queue.Empty() and queue.Full() from the user?
 
 
 class JobserverTest(unittest.TestCase):
@@ -221,6 +231,19 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(mutable[0], 1, 'One callback observed')
 
     @staticmethod
+    def helper_none():
+        return None
+
+    # Explicitly tested because of handling woes observed in other designs
+    def test_returns_none(self):
+        for method in self.METHODS:
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+                f = js.submit(fn=self.helper_none, args=(), block=True)
+                self.assertIsNone(f.result())
+
+    @staticmethod
     def helper_raise(klass, *args):
         raise klass(*args)
 
@@ -252,6 +275,20 @@ class JobserverTest(unittest.TestCase):
                 # Confirm other work processed without issue
                 g = js.submit(fn=str, kwargs=dict(object=2), block=True)
                 self.assertEqual('2', g.result())
+
+    def test_callback_raises(self):
+        for method in self.METHODS:
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+                f = js.submit(fn=self.helper_none, args=(), block=True)
+                f.add_done_callback(self.helper_raise, ArithmeticError, '123')
+                with self.assertRaises(CallbackRaisedException) as cm:
+                    f.done(block=True)
+                self.assertIsInstance(cm.exception.__cause__, ArithmeticError)
+                # TODO What is the contract from result()
+                # TODO What is the contract if result called multiple times()
+                # TODO What is the contract if done called multiple times()
 
 
 if __name__ == '__main__':
