@@ -36,40 +36,55 @@ class Future(typing.Generic[T]):
         self.callbacks = []
 
     def add_done_callback(self, fn: typing.Callable, *args, **kwargs) -> None:
-        """Register a function fn for execution after result is ready."""
+        """
+        Register a function fn for execution after result is ready.
+
+        May raise CallbackRaisedException from at most this new callback.
+        """
         self.callbacks.append((fn, args, kwargs))
         if self.queue is None:
             self._issue_callbacks()
 
-    # TODO What's are the semantics when some callback raises?  Unrecoverable?
+    # TODO Test the multiple-callback-raising semantics
     def done(self, block: bool=True, timeout: float=None) -> bool:
-        """Is result ready?  May raise CallbackRaisedException."""
-        if self.queue is not None:
-            try:
-                self.value = self.queue.get(block=block, timeout=timeout)
-                self.process.join()
-                self.process = None  # Allow reclaiming via garbage collection
-            except queue.Empty:
-                return False
+        """
+        Is result ready?
 
-            # Empirically, closing self.queue after callbacks (in particular,
-            # those registered by Jobserver.submit(...) restoring tokens to
-            # resource-tracking slots) *reduces* sporadic BrokenPipeErrors
-            # (SIGPIPEs) which otherwise occur.  Unsatisfying but pragmatic.
-            #
-            # Callback must observe "self.queue is None" (supposing someone
-            # registers some callback using this Future) otherwise our grubby
-            # empiricism around avoiding SIGPIPE "leaks" in treatment below.
-            queue, self.queue = self.queue, None
-            try:
-                self._issue_callbacks()
-            finally:
-                queue.close()
-                queue.join_thread()
+        May raise CallbackRaisedException from at most one registered callback.
+        When raised, done() should be called until it returns True if one
+        needs to confirm that all registered callbacks have been issued.
+        """
+        # Multiple calls to done() may be required to issue all callbacks.
+        if self.queue is None:
+            self._issue_callbacks()
+            return True
+
+        # Attempt to read the result from the underlying queue
+        assert self.queue is not None
+        try:
+            self.value = self.queue.get(block=block, timeout=timeout)
+            self.process.join()
+            self.process = None  # Allow reclaiming via garbage collection
+        except queue.Empty:
+            return False
+
+        # Empirically, closing self.queue after callbacks (in particular,
+        # those registered by Jobserver.submit(...) restoring tokens to
+        # resource-tracking slots) *reduces* sporadic BrokenPipeErrors
+        # (SIGPIPEs) which otherwise occur.  Unsatisfying but pragmatic.
+        #
+        # Callback must observe "self.queue is None" (supposing someone
+        # registers some callback using this Future) otherwise our grubby
+        # empiricism around avoiding SIGPIPE "leaks" in treatment below.
+        queue, self.queue = self.queue, None
+        try:
+            self._issue_callbacks()
+        finally:
+            queue.close()
+            queue.join_thread()
 
         return True
 
-    # TODO One 'latching callback exception' behavior is to re-push here
     def _issue_callbacks(self):
         try:
             while self.callbacks:
@@ -79,7 +94,11 @@ class Future(typing.Generic[T]):
             raise CallbackRaisedException() from e
 
     def result(self, block: bool=True, timeout: float=None) -> T:
-        """Obtain result when ready.  May raise CallbackRaisedException."""
+        """
+        Obtain result when ready.
+
+        Raises CallbackRaisedException once for each callback that raised.
+        """
         if not self.done(block=block, timeout=timeout):
             raise queue.Empty()
 
