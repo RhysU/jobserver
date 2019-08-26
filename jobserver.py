@@ -41,7 +41,7 @@ class Future(typing.Generic[T]):
         if self.queue is None:
             self._issue_callbacks()
 
-    # TODO What's are the semantics  when some callback raises?  Unrecoverable?
+    # TODO What's are the semantics when some callback raises?  Unrecoverable?
     def done(self, block: bool=True, timeout: float=None) -> bool:
         """Is result ready?  May raise CallbackRaisedException."""
         if self.queue is not None:
@@ -290,9 +290,10 @@ class JobserverTest(unittest.TestCase):
                 with self.assertRaises(CallbackRaisedException) as cm:
                     f.done(block=True)
                 self.assertIsInstance(cm.exception.__cause__, ArithmeticError)
-                # TODO What is the contract from result()
-                # TODO What is the contract if result called multiple times()
-                # TODO What is the contract if done called multiple times()
+                # TODO What is the contract from result()?
+                # TODO What is the contract if result() called multiple times?
+                # TODO What is the contract if done() called multiple times?
+                # TODO What happens to later callbacks after the first fails?
 
 
 if __name__ == '__main__':
