@@ -14,8 +14,18 @@ T = typing.TypeVar('T')
 
 class CallbackRaisedException(Exception):
     """
-    Reports an Exception raised during callback processing for some Future.
-    Instances of this exception have non-None __cause__ members per PEP 3154.
+    Reports an Exception raised from callbacks registered with a Future.
+
+    Instances of this type must have non-None __cause__ members (see PEP 3154).
+    The __cause__ member will be the Exception raised by client code.
+
+    When raised by some method, e.g. by Future.done(...) or by
+    Future.result(...), the caller MAY choose to re-invoke that same
+    method immediately to continue processing any additional callbacks.
+    If the caller requires that all callbacks are attempted, the caller
+    MUST re-invoke the same method until no CallbackRaisedException occurs.
+    These MAY/MUST semantics allow the caller to decide how much additional
+    processing to perform after seeing the 1st, 2nd, or N-th error.
     """
     pass
 
@@ -37,8 +47,9 @@ class Future(typing.Generic[T]):
 
     def add_done_callback(self, fn: typing.Callable, *args, **kwargs) -> None:
         """
-        Register a function fn for execution after result is ready.
+        Register a function for execution sometime after Future.done(...).
 
+        When already done(...), will immediately invoke the requested function.
         May raise CallbackRaisedException from at most this new callback.
         """
         self.callbacks.append((fn, args, kwargs))
@@ -51,8 +62,7 @@ class Future(typing.Generic[T]):
         Is result ready?
 
         May raise CallbackRaisedException from at most one registered callback.
-        When raised, done() should be called until it returns True if one
-        needs to confirm that all registered callbacks have been issued.
+        See CallbackRaisedException documentation for callback error semantics.
         """
         # Multiple calls to done() may be required to issue all callbacks.
         if self.queue is None:
@@ -97,7 +107,8 @@ class Future(typing.Generic[T]):
         """
         Obtain result when ready.
 
-        Raises CallbackRaisedException once for each callback that raised.
+        May raise CallbackRaisedException from at most one registered callback.
+        See CallbackRaisedException documentation for callback error semantics.
         """
         if not self.done(block=block, timeout=timeout):
             raise queue.Empty()
