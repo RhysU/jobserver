@@ -182,6 +182,7 @@ class Jobserver:
                 self.slots.put_nowait(tokens.pop(0))
             raise
 
+        # FIXME Should not manifest any CallbackRaisedExceptions as not client!
         # As the above process.start() succeeded, now Future restores tokens.
         # This choice causes token release only after future.process.join()
         # from within Future.done().  It keeps _worker_entrypoint() simple.
