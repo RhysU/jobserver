@@ -327,11 +327,13 @@ class JobserverTest(unittest.TestCase):
                     f.done(block=True)
                 self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
                 self.assertTrue(f.done(block=True))
+                self.assertTrue(f.done(block=False))
 
                 # Now that work is complete, adding callback raises immediately
                 with self.assertRaises(CallbackRaisedException) as c:
                     f.add_done_callback(self.helper_raise, UnicodeError, '67')
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
+                self.assertTrue(f.done(block=False))
                 # TODO What is the contract from result()?
                 # TODO What is the contract if result() called multiple times?
 
