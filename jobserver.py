@@ -310,7 +310,7 @@ class JobserverTest(unittest.TestCase):
                 g = js.submit(fn=str, kwargs=dict(object=2), block=True)
                 self.assertEqual('2', g.result())
 
-    def test_callback_raises_done(self):
+    def test_done_callback_raises(self):
         for method in self.METHODS:
             with self.subTest(method=method):
                 context = multiprocessing.get_context(method)
