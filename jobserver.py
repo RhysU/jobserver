@@ -264,6 +264,21 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(3, f.result())
                     self.assertEqual(mutable[0], 1, 'One callback observed')
 
+    # TODO Increase workload beyond available slot count
+    def test_heavyusage(self):
+        for method in self.METHODS:
+            with self.subTest(method=method):
+                # Prepare workload based on number of available slots
+                context = multiprocessing.get_context(method)
+                slots = 2
+                js = Jobserver(context=context, slots=slots)
+                fs = [js.submit(fn=len, args=('x' * i, ), block=True)
+                      for i in range(slots)]
+
+                # Confirm all work completed
+                for i, f in enumerate(fs):
+                    self.assertEqual(i, f.result(block=True))
+
     @staticmethod
     def helper_none():
         return None
@@ -336,7 +351,6 @@ class JobserverTest(unittest.TestCase):
                 self.assertTrue(f.done(block=False))
                 # TODO What is the contract from result()?
                 # TODO What is the contract if result() called multiple times?
-
 
 if __name__ == '__main__':
     unittest.main()
