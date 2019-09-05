@@ -56,7 +56,6 @@ class Future(typing.Generic[T]):
         if self.queue is None:
             self._issue_callbacks()
 
-    # TODO Test the multiple-callback-raising semantics
     def done(self, block: bool=True, timeout: float=None) -> bool:
         """
         Is result ready?
@@ -311,20 +310,30 @@ class JobserverTest(unittest.TestCase):
                 g = js.submit(fn=str, kwargs=dict(object=2), block=True)
                 self.assertEqual('2', g.result())
 
-    def test_callback_raises(self):
+    def test_callback_raises_done(self):
         for method in self.METHODS:
             with self.subTest(method=method):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
+
+                # Calling done() repeatedly correctly reports multiple errors
                 f = js.submit(fn=self.helper_none, args=(), block=True)
                 f.add_done_callback(self.helper_raise, ArithmeticError, '123')
-                with self.assertRaises(CallbackRaisedException) as cm:
+                f.add_done_callback(self.helper_raise, ZeroDivisionError, '45')
+                with self.assertRaises(CallbackRaisedException) as c:
                     f.done(block=True)
-                self.assertIsInstance(cm.exception.__cause__, ArithmeticError)
+                self.assertIsInstance(c.exception.__cause__, ArithmeticError)
+                with self.assertRaises(CallbackRaisedException) as c:
+                    f.done(block=True)
+                self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
+                self.assertTrue(f.done(block=True))
+
+                # Now that work is complete, adding callback raises immediately
+                with self.assertRaises(CallbackRaisedException) as c:
+                    f.add_done_callback(self.helper_raise, UnicodeError, '67')
+                self.assertIsInstance(c.exception.__cause__, UnicodeError)
                 # TODO What is the contract from result()?
                 # TODO What is the contract if result() called multiple times?
-                # TODO What is the contract if done() called multiple times?
-                # TODO What happens to later callbacks after the first fails?
 
 
 if __name__ == '__main__':
