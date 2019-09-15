@@ -211,6 +211,7 @@ class Jobserver:
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
 # TODO Hide queue.Empty() and queue.Full() from the user?
+# TODO Distinguish between returning an Exception and raising one!
 
 
 class JobserverTest(unittest.TestCase):
