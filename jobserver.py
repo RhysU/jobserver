@@ -43,16 +43,18 @@ class Future(typing.Generic[T]):
         self.process = process
         self.queue = queue
         self.value = None
-        self.callbacks = []
+        self.callbacks = []  # Tuples per add_done_callback, _issue_callbacks
 
-    def add_done_callback(self, fn: typing.Callable, *args, **kwargs) -> None:
+    def add_done_callback(
+            self, fn: typing.Callable, *args, __internal: bool=False, **kwargs,
+        ) -> None:
         """
         Register a function for execution sometime after Future.done(...).
 
         When already done(...), will immediately invoke the requested function.
         May raise CallbackRaisedException from at most this new callback.
         """
-        self.callbacks.append((fn, args, kwargs))
+        self.callbacks.append((__internal, fn, args, kwargs))
         if self.queue is None:
             self._issue_callbacks()
 
@@ -95,12 +97,17 @@ class Future(typing.Generic[T]):
         return True
 
     def _issue_callbacks(self):
-        try:
-            while self.callbacks:
-                fn, args, kwargs = self.callbacks.pop(0)
+        # Only a non-internal callback may cause CallbackRaisedException.
+        # Otherwise, we might obfuscate bugs within this module's logic.
+        while self.callbacks:
+            internal, fn, args, kwargs = self.callbacks.pop(0)
+            if internal:
                 fn(*args, **kwargs)
-        except Exception as e:
-            raise CallbackRaisedException() from e
+            else:
+                try:
+                    fn(*args, **kwargs)
+                except Exception as e:
+                    raise CallbackRaisedException() from e
 
     def result(self, block: bool=True, timeout: float=None) -> T:
         """
@@ -181,12 +188,12 @@ class Jobserver:
                 self.slots.put_nowait(tokens.pop(0))
             raise
 
-        # FIXME Should not manifest any CallbackRaisedExceptions as not client!
         # As the above process.start() succeeded, now Future restores tokens.
         # This choice causes token release only after future.process.join()
         # from within Future.done().  It keeps _worker_entrypoint() simple.
         while tokens:
-            future.add_done_callback(self.slots.put_nowait, tokens.pop(0))
+            future.add_done_callback(self.slots.put_nowait, tokens.pop(0),
+                                     _Future__internal=True)
 
         return future
 
