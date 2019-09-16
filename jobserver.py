@@ -46,7 +46,7 @@ class Future(typing.Generic[T]):
         self.callbacks = []  # Tuples per add_done_callback, _issue_callbacks
 
     def add_done_callback(
-            self, fn: typing.Callable, *args, __internal: bool=False, **kwargs,
+            self, fn: typing.Callable, *args, __internal: bool=False, **kwargs
         ) -> None:
         """
         Register a function for execution sometime after Future.done(...).
