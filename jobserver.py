@@ -137,6 +137,7 @@ class Jobserver:
         assert slots >= 0
         self.context = context
         self.slots = self.context.Queue(maxsize=slots)
+        self.futures = set()
         atexit.register(self.slots.join_thread)
         atexit.register(self.slots.close)
 
@@ -176,17 +177,28 @@ class Jobserver:
             # Now, with a slot consumed, begin consuming resources...
             queue = self.context.Queue(maxsize=1)
             args = tuple(args) if args else ()
+            # Temporarily mutate members to clear Futures list for new worker.
+            saved_futures, self.futures = self.futures, set()
+            # Acquire resources for processing the submitted work.
             process = self.context.Process(target=Jobserver._worker_entrypoint,
                                            args=(queue, fn) + args,
                                            kwargs=kwargs if kwargs else {},
                                            daemon=False)
             future = Future(process, queue)
             process.start()
+            # Re-establish Future tracking after the work has been submitted
+            self.futures = saved_futures
+            self.futures.add(future)
         except:
             # ...unwinding the consumed slot on unexpected errors.
             while tokens:
                 self.slots.put_nowait(tokens.pop(0))
             raise
+
+        # When a Future has completed, no longer track it within Jobserver.
+        # Remove, versus discard, chosen to confirm removals previously known.
+        future.add_done_callback(self.futures.remove, future,
+                                 _Future__internal=True)
 
         # As the above process.start() succeeded, now Future restores tokens.
         # This choice causes token release only after future.process.join()
