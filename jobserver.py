@@ -134,12 +134,14 @@ class Jobserver:
         Throughout API, arguments block/timeout follow queue.Queue semantics.
         """
         # Prepare required resources ensuring their LIFO-ordered tear down
-        assert slots >= 0
+        assert context is not None
         self.context = context
+        assert isinstance(slots, int)
+        assert slots >= 0
         self.slots = self.context.Queue(maxsize=slots)
-        self.futures = set()
         atexit.register(self.slots.join_thread)
         atexit.register(self.slots.close)
+        self.future_sentinels = {}  # type: typing.Dict[Future, int]
 
         # Issue one token for each requested slot
         for i in range(slots):
@@ -177,9 +179,9 @@ class Jobserver:
             # Now, with a slot consumed, begin consuming resources...
             queue = self.context.Queue(maxsize=1)
             args = tuple(args) if args else ()
-            # Temporarily mutate members to clear Futures list for new worker.
-            saved_futures, self.futures = self.futures, set()
-            # Acquire resources for processing the submitted work.
+            # Temporarily mutate members to clear known Futures for new worker
+            saved, self.future_sentinels = self.future_sentinels, {}
+            # Acquire resources for processing the submitted work
             process = self.context.Process(target=Jobserver._worker_entrypoint,
                                            args=(queue, fn) + args,
                                            kwargs=kwargs if kwargs else {},
@@ -187,8 +189,9 @@ class Jobserver:
             future = Future(process, queue)
             process.start()
             # Re-establish Future tracking after the work has been submitted
-            self.futures = saved_futures
-            self.futures.add(future)
+            self.future_sentinels = saved
+            self.future_sentinels[future] = process.sentinel
+            del saved
         except:
             # ...unwinding the consumed slot on unexpected errors.
             while tokens:
@@ -197,7 +200,7 @@ class Jobserver:
 
         # When a Future has completed, no longer track it within Jobserver.
         # Remove, versus discard, chosen to confirm removals previously known.
-        future.add_done_callback(self.futures.remove, future,
+        future.add_done_callback(self.future_sentinels.pop, future,
                                  _Future__internal=True)
 
         # As the above process.start() succeeded, now Future restores tokens.
