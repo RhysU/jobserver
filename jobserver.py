@@ -160,7 +160,7 @@ class Jobserver:
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
-        Non-blocking usage per block/timeout possibly raises Queue.Empty.
+        Non-blocking usage per block/timeout possibly raises queue.Empty.
         When consume == 0, no job slot is consumed by the submission.
         """
         # Sanity check args and kwargs as misusage is easy and deadly
