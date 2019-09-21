@@ -181,14 +181,14 @@ class Jobserver:
             # (1) Eagerly clean up any completed work hence issuing callbacks
             if callbacks:
                 for future in list(self.future_sentinels.keys()):
-                    future.done(block=False)
+                    future.done(block=False, timeout=None)
 
             # (2) Exit loop if all requested resources have been acquired
             if len(tokens) >= consume:
                 break
 
             try:
-                # (3) Quickly grab any immediately available slot then goto (1)
+                # (3) If any slot immediately available grab then goto (1)
                 tokens.append(self.slots.get(block=False, timeout=None))
                 continue
             except Empty:
@@ -197,13 +197,12 @@ class Jobserver:
                     raise
             assert block, 'Sanity check on non-blocking behavioral invariant'
 
-            # (5) Block until either resources available or timeout exceeded
+            # (5) Block until either resources available or timeout exceeded.
             if self.future_sentinels:
                 sentinels = list(self.future_sentinels.keys())
-                ready = multiprocessing.connection.wait(sentinels,
-                                                        timeout=timeout)
-                # (6) With a timeout, report when (5) failed to free resources
-                if not ready:
+                if not multiprocessing.connection.wait(sentinels,
+                                                       timeout=timeout):
+                    # (6) Raise immediately when waiting freed no resources.
                     raise Empty()
 
         # Neither block not timeout are relevant below
