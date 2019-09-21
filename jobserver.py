@@ -4,6 +4,8 @@ A Jobserver exposing a Future interface built atop multiprocessing.
 import atexit
 import collections
 import multiprocessing
+import sys
+import time
 import typing
 import unittest
 
@@ -166,15 +168,22 @@ class Jobserver:
         When consume == 0, no job slot is consumed by the submission.
         This method issues callbacks on completed work when callbacks is True.
         """
-        # Sanity check args and kwargs as misusage is easy and deadly
+        # Argument check, especially args/kwargs as misusage is easy and deadly
+        assert fn is not None
         assert args is None or isinstance(args, collections.Sequence)
         assert kwargs is None or isinstance(kwargs, collections.Mapping)
         assert isinstance(block, bool)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
-        assert timeout is None or (isinstance(timeout, float) and timeout >= 0)
 
-        # TODO Timeout semantics are broken
+        # Convert timeout into concrete deadline then defensively drop timeout
+        if timeout is None:
+            deadline = float('inf')
+        else:
+            assert isinstance(timeout, float) and timeout >= 0
+            deadline = time.monotonic() + timeout
+        del timeout
+
         # Acquire the requested tokens or raise queue.Empty when impossible
         tokens = []
         assert consume == 0 or consume == 1, 'Invalid or deadlock possible'
@@ -193,19 +202,20 @@ class Jobserver:
                 tokens.append(self.slots.get(block=False, timeout=None))
                 continue
             except Empty:
-                # (4) Only report failure in (3) when non-blocking requested
-                if not block:
+                # (4) Only report failure in (3) non-blocking or deadline hit
+                if not block or time.monotonic() >= deadline:
                     raise
 
-            # (5) Block until either some work completes or timeout exceeded
+            # (5) Block until either some work completes or deadline hit
+            # Beware that completed work will requires callbacks from (1)
             assert block, 'Sanity check control flow'
             if self.future_sentinels:
                 multiprocessing.connection.wait(
                         list(self.future_sentinels.values()),
-                        timeout=timeout)
+                        timeout=deadline - time.monotonic())
 
-        # Neither block not timeout are relevant below
-        del block, timeout
+        # Neither block nor deadline are relevant below
+        del block, deadline
 
         # Now, with required slots consumed, begin consuming resources...
         assert len(tokens) >= consume, 'Sanity check slot acquisition'
