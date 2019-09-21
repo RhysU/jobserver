@@ -174,6 +174,7 @@ class Jobserver:
         assert isinstance(consume, int)
         assert timeout is None or (isinstance(timeout, float) and timeout >= 0)
 
+        # TODO Timeout semantics are broken
         # Acquire the requested tokens or raise queue.Empty when impossible
         tokens = []
         assert consume == 0 or consume == 1, 'Invalid or deadlock possible'
@@ -188,22 +189,20 @@ class Jobserver:
                 break
 
             try:
-                # (3) If any slot immediately available grab then goto (1)
+                # (3) If any slot immediately available grab then GOTO (1)
                 tokens.append(self.slots.get(block=False, timeout=None))
                 continue
             except Empty:
                 # (4) Only report failure in (3) when non-blocking requested
                 if not block:
                     raise
-            assert block, 'Sanity check on non-blocking behavioral invariant'
 
-            # (5) Block until either resources available or timeout exceeded.
+            # (5) Block until either some work completes or timeout exceeded
+            assert block, 'Sanity check control flow'
             if self.future_sentinels:
-                if not multiprocessing.connection.wait(
+                multiprocessing.connection.wait(
                         list(self.future_sentinels.values()),
-                        timeout=timeout):
-                    # (6) Raise immediately when waiting freed no resources.
-                    raise Empty()
+                        timeout=timeout)
 
         # Neither block not timeout are relevant below
         del block, timeout
