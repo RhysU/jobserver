@@ -199,9 +199,9 @@ class Jobserver:
 
             # (5) Block until either resources available or timeout exceeded.
             if self.future_sentinels:
-                sentinels = list(self.future_sentinels.values())
-                if not multiprocessing.connection.wait(sentinels,
-                                                       timeout=timeout):
+                if not multiprocessing.connection.wait(
+                        list(self.future_sentinels.values()),
+                        timeout=timeout):
                     # (6) Raise immediately when waiting freed no resources.
                     raise Empty()
 
