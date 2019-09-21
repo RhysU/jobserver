@@ -153,12 +153,13 @@ class Jobserver:
     def submit(
         self,
         fn: typing.Callable[..., T],
-        args: typing.Sequence = None,
-        kwargs: typing.Dict[str, typing.Any] = None,
+        *,
+        args: typing.Sequence=None,
+        kwargs: typing.Dict[str, typing.Any]=None,
         block: bool=True,
-        timeout: float=None,
-        consume: int=1,
         callbacks: bool=True,
+        consume: int=1,
+        timeout: typing.Optional[float]=None,
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -406,6 +407,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertTrue(f.done(block=False))
                 # TODO What is the contract from result()?
                 # TODO What is the contract if result() called multiple times?
+
 
 if __name__ == '__main__':
     unittest.main()
