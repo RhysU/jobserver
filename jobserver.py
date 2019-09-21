@@ -217,29 +217,31 @@ class Jobserver:
         # Neither block nor deadline are relevant below
         del block, deadline
 
-        # Now, with required slots consumed, begin consuming resources...
+        # Now, with required slots consumed, begin consuming resources:
         assert len(tokens) >= consume, 'Sanity check slot acquisition'
         try:
+            # Temporarily mutate members to clear known Futures for new worker
+            registered, self.future_sentinels = self.future_sentinels, {}
+            # Grab resources for processing the submitted work
             queue = self.context.Queue(maxsize=1)
             args = tuple(args) if args else ()
-            # Temporarily mutate members to clear known Futures for new worker
-            saved, self.future_sentinels = self.future_sentinels, {}
-            # Acquire resources for processing the submitted work
             process = self.context.Process(target=Jobserver._worker_entrypoint,
                                            args=(queue, fn) + args,
                                            kwargs=kwargs if kwargs else {},
                                            daemon=False)
             future = Future(process, queue)
             process.start()
-            # Re-establish Future tracking after the work has been submitted
-            self.future_sentinels = saved
-            self.future_sentinels[future] = process.sentinel
-            del saved
+            # Prepare to track the Future and the wait(...)-able sentinel
+            registered[future] = process.sentinel
         except:
-            # ...unwinding the consumed slot on unexpected errors.
+            # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self.slots.put_nowait(tokens.pop(0))
             raise
+        finally:
+            # Re-mutate members to restore known-Future tracking
+            self.future_sentinels = registered
+            del registered
 
         # As the above process.start() succeeded, now Future restores tokens.
         # This choice causes token release only after future.process.join()
