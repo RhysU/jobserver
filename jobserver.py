@@ -346,8 +346,10 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 slots = 2
                 js = Jobserver(context=context, slots=slots)
-                fs = [js.submit(fn=len, args=('x' * i, ),
-                                block=True, callbacks=True)
+                # Alternate between submissions with and without timeouts
+                kwargs = [dict(block=True, callbacks=True, timeout=None),
+                          dict(block=True, callbacks=True, timeout=1000)]
+                fs = [js.submit(fn=len, args=('x' * i, ), **(kwargs[i % 2]))
                       for i in range(10 * slots)]
 
                 # Confirm all work completed
