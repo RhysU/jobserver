@@ -59,14 +59,24 @@ class Future(typing.Generic[T]):
         if self.queue is None:
             self._issue_callbacks()
 
-    # TODO Enforce (not block) => (timeout is None)?
-    def done(self, block: bool=True, timeout: float=None) -> bool:
+    def done(
+        self,
+        block: bool=True,
+        timeout: typing.Optional[float]=None
+    ) -> bool:
         """
         Is result ready?
 
+        Argument timeout can only be specified for blocking operations.
+        When specified, timeout is given in seconds and must be non-negative.
         May raise CallbackRaisedException from at most one registered callback.
         See CallbackRaisedException documentation for callback error semantics.
         """
+        # Sanity check requested block/timeout
+        if timeout is not None:
+            assert block, 'Non-blocking operation cannot specify a timeout'
+            assert timeout >= 0, 'Blocking allows only a non-negative timeout'
+
         # Multiple calls to done() may be required to issue all callbacks.
         if self.queue is None:
             self._issue_callbacks()
@@ -148,9 +158,7 @@ class Jobserver:
         for i in range(slots):
             self.slots.put_nowait(i)
 
-    # TODO Allow negative timeouts
     # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
-    # TODO Enforce (not block) => (timeout is None)?
     def submit(
         self,
         fn: typing.Callable[..., T],
@@ -167,6 +175,8 @@ class Jobserver:
         Non-blocking usage per block/timeout possibly raises queue.Empty.
         When consume == 0, no job slot is consumed by the submission.
         This method issues callbacks on completed work when callbacks is True.
+        Timeout can only be specified for blocking operations.
+        When specified, timeout is given in seconds and must be non-negative.
         """
         # Argument check, especially args/kwargs as misusage is easy and deadly
         assert fn is not None
@@ -182,7 +192,8 @@ class Jobserver:
             # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
             deadline = time.monotonic() + (60 * 60 * 24 * 7)  # One week
         else:
-            assert timeout >= 0
+            assert block, 'Non-blocking operation cannot specify a timeout'
+            assert timeout >= 0, 'Blocking allows only a non-negative timeout'
             deadline = time.monotonic() + float(timeout)
         del timeout
 
@@ -339,6 +350,7 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(3, f.result())
                     self.assertEqual(mutable[0], 1, 'One callback observed')
 
+    # TODO Add tests that consume no slots
     def test_heavyusage(self):
         for method in self.METHODS:
             with self.subTest(method=method):
