@@ -176,7 +176,7 @@ class Jobserver:
 
         # Acquire the requested tokens or raise queue.Empty when impossible
         tokens = []
-        assert consume is 0 or consume is 1, 'Invalid or deadlock possible'
+        assert consume == 0 or consume == 1, 'Invalid or deadlock possible'
         while True:
             # (1) Eagerly clean up any completed work hence issuing callbacks
             if callbacks:
