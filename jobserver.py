@@ -182,8 +182,8 @@ class Jobserver:
             # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
             deadline = time.monotonic() + (60 * 60 * 24 * 7)  # One week
         else:
-            assert isinstance(timeout, float) and timeout >= 0
-            deadline = time.monotonic() + timeout
+            assert timeout >= 0
+            deadline = time.monotonic() + float(timeout)
         del timeout
 
         # Acquire the requested tokens or raise queue.Empty when impossible
