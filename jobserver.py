@@ -203,6 +203,9 @@ class Jobserver:
                 if not ready:
                     raise Empty()
 
+        # Neither block not timeout are relevant below
+        del block, timeout
+
         # Now, with required slots consumed, begin consuming resources...
         assert len(tokens) >= consume, 'Sanity check slot acquisition'
         try:
