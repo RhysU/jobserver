@@ -4,10 +4,10 @@ A Jobserver exposing a Future interface built atop multiprocessing.
 import atexit
 import collections
 import multiprocessing
-import queue
 import typing
 import unittest
 
+from queue import Empty, Full
 
 T = typing.TypeVar('T')
 
@@ -77,7 +77,7 @@ class Future(typing.Generic[T]):
             self.value = self.queue.get(block=block, timeout=timeout)
             self.process.join()
             self.process = None  # Allow reclaiming via garbage collection
-        except queue.Empty:
+        except Empty:
             return False
 
         # Empirically, closing self.queue after callbacks (in particular,
@@ -118,7 +118,7 @@ class Future(typing.Generic[T]):
         See CallbackRaisedException documentation for callback error semantics.
         """
         if not self.done(block=block, timeout=timeout):
-            raise queue.Empty()
+            raise Empty()
 
         if isinstance(self.value, Exception):
             raise self.value
@@ -148,7 +148,6 @@ class Jobserver:
         for i in range(slots):
             self.slots.put_nowait(i)
 
-    # TODO Prior to consuming tokens, scan for any previously done Future.
     # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
     # TODO Enforce (not block) => (timeout is None)?
     def submit(
@@ -159,26 +158,53 @@ class Jobserver:
         block: bool=True,
         timeout: float=None,
         consume: int=1,
+        callbacks: bool=True,
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
         Non-blocking usage per block/timeout possibly raises queue.Empty.
         When consume == 0, no job slot is consumed by the submission.
+        This method issues callbacks on completed work when callbacks is True.
         """
         # Sanity check args and kwargs as misusage is easy and deadly
         assert args is None or isinstance(args, collections.Sequence)
         assert kwargs is None or isinstance(kwargs, collections.Mapping)
 
-        # Possibly consume one slot prior to acquiring any resources
+        # Acquire the requested tokens or raise queue.Empty when impossible
         tokens = []
         assert consume is 0 or consume is 1, 'Invalid or deadlock possible'
-        # TODO Check if any prior work has completed thus freeing slots.
-        # TODO Somewhat subtle/fun to account for blocking/timeout.
-        # TODO May change the semantics around test_basic
-        for _ in range(consume):
-            tokens.append(self.slots.get(block=block, timeout=timeout))
+        while True:
+            # (1) Eagerly clean up any completed work hence issuing callbacks
+            if callbacks:
+                for future in list(self.future_sentinels.keys()):
+                    future.done(block=False)
+
+            # (2) Exit loop if all requested resources have been acquired
+            if len(tokens) >= consume:
+                break
+
+            try:
+                # (3) Quickly grab any immediately available slot then goto (1)
+                tokens.append(self.slots.get(block=False, timeout=None))
+                continue
+            except Empty:
+                # (4) Only report failure in (3) when non-blocking requested
+                if not block:
+                    raise
+            assert block, 'Sanity check on non-blocking behavioral invariant'
+
+            # (5) Block until either resources available or timeout exceeded
+            if self.future_sentinels:
+                sentinels = list(self.future_sentinels.keys())
+                ready = multiprocessing.connection.wait(sentinels,
+                                                        timeout=timeout)
+                # (6) With a timeout, report when (5) failed to free resources
+                if not ready:
+                    raise Empty()
+
+        # Now, with required slots consumed, begin consuming resources...
+        assert len(tokens) >= consume, 'Sanity check slot acquisition'
         try:
-            # Now, with a slot consumed, begin consuming resources...
             queue = self.context.Queue(maxsize=1)
             args = tuple(args) if args else ()
             # Temporarily mutate members to clear known Futures for new worker
@@ -255,18 +281,22 @@ class JobserverTest(unittest.TestCase):
                     # Prepare work filling all slots
                     context = multiprocessing.get_context(method)
                     js = Jobserver(context=context, slots=3)
-                    f = js.submit(fn=len, args=((1, 2, 3), ), block=True)
+                    f = js.submit(fn=len, args=((1, 2, 3), ),
+                                  block=True, callbacks=False)
                     f.add_done_callback(self.helper_callback, mutable, 0, 1)
-                    g = js.submit(fn=str, kwargs=dict(object=2), block=True)
+                    g = js.submit(fn=str, kwargs=dict(object=2),
+                                  block=True, callbacks=False)
                     g.add_done_callback(self.helper_callback, mutable, 1, 2)
                     g.add_done_callback(self.helper_callback, mutable, 1, 3)
-                    h = js.submit(fn=len, args=((1, ), ), block=True)
+                    h = js.submit(fn=len, args=((1, ), ),
+                                  block=True, callbacks=False)
                     h.add_done_callback(self.helper_callback,
                                         lizt=mutable, index=2, increment=7)
 
                     # Try too much work given fixed slot count
-                    with self.assertRaises(queue.Empty):
-                        js.submit(fn=len, args=((), ), block=False)
+                    with self.assertRaises(Empty):
+                        js.submit(fn=len, args=((), ),
+                                  block=False, callbacks=False)
 
                     # Confirm results in something other than submission order
                     self.assertEqual('2', g.result())
