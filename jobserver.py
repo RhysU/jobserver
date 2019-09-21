@@ -58,6 +58,7 @@ class Future(typing.Generic[T]):
         if self.queue is None:
             self._issue_callbacks()
 
+    # TODO Enforce (not block) => (timeout is None)?
     def done(self, block: bool=True, timeout: float=None) -> bool:
         """
         Is result ready?
@@ -149,6 +150,7 @@ class Jobserver:
 
     # TODO Prior to consuming tokens, scan for any previously done Future.
     # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
+    # TODO Enforce (not block) => (timeout is None)?
     def submit(
         self,
         fn: typing.Callable[..., T],
