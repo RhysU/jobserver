@@ -4,7 +4,6 @@ A Jobserver exposing a Future interface built atop multiprocessing.
 import atexit
 import collections
 import multiprocessing
-import sys
 import time
 import typing
 import unittest
@@ -149,6 +148,7 @@ class Jobserver:
         for i in range(slots):
             self.slots.put_nowait(i)
 
+    # TODO Allow negative timeouts
     # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
     # TODO Enforce (not block) => (timeout is None)?
     def submit(
@@ -178,8 +178,9 @@ class Jobserver:
 
         # Convert timeout into concrete deadline then defensively drop timeout
         if timeout is None:
-            # Breakage can occur on Python 3.5 for Inf or sys.float_info.max
-            deadline = sys.maxsize / 1000
+            # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
+            # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
+            deadline = time.monotonic() + (60 * 60 * 24 * 7)  # One week
         else:
             assert isinstance(timeout, float) and timeout >= 0
             deadline = time.monotonic() + timeout
@@ -338,7 +339,6 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(3, f.result())
                     self.assertEqual(mutable[0], 1, 'One callback observed')
 
-    # TODO Increase workload beyond available slot count
     def test_heavyusage(self):
         for method in self.METHODS:
             with self.subTest(method=method):
@@ -346,8 +346,9 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 slots = 2
                 js = Jobserver(context=context, slots=slots)
-                fs = [js.submit(fn=len, args=('x' * i, ), block=True)
-                      for i in range(slots)]
+                fs = [js.submit(fn=len, args=('x' * i, ),
+                                block=True, callbacks=True)
+                      for i in range(10 * slots)]
 
                 # Confirm all work completed
                 for i, f in enumerate(fs):
