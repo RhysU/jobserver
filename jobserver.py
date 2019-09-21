@@ -137,8 +137,7 @@ class Jobserver:
         # Prepare required resources ensuring their LIFO-ordered tear down
         assert context is not None
         self.context = context
-        assert isinstance(slots, int)
-        assert slots >= 0
+        assert isinstance(slots, int) and slots >= 1
         self.slots = self.context.Queue(maxsize=slots)
         atexit.register(self.slots.join_thread)
         atexit.register(self.slots.close)
@@ -170,6 +169,10 @@ class Jobserver:
         # Sanity check args and kwargs as misusage is easy and deadly
         assert args is None or isinstance(args, collections.Sequence)
         assert kwargs is None or isinstance(kwargs, collections.Mapping)
+        assert isinstance(block, bool)
+        assert isinstance(callbacks, bool)
+        assert isinstance(consume, int)
+        assert timeout is None or (isinstance(timeout, float) and timeout >= 0)
 
         # Acquire the requested tokens or raise queue.Empty when impossible
         tokens = []
