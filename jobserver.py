@@ -178,7 +178,7 @@ class Jobserver:
 
         # Convert timeout into concrete deadline then defensively drop timeout
         if timeout is None:
-            deadline = float('inf')
+            deadline = sys.float_info.max  # Python 3.5 breaks if Inf used
         else:
             assert isinstance(timeout, float) and timeout >= 0
             deadline = time.monotonic() + timeout
