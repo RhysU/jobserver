@@ -158,7 +158,7 @@ class Jobserver:
         block: bool=True,
         callbacks: bool=True,
         consume: int=1,
-        timeout: typing.Optional[float]=None,
+        timeout: typing.Optional[float]=None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
