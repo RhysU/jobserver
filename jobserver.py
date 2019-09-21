@@ -241,17 +241,18 @@ class Jobserver:
                 self.slots.put_nowait(tokens.pop(0))
             raise
 
+        # As the above process.start() succeeded, now Future restores tokens.
+        # This choice causes token release only after future.process.join()
+        # from within Future.done().  It keeps _worker_entrypoint() simple.
+        # Restoring tokens MUST occur before Future unregistered (just below).
+        while tokens:
+            future.add_done_callback(self.slots.put_nowait, tokens.pop(0),
+                                     _Future__internal=True)
+
         # When a Future has completed, no longer track it within Jobserver.
         # Remove, versus discard, chosen to confirm removals previously known.
         future.add_done_callback(self.future_sentinels.pop, future,
                                  _Future__internal=True)
-
-        # As the above process.start() succeeded, now Future restores tokens.
-        # This choice causes token release only after future.process.join()
-        # from within Future.done().  It keeps _worker_entrypoint() simple.
-        while tokens:
-            future.add_done_callback(self.slots.put_nowait, tokens.pop(0),
-                                     _Future__internal=True)
 
         return future
 
