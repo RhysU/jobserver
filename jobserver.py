@@ -2,7 +2,7 @@
 A Jobserver exposing a Future interface built atop multiprocessing.
 """
 import atexit
-import collections
+import collections.abc
 import multiprocessing
 import time
 import typing
@@ -180,8 +180,8 @@ class Jobserver:
         """
         # Argument check, especially args/kwargs as misusage is easy and deadly
         assert fn is not None
-        assert args is None or isinstance(args, collections.Sequence)
-        assert kwargs is None or isinstance(kwargs, collections.Mapping)
+        assert args is None or isinstance(args, collections.abc.Sequence)
+        assert kwargs is None or isinstance(kwargs, collections.abc.Mapping)
         assert isinstance(block, bool)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
