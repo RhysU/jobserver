@@ -168,8 +168,6 @@ class Jobserver:
         block: bool=True,
         callbacks: bool=True,
         consume: int=1,
-        fn_pre: typing.Callable[[], None]=None,
-        fn_pos: typing.Callable[[], None]=None,
         timeout: typing.Optional[float]=None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
@@ -177,9 +175,6 @@ class Jobserver:
         Non-blocking usage per block/timeout possibly raises queue.Empty.
         When consume == 0, no job slot is consumed by the submission.
         This method issues callbacks on completed work when callbacks is True.
-        Non-None fn_pre/fn_pos always invoked in subprocess before/after fn.
-        These two hooks permit, for example, registering PSIGDEATH on Linux or
-        injecting context manager __enter__/__exit__ calls.
         Timeout can only be specified for blocking operations.
         When specified, timeout is given in seconds and must be non-negative.
         """
@@ -244,8 +239,7 @@ class Jobserver:
             queue = self.context.Queue(maxsize=1)
             args = tuple(args) if args else ()
             process = self.context.Process(target=Jobserver._worker_entrypoint,
-                                           args=((queue, fn, fn_pre, fn_pos)
-                                                 + args),
+                                           args=((queue, fn) + args),
                                            kwargs=kwargs if kwargs else {},
                                            daemon=False)
             future = Future(process, queue)
@@ -278,17 +272,13 @@ class Jobserver:
         return future
 
     @staticmethod
-    def _worker_entrypoint(queue, fn, fn_pre, fn_pos, *args, **kwargs) -> None:
+    def _worker_entrypoint(queue, fn, *args, **kwargs) -> None:
         try:
-            if fn_pre is not None:
-                fn_pre()
             result = fn(*args, **kwargs)
         except Exception as exception:
             result = exception
         finally:
             queue.put_nowait(result)
-            if fn_pos is not None:
-                fn_pos()
             queue.close()
             queue.join_thread()
 
@@ -300,8 +290,6 @@ class Jobserver:
 # TODO Test processes inside processes
 # TODO Hide queue.Empty() and queue.Full() from the user?
 # TODO Distinguish between returning an Exception and raising one!
-# TODO Test fn_pre
-# TODO Test fn_pos
 
 
 class JobserverTest(unittest.TestCase):
