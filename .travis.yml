@@ -5,4 +5,4 @@ python:
   - "3.7"
   - "3.8"
 script:
-  - python -m jobserver -v
+  - python -m jobserver -v && ./jobserver.py -v
