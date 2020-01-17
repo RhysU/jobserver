@@ -418,7 +418,7 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=3)
 
                 # Calling done() repeatedly correctly reports multiple errors
-                f = js.submit(fn=self.helper_none, args=(), block=True)
+                f = js.submit(fn=len, args=(("hello", )), block=True)
                 f.add_done_callback(self.helper_raise, ArithmeticError, '123')
                 f.add_done_callback(self.helper_raise, ZeroDivisionError, '45')
                 with self.assertRaises(CallbackRaisedException) as c:
@@ -430,13 +430,19 @@ class JobserverTest(unittest.TestCase):
                 self.assertTrue(f.done(block=True))
                 self.assertTrue(f.done(block=False))
 
+                # After callbacks have completed, the result is available.
+                self.assertEqual(f.result(), 5)
+                self.assertEqual(f.result(), 5)
+
                 # Now that work is complete, adding callback raises immediately
                 with self.assertRaises(CallbackRaisedException) as c:
                     f.add_done_callback(self.helper_raise, UnicodeError, '67')
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
                 self.assertTrue(f.done(block=False))
-                # TODO What is the contract from result()?
-                # TODO What is the contract if result() called multiple times?
+
+                # After callbacks have completed, result is still available.
+                self.assertEqual(f.result(), 5)
+                self.assertEqual(f.result(), 5)
 
 
 if __name__ == '__main__':
