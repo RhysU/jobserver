@@ -295,6 +295,8 @@ class Jobserver:
 # TODO Hide queue.Empty() and queue.Full() from the user?
 # TODO Distinguish between returning an Exception and raising one!
 # TODO Craft __all__ hiding all uninteresting details, especially tests.
+# TODO Consider using __slots__ to better document/lock-down allowed members
+# TODO Usage examples within the module docstring
 
 
 class JobserverTest(unittest.TestCase):
