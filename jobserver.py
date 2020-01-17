@@ -294,6 +294,7 @@ class Jobserver:
 # TODO Test processes inside processes
 # TODO Hide queue.Empty() and queue.Full() from the user?
 # TODO Distinguish between returning an Exception and raising one!
+# TODO Craft __all__ hiding all uninteresting details, especially tests.
 
 
 class JobserverTest(unittest.TestCase):
