@@ -35,6 +35,31 @@ class CallbackRaisedException(Exception):
     pass
 
 
+# TODO Actually use the Wrapper!
+class Wrapper(typing.Generic[T]):
+    """Allows Futures to track whether a value was raised or returned."""
+    __slots__ = ('result', 'raised')
+
+    def __init__(
+        self,
+        *,
+        result: typing.Optional[T]=None,
+        raised: typing.Optional[Exception]=None
+    ) -> None:
+        self.result = result
+        self.raised = raised
+
+    def unwrap() -> T:
+        """Raise any wrapped Exception otherwise return the result."""
+        if self.raised is not None:
+            raise self.raised
+        return self.result
+
+    def __repr__(self):
+        return ('Wrapper(result={!r}, raised={!r})'
+                .format(self.result, self.raised))
+
+
 class Future(typing.Generic[T]):
     """
     A Future anticipating one result in a Queue emitted by some Process.
@@ -297,6 +322,8 @@ class Jobserver:
 # TODO Craft __all__ hiding all uninteresting details, especially tests.
 # TODO Consider using __slots__ to better document/lock-down allowed members
 # TODO Usage examples within the module docstring
+# TODO Apply black formatter
+# TODO Satisfy flake8
 
 
 class JobserverTest(unittest.TestCase):
