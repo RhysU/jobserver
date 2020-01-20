@@ -35,7 +35,6 @@ class CallbackRaisedException(Exception):
     pass
 
 
-# TODO Actually use the Wrapper!
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
     __slots__ = ('result', 'raised')
@@ -46,10 +45,11 @@ class Wrapper(typing.Generic[T]):
         result: typing.Optional[T]=None,
         raised: typing.Optional[Exception]=None
     ) -> None:
+        assert raised is None or result is None, 'Both disallowed'
         self.result = result
         self.raised = raised
 
-    def unwrap() -> T:
+    def unwrap(self) -> T:
         """Raise any wrapped Exception otherwise return the result."""
         if self.raised is not None:
             raise self.raised
@@ -72,7 +72,7 @@ class Future(typing.Generic[T]):
         assert queue is not None  # None after result read and Queue.close(...)
         self.process = process
         self.queue = queue
-        self.value = None
+        self.wrapper = None
         self.callbacks = []  # Tuples per add_done_callback, _issue_callbacks
 
     def add_done_callback(
@@ -111,10 +111,11 @@ class Future(typing.Generic[T]):
             self._issue_callbacks()
             return True
 
-        # Attempt to read the result from the underlying queue
+        # Attempt to read the result Wrapper from the underlying queue
         assert self.queue is not None
         try:
-            self.value = self.queue.get(block=block, timeout=timeout)
+            self.wrapper = self.queue.get(block=block, timeout=timeout)
+            assert isinstance(self.wrapper, Wrapper), 'Confirm invariant'
             self.process.join()
             self.process = None  # Allow reclaiming via garbage collection
         except Empty:
@@ -160,10 +161,7 @@ class Future(typing.Generic[T]):
         if not self.done(block=block, timeout=timeout):
             raise Empty()
 
-        if isinstance(self.value, Exception):
-            raise self.value
-
-        return self.value
+        return self.wrapper.unwrap()
 
 
 # Throughout, put_nowait(...) denotes places where blocking should not happen.
@@ -302,10 +300,12 @@ class Jobserver:
 
     @staticmethod
     def _worker_entrypoint(queue, fn, *args, **kwargs) -> None:
+        # Wrapper usage tracks whether a value was returned or raised
+        # in degenerate case where client code returns an Exception.
         try:
-            result = fn(*args, **kwargs)
+            result = Wrapper(result=fn(*args, **kwargs))
         except Exception as exception:
-            result = exception
+            result = Wrapper(raised=exception)
         finally:
             queue.put_nowait(result)
             queue.close()
@@ -318,7 +318,6 @@ class Jobserver:
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
 # TODO Hide queue.Empty() and queue.Full() from the user?
-# TODO Distinguish between returning an Exception and raising one!
 # TODO Craft __all__ hiding all uninteresting details, especially tests.
 # TODO Consider using __slots__ to better document/lock-down allowed members
 # TODO Usage examples within the module docstring
@@ -411,6 +410,21 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=3)
                 f = js.submit(fn=self.helper_none, args=(), block=True)
                 self.assertIsNone(f.result())
+
+    @staticmethod
+    def helper_return(arg):
+        return arg
+
+    # Explicitly tested because of handling woes observed in other designs
+    def test_returns_not_raises_exception(self):
+        for method in self.METHODS:
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+                e = Exception('Returned by method {}'.format(method))
+                f = js.submit(fn=self.helper_return, args=(e,), block=True)
+                self.assertEqual(type(e), type(f.result()))
+                self.assertEqual(e.args, f.result().args)
 
     @staticmethod
     def helper_raise(klass, *args):
