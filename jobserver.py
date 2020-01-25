@@ -344,21 +344,30 @@ class JobserverTest(unittest.TestCase):
                     context = multiprocessing.get_context(method)
                     js = Jobserver(context=context, slots=3)
                     f = js.submit(fn=len, args=((1, 2, 3), ),
-                                  block=True, callbacks=False)
+                                  block=True, callbacks=False, consume=1)
                     f.add_done_callback(self.helper_callback, mutable, 0, 1)
                     g = js.submit(fn=str, kwargs=dict(object=2),
-                                  block=True, callbacks=False)
+                                  block=True, callbacks=False, consume=1)
                     g.add_done_callback(self.helper_callback, mutable, 1, 2)
                     g.add_done_callback(self.helper_callback, mutable, 1, 3)
                     h = js.submit(fn=len, args=((1, ), ),
-                                  block=True, callbacks=False)
+                                  block=True, callbacks=False, consume=1)
                     h.add_done_callback(self.helper_callback,
                                         lizt=mutable, index=2, increment=7)
 
                     # Try too much work given fixed slot count
                     with self.assertRaises(Empty):
                         js.submit(fn=len, args=((), ),
-                                  block=False, callbacks=False)
+                                  block=False, callbacks=False, consume=1)
+
+                    # Confirm zero-consumption requests accepted immediately
+                    i = js.submit(fn=len, args=((1, 2, 3, 4), ),
+                                  block=False, callbacks=False, consume=0)
+
+                    # Again, try too much work given fixed slot count
+                    with self.assertRaises(Empty):
+                        js.submit(fn=len, args=((), ),
+                                  block=False, callbacks=False, consume=1)
 
                     # Confirm results in something other than submission order
                     self.assertEqual('2', g.result())
@@ -375,13 +384,14 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(1, h.result())
                     self.assertTrue(h.done())
                     self.assertEqual(mutable[2], 18, 'Callbacks idempotent')
+                    self.assertEqual(4, i.result(), 'Zero-consumption request')
                     if check_done:
                         self.assertTrue(g.done())
                         self.assertTrue(g.done(), 'Multiple calls OK')
                     self.assertEqual(3, f.result())
                     self.assertEqual(mutable[0], 1, 'One callback observed')
+                    self.assertEqual(4, i.result(), 'Zero-consumption repeat')
 
-    # TODO Add tests that consume no slots
     def test_heavyusage(self):
         for method in self.METHODS:
             with self.subTest(method=method):
@@ -389,6 +399,7 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 slots = 2
                 js = Jobserver(context=context, slots=slots)
+
                 # Alternate between submissions with and without timeouts
                 kwargs = [dict(block=True, callbacks=True, timeout=None),
                           dict(block=True, callbacks=True, timeout=1000)]
