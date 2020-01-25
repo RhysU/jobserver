@@ -323,6 +323,7 @@ class Jobserver:
 # TODO Usage examples within the module docstring
 # TODO Apply black formatter
 # TODO Satisfy flake8
+# TODO What if child process receives SIGTERM or SIGKILL?
 
 
 class JobserverTest(unittest.TestCase):
