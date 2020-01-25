@@ -14,7 +14,7 @@ import unittest
 
 from queue import Empty, Full
 
-T = typing.TypeVar('T')
+T = typing.TypeVar("T")
 
 
 class CallbackRaisedException(Exception):
@@ -37,7 +37,7 @@ class CallbackRaisedException(Exception):
 
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
-    __slots__ = ('result', 'raised')
+    __slots__ = ("result", "raised")
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class Wrapper(typing.Generic[T]):
         result: typing.Optional[T]=None,
         raised: typing.Optional[Exception]=None
     ) -> None:
-        assert raised is None or result is None, 'Both disallowed'
+        assert raised is None or result is None, "Both disallowed"
         self.result = result
         self.raised = raised
 
@@ -56,7 +56,7 @@ class Wrapper(typing.Generic[T]):
         return self.result
 
     def __repr__(self):
-        return ('Wrapper(result={!r}, raised={!r})'
+        return ("Wrapper(result={!r}, raised={!r})"
                 .format(self.result, self.raised))
 
 
@@ -103,8 +103,8 @@ class Future(typing.Generic[T]):
         """
         # Sanity check requested block/timeout
         if timeout is not None:
-            assert block, 'Non-blocking operation cannot specify a timeout'
-            assert timeout >= 0, 'Blocking allows only a non-negative timeout'
+            assert block, "Non-blocking operation cannot specify a timeout"
+            assert timeout >= 0, "Blocking allows only a non-negative timeout"
 
         # Multiple calls to done() may be required to issue all callbacks.
         if self.queue is None:
@@ -115,7 +115,7 @@ class Future(typing.Generic[T]):
         assert self.queue is not None
         try:
             self.wrapper = self.queue.get(block=block, timeout=timeout)
-            assert isinstance(self.wrapper, Wrapper), 'Confirm invariant'
+            assert isinstance(self.wrapper, Wrapper), "Confirm invariant"
             self.process.join()
             self.process = None  # Allow reclaiming via garbage collection
         except Empty:
@@ -140,7 +140,7 @@ class Future(typing.Generic[T]):
 
     def _issue_callbacks(self):
         # Only a non-internal callback may cause CallbackRaisedException.
-        # Otherwise, we might obfuscate bugs within this module's logic.
+        # Otherwise, we might obfuscate bugs within this module"s logic.
         while self.callbacks:
             internal, fn, args, kwargs = self.callbacks.pop(0)
             if internal:
@@ -219,14 +219,14 @@ class Jobserver:
             # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
             deadline = time.monotonic() + (60 * 60 * 24 * 7)  # One week
         else:
-            assert block, 'Non-blocking operation cannot specify a timeout'
-            assert timeout >= 0, 'Blocking allows only a non-negative timeout'
+            assert block, "Non-blocking operation cannot specify a timeout"
+            assert timeout >= 0, "Blocking allows only a non-negative timeout"
             deadline = time.monotonic() + float(timeout)
         del timeout
 
         # Acquire the requested tokens or raise queue.Empty when impossible
         tokens = []
-        assert consume == 0 or consume == 1, 'Invalid or deadlock possible'
+        assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         while True:
             # (1) Eagerly clean up any completed work hence issuing callbacks
             if callbacks:
@@ -248,7 +248,7 @@ class Jobserver:
 
             # (5) Block until either some work completes or deadline hit
             # Beware that completed work will requires callbacks from (1)
-            assert block, 'Sanity check control flow'
+            assert block, "Sanity check control flow"
             if self.future_sentinels:
                 multiprocessing.connection.wait(
                         list(self.future_sentinels.values()),
@@ -258,7 +258,7 @@ class Jobserver:
         del block, deadline
 
         # Now, with required slots consumed, begin consuming resources:
-        assert len(tokens) >= consume, 'Sanity check slot acquisition'
+        assert len(tokens) >= consume, "Sanity check slot acquisition"
         try:
             # Temporarily mutate members to clear known Futures for new worker
             registered, self.future_sentinels = self.future_sentinels, {}
@@ -327,7 +327,7 @@ class Jobserver:
 
 
 class JobserverTest(unittest.TestCase):
-    METHODS = ('forkserver', 'fork', 'spawn')
+    METHODS = ("forkserver", "fork", "spawn")
 
     @staticmethod
     def helper_callback(lizt, index, increment):
@@ -370,27 +370,27 @@ class JobserverTest(unittest.TestCase):
                                   block=False, callbacks=False, consume=1)
 
                     # Confirm results in something other than submission order
-                    self.assertEqual('2', g.result())
-                    self.assertEqual(mutable[1], 5, 'Two callbacks observed')
+                    self.assertEqual("2", g.result())
+                    self.assertEqual(mutable[1], 5, "Two callbacks observed")
                     if check_done:
                         self.assertTrue(f.done())
                     self.assertTrue(h.done())  # No check_done guard!
                     self.assertEqual(mutable[2], 7)
                     self.assertEqual(1, h.result())
-                    self.assertEqual(1, h.result(), 'Multiple calls OK')
+                    self.assertEqual(1, h.result(), "Multiple calls OK")
                     h.add_done_callback(self.helper_callback,
                                         lizt=mutable, index=2, increment=11)
-                    self.assertEqual(mutable[2], 18, 'Callback after done')
+                    self.assertEqual(mutable[2], 18, "Callback after done")
                     self.assertEqual(1, h.result())
                     self.assertTrue(h.done())
-                    self.assertEqual(mutable[2], 18, 'Callbacks idempotent')
-                    self.assertEqual(4, i.result(), 'Zero-consumption request')
+                    self.assertEqual(mutable[2], 18, "Callbacks idempotent")
+                    self.assertEqual(4, i.result(), "Zero-consumption request")
                     if check_done:
                         self.assertTrue(g.done())
-                        self.assertTrue(g.done(), 'Multiple calls OK')
+                        self.assertTrue(g.done(), "Multiple calls OK")
                     self.assertEqual(3, f.result())
-                    self.assertEqual(mutable[0], 1, 'One callback observed')
-                    self.assertEqual(4, i.result(), 'Zero-consumption repeat')
+                    self.assertEqual(mutable[0], 1, "One callback observed")
+                    self.assertEqual(4, i.result(), "Zero-consumption repeat")
 
     def test_heavyusage(self):
         for method in self.METHODS:
@@ -403,7 +403,7 @@ class JobserverTest(unittest.TestCase):
                 # Alternate between submissions with and without timeouts
                 kwargs = [dict(block=True, callbacks=True, timeout=None),
                           dict(block=True, callbacks=True, timeout=1000)]
-                fs = [js.submit(fn=len, args=('x' * i, ), **(kwargs[i % 2]))
+                fs = [js.submit(fn=len, args=("x" * i, ), **(kwargs[i % 2]))
                       for i in range(10 * slots)]
 
                 # Confirm all work completed
@@ -433,7 +433,7 @@ class JobserverTest(unittest.TestCase):
             with self.subTest(method=method):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
-                e = Exception('Returned by method {}'.format(method))
+                e = Exception("Returned by method {}".format(method))
                 f = js.submit(fn=self.helper_return, args=(e,), block=True)
                 self.assertEqual(type(e), type(f.result()))
                 self.assertEqual(e.args, f.result().args)
@@ -454,22 +454,22 @@ class JobserverTest(unittest.TestCase):
 
                 # Confirm exception is raised repeatedly
                 f = js.submit(fn=self.helper_raise,
-                              args=(ArithmeticError, 'message123'),
+                              args=(ArithmeticError, "message123"),
                               block=True)
                 f.add_done_callback(self.helper_callback, mutable, 0, 1)
                 with self.assertRaises(ArithmeticError):
                     f.result()
-                self.assertEqual(mutable[0], 1, 'One callback observed')
+                self.assertEqual(mutable[0], 1, "One callback observed")
                 f.add_done_callback(self.helper_callback, mutable, 0, 2)
-                self.assertEqual(mutable[0], 3, 'Callback after done')
+                self.assertEqual(mutable[0], 3, "Callback after done")
                 with self.assertRaises(ArithmeticError):
                     f.result()
                 self.assertTrue(f.done())
-                self.assertEqual(mutable[0], 3, 'Callback idempotent')
+                self.assertEqual(mutable[0], 3, "Callback idempotent")
 
                 # Confirm other work processed without issue
                 g = js.submit(fn=str, kwargs=dict(object=2), block=True)
-                self.assertEqual('2', g.result())
+                self.assertEqual("2", g.result())
 
     def test_done_callback_raises(self):
         for method in self.METHODS:
@@ -479,8 +479,8 @@ class JobserverTest(unittest.TestCase):
 
                 # Calling done() repeatedly correctly reports multiple errors
                 f = js.submit(fn=len, args=(("hello", )), block=True)
-                f.add_done_callback(self.helper_raise, ArithmeticError, '123')
-                f.add_done_callback(self.helper_raise, ZeroDivisionError, '45')
+                f.add_done_callback(self.helper_raise, ArithmeticError, "123")
+                f.add_done_callback(self.helper_raise, ZeroDivisionError, "45")
                 with self.assertRaises(CallbackRaisedException) as c:
                     f.done(block=True)
                 self.assertIsInstance(c.exception.__cause__, ArithmeticError)
@@ -496,7 +496,7 @@ class JobserverTest(unittest.TestCase):
 
                 # Now that work is complete, adding callback raises immediately
                 with self.assertRaises(CallbackRaisedException) as c:
-                    f.add_done_callback(self.helper_raise, UnicodeError, '67')
+                    f.add_done_callback(self.helper_raise, UnicodeError, "67")
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
                 self.assertTrue(f.done(block=False))
 
@@ -505,5 +505,5 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(f.result(), 5)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
