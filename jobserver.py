@@ -186,10 +186,9 @@ class Jobserver:
         # Prepare required resources ensuring their LIFO-ordered tear down
         if context is None:
             context = multiprocessing.get_context()
-        assert context is not None
         self.context = context
         if slots is None:
-            slots = multiprocessing.cpu_count() + 1
+            slots = self.context.cpu_count() + 1
         assert isinstance(slots, int) and slots >= 1
         self.slots = self.context.Queue(maxsize=slots)
         atexit.register(self.slots.join_thread)
