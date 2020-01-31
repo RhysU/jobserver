@@ -365,9 +365,6 @@ class JobserverTest(unittest.TestCase):
         self.assertEqual("2", g.result())
         self.assertEqual(3, f.result())
 
-    # Tests below issue subtests for each multiprocessing start method.
-    METHODS = ("forkserver", "fork", "spawn")
-
     @staticmethod
     def helper_callback(lizt, index, increment):
         """Helper permitting tests to observe callbacks firing."""
@@ -375,7 +372,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_basic(self):
         """Basic submission up to slot limit along with callbacks firing?"""
-        for method in self.METHODS:
+        for method in multiprocessing.get_all_start_methods():
             for check_done in (True, False):
                 with self.subTest(method=method, check_done=check_done):
                     # Prepare how callbacks will be observed
@@ -435,7 +432,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_heavyusage(self):
         """Workload saturating the configured slots does not deadlock?"""
-        for method in self.METHODS:
+        for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
                 # Prepare workload based on number of available slots
                 context = multiprocessing.get_context(method)
@@ -460,7 +457,7 @@ class JobserverTest(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self):
         """None can be returned from a Future?"""
-        for method in self.METHODS:
+        for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
@@ -475,7 +472,7 @@ class JobserverTest(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self):
         """An Exception can be returned, not raised, from a Future?"""
-        for method in self.METHODS:
+        for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
@@ -491,7 +488,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_raises(self):
         """Future.result() raises Exceptions thrown while processing work?"""
-        for method in self.METHODS:
+        for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
                 # Prepare how callbacks will be observed
                 mutable = [0]
@@ -521,7 +518,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_done_callback_raises(self):
         """Future.done() raises Exceptions thrown while processing work?"""
-        for method in self.METHODS:
+        for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
