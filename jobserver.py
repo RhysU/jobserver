@@ -200,7 +200,19 @@ class Jobserver:
         for i in range(slots):
             self.slots.put_nowait(i)
 
-    # TODO Simpler?  Maybe a helper like simpler(fn, *args, **kwargs)?
+    def __call__(
+        self,
+        fn: typing.Callable[..., T],
+        *args: typing.Any,
+        **kwargs: typing.Any,
+    ) -> Future[T]:
+        """Submit running submitting fn(*args, **kwargs) to this Jobserver.
+
+        Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
+        with all submission semantics per that methods default arguments.
+        """
+        return self.submit(fn=fn, args=args, kwargs=kwargs)
+
     def submit(
         self,
         fn: typing.Callable[..., T],
@@ -339,10 +351,19 @@ class Jobserver:
 # TODO Apply black formatter
 # TODO Satisfy flake8
 # TODO What if child process receives SIGTERM or SIGKILL?
+# TODO Docstring on the various tests as to what they accomplish
 
 
 class JobserverTest(unittest.TestCase):
     METHODS = ("forkserver", "fork", "spawn")
+
+    def test_defaults(self):
+        # Confirm default construction followed and shorthand __call__ usable
+        js = Jobserver()
+        f = js(len, (1, 2, 3))
+        g = js(str, object=2)
+        self.assertEqual("2", g.result())
+        self.assertEqual(3, f.result())
 
     @staticmethod
     def helper_callback(lizt, index, increment):
@@ -518,14 +539,6 @@ class JobserverTest(unittest.TestCase):
                 # After callbacks have completed, result is still available.
                 self.assertEqual(f.result(), 5)
                 self.assertEqual(f.result(), 5)
-
-    def test_defaults(self):
-        # Confirm default construction produces a usable instance.
-        js = Jobserver(context=None, slots=None)
-        f = js.submit(fn=len, args=((1, 2, 3), ),
-                      block=True, callbacks=False, consume=1)
-        self.assertEqual(3, f.result())
-
 
 if __name__ == "__main__":
     unittest.main()
