@@ -167,14 +167,29 @@ class Future(typing.Generic[T]):
 # Throughout, put_nowait(...) denotes places where blocking should not happen.
 # If debugging, consider any related queue.Full exceptions to be logic errors.
 class Jobserver:
-    def __init__(self, context, slots: int):
+    """
+    A Jobserver exposing a Future interface built atop multiprocessing.
+    Throughout methods, arguments block/timeout follow queue.Queue semantics.
+    """
+
+    def __init__(
+        self,
+        context: typing.Optional[multiprocessing.context.BaseContext] = None,
+        slots: typing.Optional[int] = None
+    ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
-        Throughout API, arguments block/timeout follow queue.Queue semantics.
+
+        When not provided, context defaults to multiprocessing.get_context().
+        When not provided, slots defaults to (multiprocessing.cpu_count() + 1).
         """
         # Prepare required resources ensuring their LIFO-ordered tear down
+        if context is None:
+            context = multiprocessing.get_context()
         assert context is not None
         self.context = context
+        if slots is None:
+            slots = multiprocessing.cpu_count() + 1
         assert isinstance(slots, int) and slots >= 1
         self.slots = self.context.Queue(maxsize=slots)
         atexit.register(self.slots.join_thread)
@@ -503,6 +518,13 @@ class JobserverTest(unittest.TestCase):
                 # After callbacks have completed, result is still available.
                 self.assertEqual(f.result(), 5)
                 self.assertEqual(f.result(), 5)
+
+    def test_defaults(self):
+        # Confirm default construction produces a usable instance.
+        js = Jobserver(context=None, slots=None)
+        f = js.submit(fn=len, args=((1, 2, 3), ),
+                      block=True, callbacks=False, consume=1)
+        self.assertEqual(3, f.result())
 
 
 if __name__ == "__main__":
