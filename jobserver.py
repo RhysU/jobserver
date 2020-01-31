@@ -205,7 +205,7 @@ class Jobserver:
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> Future[T]:
-        """Submit running submitting fn(*args, **kwargs) to this Jobserver.
+        """Submit running fn(*args, **kwargs) to this Jobserver.
 
         Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
         with all submission semantics per that methods default arguments.
