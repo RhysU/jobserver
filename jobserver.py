@@ -181,14 +181,14 @@ class Jobserver:
         Wrap some multiprocessing context and allow some number of slots.
 
         When not provided, context defaults to multiprocessing.get_context().
-        When not provided, slots defaults to (multiprocessing.cpu_count() + 1).
+        When not provided, slots defaults to context.cpu_count().
         """
         # Prepare required resources ensuring their LIFO-ordered tear down
         if context is None:
             context = multiprocessing.get_context()
         self.context = context
         if slots is None:
-            slots = self.context.cpu_count() + 1
+            slots = self.context.cpu_count()
         assert isinstance(slots, int) and slots >= 1
         self.slots = self.context.Queue(maxsize=slots)
         atexit.register(self.slots.join_thread)
