@@ -203,7 +203,7 @@ class Jobserver:
         self,
         fn: typing.Callable[..., T],
         *args: typing.Any,
-        **kwargs: typing.Any,
+        **kwargs: typing.Any
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
