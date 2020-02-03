@@ -77,7 +77,7 @@ class Future(typing.Generic[T]):
 
     def add_done_callback(
             self, fn: typing.Callable, *args, __internal: bool=False, **kwargs
-        ) -> None:
+    ) -> None:
         """
         Register a function for execution sometime after Future.done(...).
 
@@ -299,7 +299,7 @@ class Jobserver:
             process.start()
             # Prepare to track the Future and the wait(...)-able sentinel
             registered[future] = process.sentinel
-        except:
+        except:  # noqa:E722
             # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self.slots.put_nowait(tokens.pop(0))
@@ -339,7 +339,7 @@ class Jobserver:
 
 
 ###########################################################################
-### TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
+# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
@@ -548,6 +548,7 @@ class JobserverTest(unittest.TestCase):
                 # After callbacks have completed, result is still available.
                 self.assertEqual(f.result(), 5)
                 self.assertEqual(f.result(), 5)
+
 
 if __name__ == "__main__":
     unittest.main()
