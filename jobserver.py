@@ -12,7 +12,7 @@ import time
 import typing
 import unittest
 
-from queue import Empty, Full
+from queue import Empty
 
 T = typing.TypeVar("T")
 
