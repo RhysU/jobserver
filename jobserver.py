@@ -137,7 +137,7 @@ class Future(typing.Generic[T]):
 
     def _issue_callbacks(self):
         # Only a non-internal callback may cause CallbackRaisedException.
-        # Otherwise, we might obfuscate bugs within this module"s logic.
+        # Otherwise, we might obfuscate bugs within this module's logic.
         while self.callbacks:
             internal, fn, args, kwargs = self.callbacks.pop(0)
             if internal:
