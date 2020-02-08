@@ -33,18 +33,20 @@ class CallbackRaisedException(Exception):
     These MAY/MUST semantics allow the caller to decide how much additional
     processing to perform after seeing the 1st, 2nd, or N-th error.
     """
+
     pass
 
 
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
+
     __slots__ = ("result", "raised")
 
     def __init__(
         self,
         *,
-        result: typing.Optional[T]=None,
-        raised: typing.Optional[Exception]=None
+        result: typing.Optional[T] = None,
+        raised: typing.Optional[Exception] = None
     ) -> None:
         assert raised is None or result is None, "Both disallowed"
         self.result = result
@@ -57,8 +59,9 @@ class Wrapper(typing.Generic[T]):
         return self.result
 
     def __repr__(self):
-        return ("Wrapper(result={!r}, raised={!r})"
-                .format(self.result, self.raised))
+        return "Wrapper(result={!r}, raised={!r})".format(
+            self.result, self.raised
+        )
 
 
 class Future(typing.Generic[T]):
@@ -66,10 +69,11 @@ class Future(typing.Generic[T]):
     A Future expecting a Process send a result to the given receive Connection.
     Throughout this API, arguments block/timeout follow queue.Queue semantics.
     """
+
     def __init__(
         self,
         process: multiprocessing.Process,
-        connection: multiprocessing.connection.Connection
+        connection: multiprocessing.connection.Connection,
     ) -> None:
         assert process is not None  # None after Process.join(...)
         assert connection is not None  # None after recv/Connection.close(...)
@@ -79,7 +83,7 @@ class Future(typing.Generic[T]):
         self.callbacks = []  # Tuples per add_done_callback, _issue_callbacks
 
     def add_done_callback(
-            self, fn: typing.Callable, *args, __internal: bool=False, **kwargs
+        self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
     ) -> None:
         """
         Register a function for execution sometime after Future.done(...).
@@ -92,9 +96,7 @@ class Future(typing.Generic[T]):
             self._issue_callbacks()
 
     def done(
-        self,
-        block: bool=True,
-        timeout: typing.Optional[float]=None
+        self, block: bool = True, timeout: typing.Optional[float] = None
     ) -> bool:
         """
         Is result ready?
@@ -146,7 +148,7 @@ class Future(typing.Generic[T]):
                 except Exception as e:
                     raise CallbackRaisedException() from e
 
-    def result(self, block: bool=True, timeout: float=None) -> T:
+    def result(self, block: bool = True, timeout: float = None) -> T:
         """
         Obtain result when ready.
 
@@ -170,7 +172,7 @@ class Jobserver:
     def __init__(
         self,
         context: typing.Optional[multiprocessing.context.BaseContext] = None,
-        slots: typing.Optional[int] = None
+        slots: typing.Optional[int] = None,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -211,12 +213,12 @@ class Jobserver:
         self,
         fn: typing.Callable[..., T],
         *,
-        args: typing.Sequence=None,
-        kwargs: typing.Dict[str, typing.Any]=None,
-        block: bool=True,
-        callbacks: bool=True,
-        consume: int=1,
-        timeout: typing.Optional[float]=None
+        args: typing.Sequence = None,
+        kwargs: typing.Dict[str, typing.Any] = None,
+        block: bool = True,
+        callbacks: bool = True,
+        consume: int = 1,
+        timeout: typing.Optional[float] = None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -272,8 +274,9 @@ class Jobserver:
             assert block, "Sanity check control flow"
             if self.future_sentinels:
                 multiprocessing.connection.wait(
-                        list(self.future_sentinels.values()),
-                        timeout=deadline - time.monotonic())
+                    list(self.future_sentinels.values()),
+                    timeout=deadline - time.monotonic(),
+                )
 
         # Neither block nor deadline are relevant below
         del block, deadline
@@ -287,10 +290,12 @@ class Jobserver:
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self.context.Pipe(duplex=False)
             args = tuple(args) if args else ()
-            process = self.context.Process(target=Jobserver._worker_entrypoint,
-                                           args=((send, fn) + args),
-                                           kwargs=kwargs if kwargs else {},
-                                           daemon=False)
+            process = self.context.Process(
+                target=Jobserver._worker_entrypoint,
+                args=((send, fn) + args),
+                kwargs=kwargs if kwargs else {},
+                daemon=False,
+            )
             future = Future(process, recv)
             process.start()
             # Prepare to track the Future and the wait(...)-able sentinel
@@ -310,13 +315,15 @@ class Jobserver:
         # from within Future.done().  It keeps _worker_entrypoint() simple.
         # Restoring tokens MUST occur before Future unregistered (just below).
         while tokens:
-            future.add_done_callback(self.slots.put_nowait, tokens.pop(0),
-                                     _Future__internal=True)
+            future.add_done_callback(
+                self.slots.put_nowait, tokens.pop(0), _Future__internal=True
+            )
 
         # When a Future has completed, no longer track it within Jobserver.
         # Remove, versus discard, chosen to confirm removals previously known.
-        future.add_done_callback(self.future_sentinels.pop, future,
-                                 _Future__internal=True)
+        future.add_done_callback(
+            self.future_sentinels.pop, future, _Future__internal=True
+        )
 
         return future
 
@@ -377,31 +384,65 @@ class JobserverTest(unittest.TestCase):
                     # Prepare work filling all slots
                     context = multiprocessing.get_context(method)
                     js = Jobserver(context=context, slots=3)
-                    f = js.submit(fn=len, args=((1, 2, 3), ),
-                                  block=True, callbacks=False, consume=1)
+                    f = js.submit(
+                        fn=len,
+                        args=((1, 2, 3),),
+                        block=True,
+                        callbacks=False,
+                        consume=1,
+                    )
                     f.add_done_callback(self.helper_callback, mutable, 0, 1)
-                    g = js.submit(fn=str, kwargs=dict(object=2),
-                                  block=True, callbacks=False, consume=1)
+                    g = js.submit(
+                        fn=str,
+                        kwargs=dict(object=2),
+                        block=True,
+                        callbacks=False,
+                        consume=1,
+                    )
                     g.add_done_callback(self.helper_callback, mutable, 1, 2)
                     g.add_done_callback(self.helper_callback, mutable, 1, 3)
-                    h = js.submit(fn=len, args=((1, ), ),
-                                  block=True, callbacks=False, consume=1)
-                    h.add_done_callback(self.helper_callback,
-                                        lizt=mutable, index=2, increment=7)
+                    h = js.submit(
+                        fn=len,
+                        args=((1,),),
+                        block=True,
+                        callbacks=False,
+                        consume=1,
+                    )
+                    h.add_done_callback(
+                        self.helper_callback,
+                        lizt=mutable,
+                        index=2,
+                        increment=7,
+                    )
 
                     # Try too much work given fixed slot count
                     with self.assertRaises(Empty):
-                        js.submit(fn=len, args=((), ),
-                                  block=False, callbacks=False, consume=1)
+                        js.submit(
+                            fn=len,
+                            args=((),),
+                            block=False,
+                            callbacks=False,
+                            consume=1,
+                        )
 
                     # Confirm zero-consumption requests accepted immediately
-                    i = js.submit(fn=len, args=((1, 2, 3, 4), ),
-                                  block=False, callbacks=False, consume=0)
+                    i = js.submit(
+                        fn=len,
+                        args=((1, 2, 3, 4),),
+                        block=False,
+                        callbacks=False,
+                        consume=0,
+                    )
 
                     # Again, try too much work given fixed slot count
                     with self.assertRaises(Empty):
-                        js.submit(fn=len, args=((), ),
-                                  block=False, callbacks=False, consume=1)
+                        js.submit(
+                            fn=len,
+                            args=((),),
+                            block=False,
+                            callbacks=False,
+                            consume=1,
+                        )
 
                     # Confirm results in something other than submission order
                     self.assertEqual("2", g.result())
@@ -412,8 +453,12 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(mutable[2], 7)
                     self.assertEqual(1, h.result())
                     self.assertEqual(1, h.result(), "Multiple calls OK")
-                    h.add_done_callback(self.helper_callback,
-                                        lizt=mutable, index=2, increment=11)
+                    h.add_done_callback(
+                        self.helper_callback,
+                        lizt=mutable,
+                        index=2,
+                        increment=11,
+                    )
                     self.assertEqual(mutable[2], 18, "Callback after done")
                     self.assertEqual(1, h.result())
                     self.assertTrue(h.done())
@@ -436,10 +481,14 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=slots)
 
                 # Alternate between submissions with and without timeouts
-                kwargs = [dict(block=True, callbacks=True, timeout=None),
-                          dict(block=True, callbacks=True, timeout=1000)]
-                fs = [js.submit(fn=len, args=("x" * i, ), **(kwargs[i % 2]))
-                      for i in range(10 * slots)]
+                kwargs = [
+                    dict(block=True, callbacks=True, timeout=None),
+                    dict(block=True, callbacks=True, timeout=1000),
+                ]
+                fs = [
+                    js.submit(fn=len, args=("x" * i,), **(kwargs[i % 2]))
+                    for i in range(10 * slots)
+                ]
 
                 # Confirm all work completed
                 for i, f in enumerate(fs):
@@ -494,9 +543,11 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=3)
 
                 # Confirm exception is raised repeatedly
-                f = js.submit(fn=self.helper_raise,
-                              args=(ArithmeticError, "message123"),
-                              block=True)
+                f = js.submit(
+                    fn=self.helper_raise,
+                    args=(ArithmeticError, "message123"),
+                    block=True,
+                )
                 f.add_done_callback(self.helper_callback, mutable, 0, 1)
                 with self.assertRaises(ArithmeticError):
                     f.result()
@@ -520,7 +571,7 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=3)
 
                 # Calling done() repeatedly correctly reports multiple errors
-                f = js.submit(fn=len, args=(("hello", )), block=True)
+                f = js.submit(fn=len, args=(("hello",)), block=True)
                 f.add_done_callback(self.helper_raise, ArithmeticError, "123")
                 f.add_done_callback(self.helper_raise, ZeroDivisionError, "45")
                 with self.assertRaises(CallbackRaisedException) as c:
