@@ -37,6 +37,7 @@ class CallbackRaisedException(Exception):
     pass
 
 
+# TODO Add a failed method? 
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
@@ -48,6 +49,7 @@ class Wrapper(typing.Generic[T]):
         result: typing.Optional[T] = None,
         raised: typing.Optional[Exception] = None
     ) -> None:
+        # TODO Check and possibly correct
         assert raised is None or result is None, "Both disallowed"
         self.result = result
         self.raised = raised
