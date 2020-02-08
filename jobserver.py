@@ -8,6 +8,7 @@ A Jobserver exposing a Future interface built atop multiprocessing.
 import atexit
 import collections.abc
 import multiprocessing
+import multiprocessing.connection
 import time
 import typing
 import unittest
@@ -62,16 +63,18 @@ class Wrapper(typing.Generic[T]):
 
 class Future(typing.Generic[T]):
     """
-    A Future anticipating one result in a Queue emitted by some Process.
-    Throughout API, arguments block/timeout follow queue.Queue semantics.
+    A Future expecting a Process send a result to the given receive Connection.
+    Throughout this API, arguments block/timeout follow queue.Queue semantics.
     """
     def __init__(
-        self, process: multiprocessing.Process, queue: multiprocessing.Queue
+        self,
+        process: multiprocessing.Process,
+        connection: multiprocessing.connection.Connection
     ) -> None:
         assert process is not None  # None after Process.join(...)
-        assert queue is not None  # None after result read and Queue.close(...)
+        assert connection is not None  # None after recv/Connection.close(...)
         self.process = process
-        self.queue = queue
+        self.connection = connection
         self.wrapper = None
         self.callbacks = []  # Tuples per add_done_callback, _issue_callbacks
 
@@ -85,7 +88,7 @@ class Future(typing.Generic[T]):
         May raise CallbackRaisedException from at most this new callback.
         """
         self.callbacks.append((__internal, fn, args, kwargs))
-        if self.queue is None:
+        if self.connection is None:
             self._issue_callbacks()
 
     def done(
@@ -107,34 +110,34 @@ class Future(typing.Generic[T]):
             assert timeout >= 0, "Blocking allows only a non-negative timeout"
 
         # Multiple calls to done() may be required to issue all callbacks.
-        if self.queue is None:
+        if self.connection is None:
             self._issue_callbacks()
             return True
 
-        # Attempt to read the result Wrapper from the underlying queue
-        assert self.queue is not None
-        try:
-            self.wrapper = self.queue.get(block=block, timeout=timeout)
+        # Attempt to read the result Wrapper from the underlying Connection
+        assert self.connection is not None
+        if block or self.connection.poll(timeout=timeout):
+            self.wrapper = self.connection.recv()
             assert isinstance(self.wrapper, Wrapper), "Confirm invariant"
             self.process.join()
             self.process = None  # Allow reclaiming via garbage collection
-        except Empty:
+        else:
             return False
 
-        # Empirically, closing self.queue after callbacks (in particular,
-        # those registered by Jobserver.submit(...) restoring tokens to
-        # resource-tracking slots) *reduces* sporadic BrokenPipeErrors
-        # (SIGPIPEs) which otherwise occur.  Unsatisfying but pragmatic.
+        # Empirically, closing self.connection after callbacks (in
+        # particular, those registered by Jobserver.submit(...) restoring
+        # tokens to resource-tracking slots) *reduces* sporadic
+        # BrokenPipeErrors (SIGPIPEs) which otherwise occur.  Unsatisfying
+        # but pragmatic.
         #
-        # Callback must observe "self.queue is None" (supposing someone
+        # Callback must observe "self.connection is None" (supposing someone
         # registers some callback using this Future) otherwise our grubby
         # empiricism around avoiding SIGPIPE "leaks" in treatment below.
-        queue, self.queue = self.queue, None
+        connection, self.connection = self.connection, None
         try:
             self._issue_callbacks()
         finally:
-            queue.close()
-            queue.join_thread()
+            connection.close()
 
         return True
 
@@ -169,7 +172,7 @@ class Future(typing.Generic[T]):
 class Jobserver:
     """
     A Jobserver exposing a Future interface built atop multiprocessing.
-    Throughout methods, arguments block/timeout follow queue.Queue semantics.
+    Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
 
     def __init__(
@@ -289,13 +292,14 @@ class Jobserver:
             # Temporarily mutate members to clear known Futures for new worker
             registered, self.future_sentinels = self.future_sentinels, {}
             # Grab resources for processing the submitted work
-            queue = self.context.Queue(maxsize=1)
+            # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
+            recv, send = self.context.Pipe(duplex=False)
             args = tuple(args) if args else ()
             process = self.context.Process(target=Jobserver._worker_entrypoint,
-                                           args=((queue, fn) + args),
+                                           args=((send, fn) + args),
                                            kwargs=kwargs if kwargs else {},
                                            daemon=False)
-            future = Future(process, queue)
+            future = Future(process, recv)
             process.start()
             # Prepare to track the Future and the wait(...)-able sentinel
             registered[future] = process.sentinel
@@ -325,7 +329,7 @@ class Jobserver:
         return future
 
     @staticmethod
-    def _worker_entrypoint(queue, fn, *args, **kwargs) -> None:
+    def _worker_entrypoint(send, fn, *args, **kwargs) -> None:
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception.
         try:
@@ -333,9 +337,8 @@ class Jobserver:
         except Exception as exception:
             result = Wrapper(raised=exception)
         finally:
-            queue.put_nowait(result)
-            queue.close()
-            queue.join_thread()
+            send.send(result)
+            send.close()
 
 
 ###########################################################################
