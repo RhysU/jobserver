@@ -128,7 +128,7 @@ class Future(typing.Generic[T]):
 
         # Callback must observe "self.connection is None" otherwise
         # they might observe different state when done vs not-done.
-        # (Notice should close() throws, it cannot be re-tried()).
+        # (Notice should close() throw, close() will never be re-tried).
         connection, self.connection = self.connection, None
         connection.close()
         self._issue_callbacks()
