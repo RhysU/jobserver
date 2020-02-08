@@ -351,6 +351,8 @@ class Jobserver:
 # TODO Satisfy flake8
 # TODO What if child process receives SIGTERM or SIGKILL?
 # TODO Lambdas as work?  Think pickling woes prevent it...
+# TODO Nicer repr/str representations?
+# TODO Underscore names for private members?
 
 
 class JobserverTest(unittest.TestCase):
