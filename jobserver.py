@@ -66,7 +66,7 @@ class Wrapper(typing.Generic[T]):
 
 class Future(typing.Generic[T]):
     """
-    A Future expecting a Process send a result to the given receive Connection.
+    A Future expecting a Process to send(...) a result to the given Connection.
     Throughout this API, arguments block/timeout follow queue.Queue semantics.
     """
 
