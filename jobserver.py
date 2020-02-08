@@ -124,20 +124,12 @@ class Future(typing.Generic[T]):
         else:
             return False
 
-        # Empirically, closing self.connection after callbacks (in
-        # particular, those registered by Jobserver.submit(...) restoring
-        # tokens to resource-tracking slots) *reduces* sporadic
-        # BrokenPipeErrors (SIGPIPEs) which otherwise occur.  Unsatisfying
-        # but pragmatic.
-        #
-        # Callback must observe "self.connection is None" (supposing someone
-        # registers some callback using this Future) otherwise our grubby
-        # empiricism around avoiding SIGPIPE "leaks" in treatment below.
+        # Callback must observe "self.connection is None" otherwise
+        # they might observe different state when done vs not-done.
+        # (Notice should close() throws, it cannot be re-tried()).
         connection, self.connection = self.connection, None
-        try:
-            self._issue_callbacks()
-        finally:
-            connection.close()
+        connection.close()
+        self._issue_callbacks()
 
         return True
 
