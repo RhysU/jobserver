@@ -147,14 +147,17 @@ class Future(typing.Generic[T]):
 
         # Attempt to read the result Wrapper from the underlying Connection.
         # Any EOFError is treated as an unexpected hang up from the other end.
+        # Confusingly, as a Wrapper is anticipated, None news is bad news.
         assert self._connection is not None
         if block or self._connection.poll(timeout=timeout):
             try:
                 self._wrapper = self._connection.recv()
+                if self._wrapper is None:
+                    self._wrapper = Wrapper(raised=SubmissionDied())
             except EOFError:
                 self._wrapper = Wrapper(raised=SubmissionDied())
             assert isinstance(self._wrapper, Wrapper), "Confirm invariant"
-            self._process.join()
+            self._process.join()  # Always join(...) to reclaim OS resources
             self._process = None  # Allow reclaiming via garbage collection
         else:
             return False
@@ -364,6 +367,11 @@ class Jobserver:
 
     @staticmethod
     def _worker_entrypoint(send, fn, *args, **kwargs) -> None:
+        # Absent an always well-defined result the following finally
+        # block may complain that "result" is unbound on, e.g, SIGKILL.
+        # That is, the need for 'result = None' below is wildly unintuitive.
+        result = None
+
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception.
         try:
@@ -645,10 +653,10 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=1)
                 f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
-                # g = js.submit(fn=self.helper_signal, args=(signal.SIGINT,))
-                # h = js.submit(fn=self.helper_signal, args=(signal.SIGTERM, ))
+                g = js.submit(fn=self.helper_signal, args=(signal.SIGTERM,))
+                # h = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
                 # i = js.submit(fn=len, args=(("The jig is up!",)))
-                # j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
+                # j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2, ))
 
                 # Confirm either results or signals available in reverse order
                 # with self.assertRaises(SubmissionDied):
@@ -656,8 +664,8 @@ class JobserverTest(unittest.TestCase):
                 # self.assertEqual(14, i.result())
                 # with self.assertRaises(SubmissionDied):
                 #     h.result()
-                # with self.assertRaises(SubmissionDied):
-                #     g.result()
+                with self.assertRaises(SubmissionDied):
+                    g.result()
                 with self.assertRaises(SubmissionDied):
                     f.result()
 
