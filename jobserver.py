@@ -20,10 +20,9 @@ import unittest
 __all__ = [
     "Blocked",
     "CallbackRaised",
-    "SubmissionDied",
-    "Wrapper",
     "Future",
     "Jobserver",
+    "SubmissionDied",
 ]
 
 T = typing.TypeVar("T")
@@ -404,6 +403,7 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
+# TODO Test that larger objects can be returned (possibly hacking on Wrapper)
 # TODO Test processes inside processes
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
