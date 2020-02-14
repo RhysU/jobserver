@@ -94,8 +94,13 @@ class Wrapper(typing.Generic[T]):
 
 class Future(typing.Generic[T]):
     """
-    A Future expecting a Process to send(...) a result to the given Connection.
-    Throughout this API, arguments block/timeout follow queue.Queue semantics.
+    Future instances are obtained by submitting work to a Jobserver.
+
+    Futures report if a submission is done(), its result(), and may
+    additionally be used to register callbacks issued at completion.
+    Throughout this API, arguments block/timeout follow queue.Queue
+    semantics.  That is, (block=True, timeout=None) may block indefinitely
+    while (block=False, timeout=None) always returns immediately.
     """
 
     __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
@@ -105,6 +110,9 @@ class Future(typing.Generic[T]):
         process: multiprocessing.Process,
         connection: multiprocessing.connection.Connection,
     ) -> None:
+        """
+        An instance expecting a Process to send(...) a result to a Connection.
+        """
         assert process is not None  # None after Process.join(...)
         assert connection is not None  # None after recv/Connection.close(...)
         self._process = process
@@ -146,11 +154,12 @@ class Future(typing.Generic[T]):
             self._issue_callbacks()
             return True
 
-        # Attempt to read the result Wrapper from the underlying Connection.
+        # Attempt to read the result Wrapper from the underlying Connection
+        # (possibly converting Queue's timeout semantic to Connection.poll).
         # Any EOFError is treated as an unexpected hang up from the other end.
         # Confusingly, as a Wrapper is anticipated, None news is bad news.
         assert self._connection is not None
-        if block or self._connection.poll(timeout=timeout):
+        if block or self._connection.poll(timeout=timeout if timeout else 0):
             try:
                 self._wrapper = self._connection.recv()
                 if self._wrapper is None:
@@ -512,6 +521,27 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(3, f.result())
                     self.assertEqual(mutable[0], 1, "One callback observed")
                     self.assertEqual(4, i.result(), "Zero-consumption repeat")
+
+    @staticmethod
+    def helper_block(name: str, *, seconds: float = 0.1) -> float:
+        """Helper blocking until given path no longer exists."""
+        slept = 0.0
+        while os.path.exists(name):
+            time.sleep(seconds)
+            slept += seconds
+        return slept
+
+    # TODO Incomplete
+    def test_nonblocking(self):
+        """Ensure non-blocking done() and submit() semantics clean."""
+        for method in multiprocessing.get_all_start_methods():
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=1)
+                with tempfile.NamedTemporaryFile() as f:
+                    f = js.submit(fn=self.helper_block, args=(f.name,))
+                    with self.assertRaises(Empty):
+                        js.submit(fn=len, block=False)
 
     def test_heavyusage(self):
         """Workload saturating the configured slots does not deadlock?"""
