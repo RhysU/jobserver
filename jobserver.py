@@ -37,7 +37,6 @@ class CallbackRaisedException(Exception):
     pass
 
 
-# TODO Add a failed method?
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
@@ -53,9 +52,13 @@ class Wrapper(typing.Generic[T]):
         self._result = result
         self._raised = raised
 
+    def raised(self) -> bool:
+        """Will unwrap(...) raise an Exception?"""
+        return self._raised is not None
+
     def unwrap(self) -> T:
         """Raise any wrapped Exception otherwise return the result."""
-        if self._raised is not None:
+        if self.raised():
             raise self._raised
         return self._result
 
