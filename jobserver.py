@@ -389,8 +389,6 @@ class Jobserver:
 # TODO Test processes inside processes
 # TODO Hide queue.Empty from the user?
 # TODO Usage examples within the module docstring
-# TODO Apply black formatter
-# TODO Satisfy flake8
 # TODO Lambdas as work?  Think pickling woes prevent it...
 
 
@@ -640,21 +638,34 @@ class JobserverTest(unittest.TestCase):
         os.kill(os.getpid(), sig)
         assert False, "Unreachable"
 
-    # TODO Behavior of done() in these scenarios, both w/ and w/o blocking?
-    # TODO Behavior of result() in these scenarios, both w/ and w/o blocking?
-    # TODO Confirm callbacks delivered as expected
-    def test_signalled(self):
+    def test_submission_died(self):
         """Signal receipt by worker can be detected via Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
+                # Permit observing callback side-effects
+                mutable = [0, 0, 0, 0, 0]
+
                 # Prepare jobs with workers possibly receiving signals
                 context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=1)
+                js = Jobserver(context=context, slots=2)
                 f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
+                f.add_done_callback(self.helper_callback, mutable, 0, 2)
                 g = js.submit(fn=self.helper_signal, args=(signal.SIGTERM,))
-                h = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
+                g.add_done_callback(self.helper_callback, mutable, 1, 3)
+                h = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1,))
+                h.add_done_callback(self.helper_callback, mutable, 2, 5)
                 i = js.submit(fn=len, args=(("The jig is up!",)))
-                j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2, ))
+                i.add_done_callback(self.helper_callback, mutable, 3, 7)
+                j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2,))
+                j.add_done_callback(self.helper_callback, mutable, 4, 11)
+
+                # Confirm done/callbacks correctly even when submissions die
+                self.assertTrue(f.done())
+                self.assertTrue(g.done())
+                self.assertTrue(h.done())
+                self.assertTrue(i.done())
+                self.assertTrue(j.done())
+                self.assertEqual([2, 3, 5, 7, 11], mutable)
 
                 # Confirm either results or signals available in reverse order
                 with self.assertRaises(SubmissionDied):
