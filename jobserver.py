@@ -394,7 +394,7 @@ class Jobserver:
             # Ignore broken pipes which naturally occur when the destination
             # terminates (or otherwise hangs up) before the result is ready.
             try:
-                send.send(result)
+                send.send(result)  # On ValueError suspect object too large!
             except BrokenPipeError:
                 pass
             send.close()
@@ -403,7 +403,6 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Test that larger objects can be returned (possibly hacking on Wrapper)
 # TODO Test processes inside processes
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
@@ -413,7 +412,7 @@ class Jobserver:
 class JobserverTest(unittest.TestCase):
     """Unit tests (doubling as examples) for Jobserver/Future/Wrapper."""
 
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         """Default construction and __call__ shorthand ok?"""
         js = Jobserver()
         f = js(len, (1, 2, 3))
@@ -422,11 +421,11 @@ class JobserverTest(unittest.TestCase):
         self.assertEqual(3, f.result())
 
     @staticmethod
-    def helper_callback(lizt: typing.List, index: int, increment: int):
+    def helper_callback(lizt: typing.List, index: int, increment: int) -> None:
         """Helper permitting tests to observe callbacks firing."""
         lizt[index] += increment
 
-    def test_basic(self):
+    def test_basic(self) -> None:
         """Basic submission up to slot limit along with callbacks firing?"""
         for method in multiprocessing.get_all_start_methods():
             for check_done in (True, False):
@@ -524,6 +523,18 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(mutable[0], 1, "One callback observed")
                     self.assertEqual(4, i.result(), "Zero-consumption repeat")
 
+    # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
+    def test_large_objects(self) -> None:
+        """Confirm increasingly large objects can be processed."""
+        for method in multiprocessing.get_all_start_methods():
+            context = multiprocessing.get_context(method)
+            js = Jobserver(context=context, slots=1)
+            for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
+                with self.subTest(size=size):
+                    f = js.submit(fn=bytearray, args=(size,))
+                    x = f.result()
+                    self.assertEqual(len(x), size)
+
     @staticmethod
     def helper_block(path: str, timeout: float) -> float:
         """Helper blocking until given path no longer exists."""
@@ -533,7 +544,7 @@ class JobserverTest(unittest.TestCase):
             slept += timeout
         return slept
 
-    def test_nonblocking(self):
+    def test_nonblocking(self) -> None:
         """Ensure non-blocking done() and submit() semantics clean."""
         for method in multiprocessing.get_all_start_methods():
             for check_done in (True, False):
@@ -575,7 +586,7 @@ class JobserverTest(unittest.TestCase):
                     self.assertGreater(f.result(block=True), timeout)
                     self.assertGreater(f.result(block=False), timeout)
 
-    def test_heavyusage(self):
+    def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
@@ -599,12 +610,12 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(i, f.result(block=True))
 
     @staticmethod
-    def helper_none():
+    def helper_none() -> None:
         """Nullary helper returning None."""
         return None
 
     # Explicitly tested because of handling woes observed in other designs
-    def test_returns_none(self):
+    def test_returns_none(self) -> None:
         """None can be returned from a Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
@@ -619,7 +630,7 @@ class JobserverTest(unittest.TestCase):
         return arg
 
     # Explicitly tested because of handling woes observed in other designs
-    def test_returns_not_raises_exception(self):
+    def test_returns_not_raises_exception(self) -> None:
         """An Exception can be returned, not raised, from a Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
@@ -635,7 +646,7 @@ class JobserverTest(unittest.TestCase):
         """Helper raising the requested Exception class."""
         raise klass(*args)
 
-    def test_raises(self):
+    def test_raises(self) -> None:
         """Future.result() raises Exceptions thrown while processing work?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
@@ -667,7 +678,7 @@ class JobserverTest(unittest.TestCase):
                 g = js.submit(fn=str, kwargs=dict(object=2), block=True)
                 self.assertEqual("2", g.result())
 
-    def test_done_callback_raises(self):
+    def test_done_callback_raises(self) -> None:
         """Future.done() raises Exceptions thrown while processing work?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
@@ -707,7 +718,7 @@ class JobserverTest(unittest.TestCase):
         os.kill(os.getpid(), sig)
         assert False, "Unreachable"
 
-    def test_submission_died(self):
+    def test_submission_died(self) -> None:
         """Signal receipt by worker can be detected via Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
