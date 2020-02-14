@@ -19,6 +19,7 @@ T = typing.TypeVar("T")
 
 __all__ = [
     "CallbackRaisedException",
+    "SubmissionDied",
     "Empty",
     "Future",
     "Jobserver",
@@ -26,6 +27,7 @@ __all__ = [
 ]
 
 
+# TODO Abbreviate to CallbackRaised
 class CallbackRaisedException(Exception):
     """
     Reports an Exception raised from callbacks registered with a Future.
@@ -40,6 +42,18 @@ class CallbackRaisedException(Exception):
     MUST re-invoke the same method until no CallbackRaisedException occurs.
     These MAY/MUST semantics allow the caller to decide how much additional
     processing to perform after seeing the 1st, 2nd, or N-th error.
+    """
+
+    pass
+
+
+# TODO This name is pretty awful.  Matches some built-in Exception?
+class SubmissionDied(Exception):
+    """
+    Reports a submission died for unknowable reasons, e.g. being killed.
+
+    Work this is killed, terminated, interrupted, etc. raises this exception.
+    Exactly what has transpired is not reported.  Do not attempt to recover.
     """
 
     pass
@@ -130,10 +144,14 @@ class Future(typing.Generic[T]):
             self._issue_callbacks()
             return True
 
-        # Attempt to read the result Wrapper from the underlying Connection
+        # Attempt to read the result Wrapper from the underlying Connection.
+        # Any EOFError is treated as an unexpected hang up from the other end.
         assert self._connection is not None
         if block or self._connection.poll(timeout=timeout):
-            self._wrapper = self._connection.recv()
+            try:
+                self._wrapper = self._connection.recv()
+            except EOFError:
+                self._wrapper = Wrapper(raised=SubmissionDied())
             assert isinstance(self._wrapper, Wrapper), "Confirm invariant"
             self._process.join()
             self._process = None  # Allow reclaiming via garbage collection
@@ -614,12 +632,11 @@ class JobserverTest(unittest.TestCase):
         os.kill(os.getpid(), sig)
         assert False, "Unreachable"
 
-    # TODO Hide EOFError from the user via semantically meaningful Exception
     # TODO Permit sequence of children all killed by signals (i.e. uncomment)
     # TODO Behavior of done() in these scenarios, both w/ and w/o blocking?
     # TODO Behavior of result() in these scenarios, both w/ and w/o blocking?
     # TODO Confirm callbacks delivered as expected
-    def test_killed(self):
+    def test_signalled(self):
         """Signal receipt by worker can be detected via Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
@@ -627,20 +644,20 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=1)
                 f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
-                # g = js.submit(fn=self.helper_signal, args=(signal.SIGINT, ))
+                # g = js.submit(fn=self.helper_signal, args=(signal.SIGINT,))
                 # h = js.submit(fn=self.helper_signal, args=(signal.SIGTERM, ))
                 # i = js.submit(fn=len, args=(("The jig is up!",)))
                 # j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
 
                 # Confirm either results or signals available in reverse order
-                # with self.assertRaises(EOFError):
+                # with self.assertRaises(SubmissionDied):
                 #     j.result()
                 # self.assertEqual(14, i.result())
-                # with self.assertRaises(EOFError):
+                # with self.assertRaises(SubmissionDied):
                 #     h.result()
-                # with self.assertRaises(EOFError):
+                # with self.assertRaises(SubmissionDied):
                 #     g.result()
-                with self.assertRaises(EOFError):
+                with self.assertRaises(SubmissionDied):
                     f.result()
 
 
