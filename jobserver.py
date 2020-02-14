@@ -23,9 +23,9 @@ __all__ = [
     "CallbackRaised",
     "SubmissionDied",
     "Empty",
+    "Wrapper",
     "Future",
     "Jobserver",
-    "Wrapper",
 ]
 
 
