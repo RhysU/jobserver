@@ -18,7 +18,7 @@ from queue import Empty
 T = typing.TypeVar("T")
 
 __all__ = [
-    "CallbackRaisedException",
+    "CallbackRaised",
     "SubmissionDied",
     "Empty",
     "Future",
@@ -27,8 +27,7 @@ __all__ = [
 ]
 
 
-# TODO Abbreviate to CallbackRaised
-class CallbackRaisedException(Exception):
+class CallbackRaised(Exception):
     """
     Reports an Exception raised from callbacks registered with a Future.
 
@@ -39,7 +38,7 @@ class CallbackRaisedException(Exception):
     Future.result(...), the caller MAY choose to re-invoke that same
     method immediately to continue processing any additional callbacks.
     If the caller requires that all callbacks are attempted, the caller
-    MUST re-invoke the same method until no CallbackRaisedException occurs.
+    MUST re-invoke the same method until no CallbackRaised occurs.
     These MAY/MUST semantics allow the caller to decide how much additional
     processing to perform after seeing the 1st, 2nd, or N-th error.
     """
@@ -117,7 +116,7 @@ class Future(typing.Generic[T]):
         Register a function for execution sometime after Future.done(...).
 
         When already done(...), will immediately invoke the requested function.
-        May raise CallbackRaisedException from at most this new callback.
+        May raise CallbackRaised from at most this new callback.
         """
         self._callbacks.append((__internal, fn, args, kwargs))
         if self._connection is None:
@@ -131,8 +130,8 @@ class Future(typing.Generic[T]):
 
         Argument timeout can only be specified for blocking operations.
         When specified, timeout is given in seconds and must be non-negative.
-        May raise CallbackRaisedException from at most one registered callback.
-        See CallbackRaisedException documentation for callback error semantics.
+        May raise CallbackRaised from at most one registered callback.
+        See CallbackRaised documentation for callback error semantics.
         """
         # Sanity check requested block/timeout
         if timeout is not None:
@@ -168,7 +167,7 @@ class Future(typing.Generic[T]):
         return True
 
     def _issue_callbacks(self):
-        # Only a non-internal callback may cause CallbackRaisedException.
+        # Only a non-internal callback may cause CallbackRaised.
         # Otherwise, we might obfuscate bugs within this module's logic.
         while self._callbacks:
             internal, fn, args, kwargs = self._callbacks.pop(0)
@@ -178,14 +177,14 @@ class Future(typing.Generic[T]):
                 try:
                     fn(*args, **kwargs)
                 except Exception as e:
-                    raise CallbackRaisedException() from e
+                    raise CallbackRaised() from e
 
     def result(self, block: bool = True, timeout: float = None) -> T:
         """
         Obtain result when ready.
 
-        May raise CallbackRaisedException from at most one registered callback.
-        See CallbackRaisedException documentation for callback error semantics.
+        May raise CallbackRaised from at most one registered callback.
+        See CallbackRaised documentation for callback error semantics.
         """
         if not self.done(block=block, timeout=timeout):
             raise Empty()
@@ -603,10 +602,10 @@ class JobserverTest(unittest.TestCase):
                 f = js.submit(fn=len, args=(("hello",)), block=True)
                 f.add_done_callback(self.helper_raise, ArithmeticError, "123")
                 f.add_done_callback(self.helper_raise, ZeroDivisionError, "45")
-                with self.assertRaises(CallbackRaisedException) as c:
+                with self.assertRaises(CallbackRaised) as c:
                     f.done(block=True)
                 self.assertIsInstance(c.exception.__cause__, ArithmeticError)
-                with self.assertRaises(CallbackRaisedException) as c:
+                with self.assertRaises(CallbackRaised) as c:
                     f.done(block=True)
                 self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
                 self.assertTrue(f.done(block=True))
@@ -617,7 +616,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(f.result(), 5)
 
                 # Now that work is complete, adding callback raises immediately
-                with self.assertRaises(CallbackRaisedException) as c:
+                with self.assertRaises(CallbackRaised) as c:
                     f.add_done_callback(self.helper_raise, UnicodeError, "67")
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
                 self.assertTrue(f.done(block=False))
