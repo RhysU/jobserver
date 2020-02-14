@@ -390,6 +390,7 @@ class Jobserver:
 # TODO Hide queue.Empty from the user?
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
+# TODO Unit tests should, but do not, pass on pypy3
 
 
 class JobserverTest(unittest.TestCase):
