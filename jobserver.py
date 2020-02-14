@@ -159,7 +159,7 @@ class Future(typing.Generic[T]):
         # Any EOFError is treated as an unexpected hang up from the other end.
         # Confusingly, as a Wrapper is anticipated, None news is bad news.
         assert self._connection is not None
-        if block or self._connection.poll(timeout=timeout if timeout else 0):
+        if self._connection.poll(timeout=timeout if block else 0):
             try:
                 self._wrapper = self._connection.recv()
                 if self._wrapper is None:
@@ -202,7 +202,7 @@ class Future(typing.Generic[T]):
         See CallbackRaised documentation for callback error semantics.
         """
         if not self.done(block=block, timeout=timeout):
-            raise Empty()
+            raise Empty()  # TODO Use a more appropriate exception
 
         return self._wrapper.unwrap()
 
@@ -401,8 +401,8 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Test processes inside processes
 # TODO Hide queue.Empty from the user?
+# TODO Test processes inside processes
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
 # TODO Unit tests should, but do not, pass on pypy3
@@ -523,25 +523,48 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(4, i.result(), "Zero-consumption repeat")
 
     @staticmethod
-    def helper_block(name: str, *, seconds: float = 0.1) -> float:
+    def helper_block(path: str, timeout: float) -> float:
         """Helper blocking until given path no longer exists."""
         slept = 0.0
-        while os.path.exists(name):
-            time.sleep(seconds)
-            slept += seconds
+        while os.path.exists(path):
+            time.sleep(timeout)
+            slept += timeout
         return slept
 
-    # TODO Incomplete
     def test_nonblocking(self):
         """Ensure non-blocking done() and submit() semantics clean."""
         for method in multiprocessing.get_all_start_methods():
-            with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=1)
-                with tempfile.NamedTemporaryFile() as f:
-                    f = js.submit(fn=self.helper_block, args=(f.name,))
-                    with self.assertRaises(Empty):
-                        js.submit(fn=len, block=False)
+            for check_done in (True, False):
+                with self.subTest(method=method, check_done=check_done):
+                    context = multiprocessing.get_context(method)
+                    js = Jobserver(context=context, slots=1)
+                    timeout = 0.1
+                    # Future f cannot complete until file t is removed
+                    with tempfile.NamedTemporaryFile() as t:
+                        f = js.submit(
+                            fn=self.helper_block, args=(t.name, timeout)
+                        )
+                        # Because Future f is stalled, new work not accepted
+                        with self.assertRaises(Empty):
+                            js.submit(fn=len, block=False, args=("abc",))
+                        # Future f reports not done() blocking or otherwise
+                        if check_done:
+                            self.assertFalse(f.done(block=False))
+                            self.assertFalse(
+                                f.done(block=True, timeout=1.5 * timeout)
+                            )
+                        # Future f reports no result() blocking or otherwise
+                        with self.assertRaises(Empty):
+                            f.result(block=False)
+                        with self.assertRaises(Empty):
+                            f.result(block=True, timeout=1.5 * timeout)
+                    # With file t removed, done() will report True
+                    if check_done:
+                        self.assertTrue(f.done(block=True))
+                    # With file t removed, result() now gives a result,
+                    # which is compared with the minimum stalled time.
+                    self.assertGreaterEqual(f.result(block=True), timeout)
+                    self.assertGreaterEqual(f.result(block=False), timeout)
 
     def test_heavyusage(self):
         """Workload saturating the configured slots does not deadlock?"""
