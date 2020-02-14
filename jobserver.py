@@ -37,11 +37,11 @@ class CallbackRaisedException(Exception):
     pass
 
 
-# TODO Add a failed method? 
+# TODO Add a failed method?
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
-    __slots__ = ("result", "raised")
+    __slots__ = ("_result", "_raised")
 
     def __init__(
         self,
@@ -49,20 +49,19 @@ class Wrapper(typing.Generic[T]):
         result: typing.Optional[T] = None,
         raised: typing.Optional[Exception] = None
     ) -> None:
-        # TODO Check and possibly correct
-        assert raised is None or result is None, "Both disallowed"
-        self.result = result
-        self.raised = raised
+        assert raised is None or result is None, "Both cannot be None"
+        self._result = result
+        self._raised = raised
 
     def unwrap(self) -> T:
         """Raise any wrapped Exception otherwise return the result."""
-        if self.raised is not None:
-            raise self.raised
-        return self.result
+        if self._raised is not None:
+            raise self._raised
+        return self._result
 
     def __repr__(self):
         return "Wrapper(result={!r}, raised={!r})".format(
-            self.result, self.raised
+            self._result, self._raised
         )
 
 
@@ -72,6 +71,8 @@ class Future(typing.Generic[T]):
     Throughout this API, arguments block/timeout follow queue.Queue semantics.
     """
 
+    __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
+
     def __init__(
         self,
         process: multiprocessing.Process,
@@ -79,10 +80,10 @@ class Future(typing.Generic[T]):
     ) -> None:
         assert process is not None  # None after Process.join(...)
         assert connection is not None  # None after recv/Connection.close(...)
-        self.process = process
-        self.connection = connection
-        self.wrapper = None
-        self.callbacks = []  # Tuples per add_done_callback, _issue_callbacks
+        self._process = process
+        self._connection = connection
+        self._wrapper = None
+        self._callbacks = []  # Tuples per add_done_callback, _issue_callbacks
 
     def add_done_callback(
         self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
@@ -93,8 +94,8 @@ class Future(typing.Generic[T]):
         When already done(...), will immediately invoke the requested function.
         May raise CallbackRaisedException from at most this new callback.
         """
-        self.callbacks.append((__internal, fn, args, kwargs))
-        if self.connection is None:
+        self._callbacks.append((__internal, fn, args, kwargs))
+        if self._connection is None:
             self._issue_callbacks()
 
     def done(
@@ -114,24 +115,24 @@ class Future(typing.Generic[T]):
             assert timeout >= 0, "Blocking allows only a non-negative timeout"
 
         # Multiple calls to done() may be required to issue all callbacks.
-        if self.connection is None:
+        if self._connection is None:
             self._issue_callbacks()
             return True
 
         # Attempt to read the result Wrapper from the underlying Connection
-        assert self.connection is not None
-        if block or self.connection.poll(timeout=timeout):
-            self.wrapper = self.connection.recv()
-            assert isinstance(self.wrapper, Wrapper), "Confirm invariant"
-            self.process.join()
-            self.process = None  # Allow reclaiming via garbage collection
+        assert self._connection is not None
+        if block or self._connection.poll(timeout=timeout):
+            self._wrapper = self._connection.recv()
+            assert isinstance(self._wrapper, Wrapper), "Confirm invariant"
+            self._process.join()
+            self._process = None  # Allow reclaiming via garbage collection
         else:
             return False
 
         # Callback must observe "self.connection is None" otherwise
         # they might observe different state when done vs not-done.
         # (Notice should close() throw, close() will never be re-tried).
-        connection, self.connection = self.connection, None
+        connection, self._connection = self._connection, None
         connection.close()
         self._issue_callbacks()
 
@@ -140,8 +141,8 @@ class Future(typing.Generic[T]):
     def _issue_callbacks(self):
         # Only a non-internal callback may cause CallbackRaisedException.
         # Otherwise, we might obfuscate bugs within this module's logic.
-        while self.callbacks:
-            internal, fn, args, kwargs = self.callbacks.pop(0)
+        while self._callbacks:
+            internal, fn, args, kwargs = self._callbacks.pop(0)
             if internal:
                 fn(*args, **kwargs)
             else:
@@ -160,7 +161,7 @@ class Future(typing.Generic[T]):
         if not self.done(block=block, timeout=timeout):
             raise Empty()
 
-        return self.wrapper.unwrap()
+        return self._wrapper.unwrap()
 
 
 # Throughout, put_nowait(...) denotes places where blocking should not happen.
@@ -170,6 +171,8 @@ class Jobserver:
     A Jobserver exposing a Future interface built atop multiprocessing.
     Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
+
+    __slots__ = ("_context", "_slots", "_future_sentinels")
 
     def __init__(
         self,
@@ -185,18 +188,18 @@ class Jobserver:
         # Prepare required resources ensuring their LIFO-ordered tear down
         if context is None:
             context = multiprocessing.get_context()
-        self.context = context
+        self._context = context
         if slots is None:
-            slots = self.context.cpu_count()
+            slots = self._context.cpu_count()
         assert isinstance(slots, int) and slots >= 1
-        self.slots = self.context.Queue(maxsize=slots)
-        atexit.register(self.slots.join_thread)
-        atexit.register(self.slots.close)
-        self.future_sentinels = {}  # type: typing.Dict[Future, int]
+        self._slots = self._context.Queue(maxsize=slots)
+        atexit.register(self._slots.join_thread)
+        atexit.register(self._slots.close)
+        self._future_sentinels = {}  # type: typing.Dict[Future, int]
 
         # Issue one token for each requested slot
         for i in range(slots):
-            self.slots.put_nowait(i)
+            self._slots.put_nowait(i)
 
     def __call__(
         self,
@@ -255,7 +258,7 @@ class Jobserver:
         while True:
             # (1) Eagerly clean up any completed work hence issuing callbacks
             if callbacks:
-                for future in list(self.future_sentinels.keys()):
+                for future in list(self._future_sentinels.keys()):
                     future.done(block=False, timeout=None)
 
             # (2) Exit loop if all requested resources have been acquired
@@ -264,7 +267,7 @@ class Jobserver:
 
             try:
                 # (3) If any slot immediately available grab then GOTO (1)
-                tokens.append(self.slots.get(block=False, timeout=None))
+                tokens.append(self._slots.get(block=False, timeout=None))
                 continue
             except Empty:
                 # (4) Only report failure in (3) non-blocking or deadline hit
@@ -274,9 +277,9 @@ class Jobserver:
             # (5) Block until either some work completes or deadline hit
             # Beware that completed work will requires callbacks from (1)
             assert block, "Sanity check control flow"
-            if self.future_sentinels:
+            if self._future_sentinels:
                 multiprocessing.connection.wait(
-                    list(self.future_sentinels.values()),
+                    list(self._future_sentinels.values()),
                     timeout=deadline - time.monotonic(),
                 )
 
@@ -287,12 +290,12 @@ class Jobserver:
         assert len(tokens) >= consume, "Sanity check slot acquisition"
         try:
             # Temporarily mutate members to clear known Futures for new worker
-            registered, self.future_sentinels = self.future_sentinels, {}
+            registered, self._future_sentinels = self._future_sentinels, {}
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
-            recv, send = self.context.Pipe(duplex=False)
+            recv, send = self._context.Pipe(duplex=False)
             args = tuple(args) if args else ()
-            process = self.context.Process(
+            process = self._context.Process(
                 target=Jobserver._worker_entrypoint,
                 args=((send, fn) + args),
                 kwargs=kwargs if kwargs else {},
@@ -305,11 +308,11 @@ class Jobserver:
         except:  # noqa:E722
             # Unwinding any consumed slots on unexpected errors
             while tokens:
-                self.slots.put_nowait(tokens.pop(0))
+                self._slots.put_nowait(tokens.pop(0))
             raise
         finally:
             # Re-mutate members to restore known-Future tracking
-            self.future_sentinels = registered
+            self._future_sentinels = registered
             del registered
 
         # As the above process.start() succeeded, now Future restores tokens.
@@ -318,13 +321,13 @@ class Jobserver:
         # Restoring tokens MUST occur before Future unregistered (just below).
         while tokens:
             future.add_done_callback(
-                self.slots.put_nowait, tokens.pop(0), _Future__internal=True
+                self._slots.put_nowait, tokens.pop(0), _Future__internal=True
             )
 
         # When a Future has completed, no longer track it within Jobserver.
         # Remove, versus discard, chosen to confirm removals previously known.
         future.add_done_callback(
-            self.future_sentinels.pop, future, _Future__internal=True
+            self._future_sentinels.pop, future, _Future__internal=True
         )
 
         return future
@@ -347,16 +350,14 @@ class Jobserver:
 ###########################################################################
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
-# TODO Hide queue.Empty() and queue.Full() from the user?
+# TODO Hide queue.Empty from the user?
 # TODO Craft __all__ hiding all uninteresting details, especially tests.
-# TODO Consider using __slots__ to better document/lock-down allowed members
 # TODO Usage examples within the module docstring
 # TODO Apply black formatter
 # TODO Satisfy flake8
 # TODO What if child process receives SIGTERM or SIGKILL?
 # TODO Lambdas as work?  Think pickling woes prevent it...
 # TODO Nicer repr/str representations?
-# TODO Underscore names for private members?
 
 
 class JobserverTest(unittest.TestCase):
