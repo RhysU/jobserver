@@ -138,7 +138,7 @@ class Future(typing.Generic[T]):
         self, block: bool = True, timeout: typing.Optional[float] = None
     ) -> bool:
         """
-        Is result ready?
+        Is result ready?  Never raises Blocked instead returning False.
 
         Argument timeout can only be specified for blocking operations.
         When specified, timeout is given in seconds and must be non-negative.
@@ -197,7 +197,7 @@ class Future(typing.Generic[T]):
 
     def result(self, block: bool = True, timeout: float = None) -> T:
         """
-        Obtain result when ready.
+        Obtain result when ready.  Raises Blocked if result unavailable.
 
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
@@ -272,7 +272,7 @@ class Jobserver:
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
-        Non-blocking usage per block/timeout possibly raises Blocked.
+        Raises Blocked when insufficient resources available to accept work.
         When consume == 0, no job slot is consumed by the submission.
         This method issues callbacks on completed work when callbacks is True.
         Timeout can only be specified for blocking operations.
@@ -757,3 +757,44 @@ class JobserverTest(unittest.TestCase):
                     g.result()
                 with self.assertRaises(SubmissionDied):
                     f.result()
+
+    @classmethod
+    def helper_recurse(cls, js: Jobserver, maxdepth: int) -> int:
+        """Helper submitting work until either Blocked or maxdepth reached."""
+        if maxdepth < 1:
+            return 0
+        try:
+            f = js.submit(
+                fn=cls.helper_recurse, args=(js, maxdepth - 1), block=False
+            )
+        except Blocked:
+            return 0
+        return 1 + f.result(block=True)
+
+    def test_submission_nested(self) -> None:
+        """Jobserver resource limits honored during nested submissions."""
+        for method in multiprocessing.get_all_start_methods():
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                self.assertEqual(
+                    0,
+                    self.helper_recurse(
+                        js=Jobserver(context=context, slots=3), maxdepth=0
+                    ),
+                    msg="Recursive base case must terminate recursion",
+                )
+                self.skipTest("Currently broken")  # FIXME
+                self.assertEqual(
+                    1,
+                    self.helper_recurse(
+                        js=Jobserver(context=context, slots=3), maxdepth=1
+                    ),
+                    msg="One inductive step must be possible",
+                )
+                self.assertEqual(
+                    3,
+                    self.helper_recurse(
+                        js=Jobserver(context=context, slots=3), maxdepth=5
+                    ),
+                    msg="Recursion is limited by number of available slots",
+                )
