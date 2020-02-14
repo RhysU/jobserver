@@ -10,24 +10,29 @@ import multiprocessing
 import multiprocessing.connection
 import os
 import os.path
+import queue
 import signal
 import tempfile
 import time
 import typing
 import unittest
 
-from queue import Empty
-
-T = typing.TypeVar("T")
-
 __all__ = [
+    "Blocked",
     "CallbackRaised",
     "SubmissionDied",
-    "Empty",
     "Wrapper",
     "Future",
     "Jobserver",
 ]
+
+T = typing.TypeVar("T")
+
+
+class Blocked(Exception):
+    """Reports that Jobserver.submit(...) or Future.result(...) is blocked."""
+
+    pass
 
 
 class CallbackRaised(Exception):
@@ -49,7 +54,6 @@ class CallbackRaised(Exception):
     pass
 
 
-# TODO This name is pretty awful.  Matches some built-in Exception?
 class SubmissionDied(Exception):
     """
     Reports a submission died for unknowable reasons, e.g. being killed.
@@ -98,9 +102,7 @@ class Future(typing.Generic[T]):
 
     Futures report if a submission is done(), its result(), and may
     additionally be used to register callbacks issued at completion.
-    Throughout this API, arguments block/timeout follow queue.Queue
-    semantics.  That is, (block=True, timeout=None) may block indefinitely
-    while (block=False, timeout=None) always returns immediately.
+    Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
 
     __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
@@ -202,7 +204,7 @@ class Future(typing.Generic[T]):
         See CallbackRaised documentation for callback error semantics.
         """
         if not self.done(block=block, timeout=timeout):
-            raise Empty()  # TODO Use a more appropriate exception
+            raise Blocked()
 
         return self._wrapper.unwrap()
 
@@ -212,6 +214,7 @@ class Future(typing.Generic[T]):
 class Jobserver:
     """
     A Jobserver exposing a Future interface built atop multiprocessing.
+
     Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
 
@@ -270,7 +273,7 @@ class Jobserver:
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
-        Non-blocking usage per block/timeout possibly raises queue.Empty.
+        Non-blocking usage per block/timeout possibly raises Blocked.
         When consume == 0, no job slot is consumed by the submission.
         This method issues callbacks on completed work when callbacks is True.
         Timeout can only be specified for blocking operations.
@@ -295,7 +298,7 @@ class Jobserver:
             deadline = time.monotonic() + float(timeout)
         del timeout
 
-        # Acquire the requested tokens or raise queue.Empty when impossible
+        # Acquire the requested tokens or raise Blocked when impossible
         tokens = []
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         while True:
@@ -312,10 +315,10 @@ class Jobserver:
                 # (3) If any slot immediately available grab then GOTO (1)
                 tokens.append(self._slots.get(block=False, timeout=None))
                 continue
-            except Empty:
+            except queue.Empty:
                 # (4) Only report failure in (3) non-blocking or deadline hit
                 if not block or time.monotonic() >= deadline:
-                    raise
+                    raise Blocked()
 
             # (5) Block until either some work completes or deadline hit
             # Beware that completed work will requires callbacks from (1)
@@ -401,7 +404,6 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Hide queue.Empty from the user?
 # TODO Test processes inside processes
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
@@ -467,7 +469,7 @@ class JobserverTest(unittest.TestCase):
                     )
 
                     # Try too much work given fixed slot count
-                    with self.assertRaises(Empty):
+                    with self.assertRaises(Blocked):
                         js.submit(
                             fn=len,
                             args=((),),
@@ -486,7 +488,7 @@ class JobserverTest(unittest.TestCase):
                     )
 
                     # Again, try too much work given fixed slot count
-                    with self.assertRaises(Empty):
+                    with self.assertRaises(Blocked):
                         js.submit(
                             fn=len,
                             args=((),),
@@ -545,9 +547,9 @@ class JobserverTest(unittest.TestCase):
                             fn=self.helper_block, args=(t.name, timeout)
                         )
                         # Because Future f is stalled, new work not accepted
-                        with self.assertRaises(Empty):
+                        with self.assertRaises(Blocked):
                             js.submit(fn=len, args=("abc",), block=False)
-                        with self.assertRaises(Empty):
+                        with self.assertRaises(Blocked):
                             js.submit(
                                 fn=len,
                                 args=("abc",),
@@ -561,9 +563,9 @@ class JobserverTest(unittest.TestCase):
                                 f.done(block=True, timeout=1.5 * timeout)
                             )
                         # Future f reports no result() blocking or otherwise
-                        with self.assertRaises(Empty):
+                        with self.assertRaises(Blocked):
                             f.result(block=False)
-                        with self.assertRaises(Empty):
+                        with self.assertRaises(Blocked):
                             f.result(block=True, timeout=1.5 * timeout)
                     # With file t removed, done() will report True
                     if check_done:
