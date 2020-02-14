@@ -641,7 +641,6 @@ class JobserverTest(unittest.TestCase):
         os.kill(os.getpid(), sig)
         assert False, "Unreachable"
 
-    # TODO Permit sequence of children all killed by signals (i.e. uncomment)
     # TODO Behavior of done() in these scenarios, both w/ and w/o blocking?
     # TODO Behavior of result() in these scenarios, both w/ and w/o blocking?
     # TODO Confirm callbacks delivered as expected
@@ -654,16 +653,16 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=1)
                 f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
                 g = js.submit(fn=self.helper_signal, args=(signal.SIGTERM,))
-                # h = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
-                # i = js.submit(fn=len, args=(("The jig is up!",)))
-                # j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2, ))
+                h = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
+                i = js.submit(fn=len, args=(("The jig is up!",)))
+                j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2, ))
 
                 # Confirm either results or signals available in reverse order
-                # with self.assertRaises(SubmissionDied):
-                #     j.result()
-                # self.assertEqual(14, i.result())
-                # with self.assertRaises(SubmissionDied):
-                #     h.result()
+                with self.assertRaises(SubmissionDied):
+                    j.result()
+                self.assertEqual(14, i.result())
+                with self.assertRaises(SubmissionDied):
+                    h.result()
                 with self.assertRaises(SubmissionDied):
                     g.result()
                 with self.assertRaises(SubmissionDied):
