@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # Copyright (C) 2019-2020 Rhys Ulerich <rhys.ulerich@gmail.com>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
@@ -667,7 +666,3 @@ class JobserverTest(unittest.TestCase):
                     g.result()
                 with self.assertRaises(SubmissionDied):
                     f.result()
-
-
-if __name__ == "__main__":
-    unittest.main()
