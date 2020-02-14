@@ -7,6 +7,8 @@ import atexit
 import collections.abc
 import multiprocessing
 import multiprocessing.connection
+import os
+import signal
 import time
 import typing
 import unittest
@@ -363,9 +365,7 @@ class Jobserver:
 # TODO Usage examples within the module docstring
 # TODO Apply black formatter
 # TODO Satisfy flake8
-# TODO What if child process receives SIGTERM or SIGKILL?
 # TODO Lambdas as work?  Think pickling woes prevent it...
-# TODO Nicer repr/str representations?
 
 
 class JobserverTest(unittest.TestCase):
@@ -607,6 +607,41 @@ class JobserverTest(unittest.TestCase):
                 # After callbacks have completed, result is still available.
                 self.assertEqual(f.result(), 5)
                 self.assertEqual(f.result(), 5)
+
+    @staticmethod
+    def helper_signal(sig):
+        """Helper sending signal sig to the current process."""
+        os.kill(os.getpid(), sig)
+        assert False, "Unreachable"
+
+    # TODO Hide EOFError from the user via semantically meaningful Exception
+    # TODO Permit sequence of children all killed by signals (i.e. uncomment)
+    # TODO Behavior of done() in these scenarios, both w/ and w/o blocking?
+    # TODO Behavior of result() in these scenarios, both w/ and w/o blocking?
+    # TODO Confirm callbacks delivered as expected
+    def test_killed(self):
+        """Signal receipt by worker can be detected via Future?"""
+        for method in multiprocessing.get_all_start_methods():
+            with self.subTest(method=method):
+                # Prepare jobs with workers possibly receiving signals
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=1)
+                f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
+                # g = js.submit(fn=self.helper_signal, args=(signal.SIGINT, ))
+                # h = js.submit(fn=self.helper_signal, args=(signal.SIGTERM, ))
+                # i = js.submit(fn=len, args=(("The jig is up!",)))
+                # j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1, ))
+
+                # Confirm either results or signals available in reverse order
+                # with self.assertRaises(EOFError):
+                #     j.result()
+                # self.assertEqual(14, i.result())
+                # with self.assertRaises(EOFError):
+                #     h.result()
+                # with self.assertRaises(EOFError):
+                #     g.result()
+                with self.assertRaises(EOFError):
+                    f.result()
 
 
 if __name__ == "__main__":
