@@ -2,9 +2,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""
-A Jobserver exposing a Future interface built atop multiprocessing.
-"""
+"""A Jobserver exposing a Future interface built atop multiprocessing."""
 import atexit
 import collections.abc
 import multiprocessing
@@ -16,6 +14,14 @@ import unittest
 from queue import Empty
 
 T = typing.TypeVar("T")
+
+__all__ = [
+    "CallbackRaisedException",
+    "Empty",
+    "Future",
+    "Jobserver",
+    "Wrapper",
+]
 
 
 class CallbackRaisedException(Exception):
@@ -354,7 +360,6 @@ class Jobserver:
 # TODO Test non-blocking as expected
 # TODO Test processes inside processes
 # TODO Hide queue.Empty from the user?
-# TODO Craft __all__ hiding all uninteresting details, especially tests.
 # TODO Usage examples within the module docstring
 # TODO Apply black formatter
 # TODO Satisfy flake8
