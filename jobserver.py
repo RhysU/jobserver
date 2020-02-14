@@ -546,7 +546,14 @@ class JobserverTest(unittest.TestCase):
                         )
                         # Because Future f is stalled, new work not accepted
                         with self.assertRaises(Empty):
-                            js.submit(fn=len, block=False, args=("abc",))
+                            js.submit(fn=len, args=("abc",), block=False)
+                        with self.assertRaises(Empty):
+                            js.submit(
+                                fn=len,
+                                args=("abc",),
+                                block=True,
+                                timeout=1.5 * timeout,
+                            )
                         # Future f reports not done() blocking or otherwise
                         if check_done:
                             self.assertFalse(f.done(block=False))
@@ -563,8 +570,8 @@ class JobserverTest(unittest.TestCase):
                         self.assertTrue(f.done(block=True))
                     # With file t removed, result() now gives a result,
                     # which is compared with the minimum stalled time.
-                    self.assertGreaterEqual(f.result(block=True), timeout)
-                    self.assertGreaterEqual(f.result(block=False), timeout)
+                    self.assertGreater(f.result(block=True), timeout)
+                    self.assertGreater(f.result(block=False), timeout)
 
     def test_heavyusage(self):
         """Workload saturating the configured slots does not deadlock?"""
