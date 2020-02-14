@@ -9,7 +9,9 @@ import collections.abc
 import multiprocessing
 import multiprocessing.connection
 import os
+import os.path
 import signal
+import tempfile
 import time
 import typing
 import unittest
@@ -328,7 +330,7 @@ class Jobserver:
             recv, send = self._context.Pipe(duplex=False)
             args = tuple(args) if args else ()
             process = self._context.Process(
-                target=Jobserver._worker_entrypoint,
+                target=self._worker_entrypoint,
                 args=((send, fn) + args),
                 kwargs=kwargs if kwargs else {},
                 daemon=False,
@@ -337,7 +339,7 @@ class Jobserver:
             process.start()
             # Prepare to track the Future and the wait(...)-able sentinel
             registered[future] = process.sentinel
-        except:  # noqa:E722
+        except Exception:
             # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self._slots.put_nowait(tokens.pop(0))
@@ -378,14 +380,18 @@ class Jobserver:
         except Exception as exception:
             result = Wrapper(raised=exception)
         finally:
-            send.send(result)
+            # Ignore broken pipes which naturally occur when the destination
+            # terminates (or otherwise hangs up) before the result is ready.
+            try:
+                send.send(result)
+            except BrokenPipeError:
+                pass
             send.close()
 
 
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Test non-blocking as expected
 # TODO Test processes inside processes
 # TODO Hide queue.Empty from the user?
 # TODO Usage examples within the module docstring
@@ -405,7 +411,7 @@ class JobserverTest(unittest.TestCase):
         self.assertEqual(3, f.result())
 
     @staticmethod
-    def helper_callback(lizt, index, increment):
+    def helper_callback(lizt: typing.List, index: int, increment: int):
         """Helper permitting tests to observe callbacks firing."""
         lizt[index] += increment
 
@@ -546,7 +552,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertIsNone(f.result())
 
     @staticmethod
-    def helper_return(arg):
+    def helper_return(arg: T) -> T:
         """Helper returning its lone argument."""
         return arg
 
@@ -563,7 +569,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(e.args, f.result().args)
 
     @staticmethod
-    def helper_raise(klass, *args):
+    def helper_raise(klass: type, *args: typing.Any) -> typing.NoReturn:
         """Helper raising the requested Exception class."""
         raise klass(*args)
 
@@ -634,7 +640,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(f.result(), 5)
 
     @staticmethod
-    def helper_signal(sig):
+    def helper_signal(sig: signal.Signals) -> typing.NoReturn:
         """Helper sending signal sig to the current process."""
         os.kill(os.getpid(), sig)
         assert False, "Unreachable"
