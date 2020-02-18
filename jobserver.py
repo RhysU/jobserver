@@ -270,7 +270,6 @@ class JobserverQueue:
 
 
 # Throughout, put_nowait(...) denotes places where blocking should not happen.
-# If debugging, consider any related queue.Full exceptions to be logic errors.
 class Jobserver:
     """
     A Jobserver exposing a Future interface built atop multiprocessing.
