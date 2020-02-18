@@ -18,7 +18,7 @@ or concurrent.futures.Executor with a few differences:
       more 3rd party libraries.
     * Fourth, Futures are eagerly scanned to quickly reclaim resources.
     * Fifth, Futures can detect when a child process died unexpectedly.
-    * Lastly, the API distinguishes when Exceptions occur during a callback.
+    * Lastly, the API communicates when Exceptions occur within a callback.
 
 For usage, see JobserverTest located within the same file as Jobserver.
 """
