@@ -3,7 +3,24 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""A Jobserver exposing a Future interface built atop multiprocessing."""
+"""
+A nestable, multiprocessing Jobserver providing Futures which permit callbacks.
+
+This Jobserver is similar in spirit to multiprocessing.Pool
+or concurrent.futures.Executor with a few differences:
+
+    * First, the implementation choices are based upon
+      https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html.
+    * Second, as a result, the Jobserver is "nestable" meaning that resource
+      constraints will be shared with work submitted by other work.
+    * Third, no background threads are spun up to handle any backing
+      queues consequently permitting the implementation to play well with
+      more 3rd party libraries.
+    * Fourth, Futures are eagerly scanned to quickly reclaim resources.
+    * Lastly, the API distinguishes when Exceptions occur during a callback.
+
+For usage, see JobserverTest located within the same file as Jobserver.
+"""
 import collections.abc
 import multiprocessing
 import multiprocessing.connection
@@ -441,8 +458,7 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Usage examples within the module docstring
-# TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes.
+# TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes!
 
 
 class JobserverTest(unittest.TestCase):
@@ -829,9 +845,9 @@ class JobserverTest(unittest.TestCase):
                     msg="One inductive step must be possible",
                 )
                 self.assertEqual(
-                    3,
+                    4,
                     self.helper_recurse(
-                        js=Jobserver(context=context, slots=3), maxdepth=5
+                        js=Jobserver(context=context, slots=4), maxdepth=6
                     ),
                     msg="Recursion is limited by number of available slots",
                 )
