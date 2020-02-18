@@ -441,7 +441,6 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Test processes inside processes
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
 # TODO Unit tests should, but do not, pass on pypy3
@@ -822,7 +821,6 @@ class JobserverTest(unittest.TestCase):
                     ),
                     msg="Recursive base case must terminate recursion",
                 )
-                self.skipTest("Currently broken")  # FIXME
                 self.assertEqual(
                     1,
                     self.helper_recurse(
