@@ -4,10 +4,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A Jobserver exposing a Future interface built atop multiprocessing."""
-import atexit
 import collections.abc
 import multiprocessing
 import multiprocessing.connection
+import multiprocessing.reduction
 import os
 import os.path
 import queue
@@ -208,6 +208,46 @@ class Future(typing.Generic[T]):
         return self._wrapper.unwrap()
 
 
+class JobserverQueue:
+    """
+    A SimpleQueue-variant providing the minimal semantics Jobserver requires.
+
+    Vanilla multiprocessing.SimpleQueue lacks block/timeout on get(...).
+    Vanilla multiprocessing.Queue has wildly undesired threading machinery.
+    """
+
+    __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
+
+    def __init__(self, context: multiprocessing.context.BaseContext) -> None:
+        self._reader, self._writer = context.Pipe(duplex=False)
+        self._read_lock = context.Lock()
+        self._write_lock = context.Lock()  # Some platforms may not need
+
+    def get(self, block: bool = True, timeout: float = None) -> typing.Any:
+        """
+        Get an object from the queue raising queue.Empty if unavailable.
+
+        Raises EOFError on exhausted queue whenever sending half has hung up.
+        """
+        assert block or timeout is None, "block == False cannot have timeout"
+        with self._read_lock:
+            if self._reader.poll(timeout=timeout if block else 0.0):
+                recv = self._reader.recv_bytes()
+            else:
+                raise queue.Empty
+        return multiprocessing.reduction.ForkingPickler.loads(recv)
+
+    def put_nowait(self, obj: typing.Any) -> None:
+        """
+        Put an object into the queue.
+
+        Raises BrokenPipeError if the receiving half has hung up.
+        """
+        send = multiprocessing.reduction.ForkingPickler.dumps(obj)
+        with self._write_lock:
+            self._writer.send_bytes(send)
+
+
 # Throughout, put_nowait(...) denotes places where blocking should not happen.
 # If debugging, consider any related queue.Full exceptions to be logic errors.
 class Jobserver:
@@ -237,9 +277,7 @@ class Jobserver:
         if slots is None:
             slots = self._context.cpu_count()
         assert isinstance(slots, int) and slots >= 1
-        self._slots = self._context.Queue(maxsize=slots)
-        atexit.register(self._slots.join_thread)
-        atexit.register(self._slots.close)
+        self._slots = JobserverQueue(context=self._context)
         self._future_sentinels = {}  # type: typing.Dict[Future, int]
 
         # Issue one token for each requested slot
@@ -407,6 +445,7 @@ class Jobserver:
 # TODO Usage examples within the module docstring
 # TODO Lambdas as work?  Think pickling woes prevent it...
 # TODO Unit tests should, but do not, pass on pypy3
+# TODO Confirm type annotations sane via mypy (or similar).
 
 
 class JobserverTest(unittest.TestCase):
