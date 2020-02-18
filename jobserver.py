@@ -194,7 +194,7 @@ class Future(typing.Generic[T]):
         else:
             return False
 
-        # Callback must observe "self.connection is None" otherwise
+        # Callbacks must observe "self.connection is None" otherwise
         # they might observe different state when done vs not-done.
         # (Notice should close() throw, close() will never be re-tried).
         connection, self._connection = self._connection, None
