@@ -82,6 +82,9 @@ class SubmissionDied(Exception):
     pass
 
 
+# Down the road, Wrapper might be extended with "big object"
+# support that chooses to place data in shared memory or on disk.
+# Likely only necessary if/when sending results via pipe breaks down.
 class Wrapper(typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
