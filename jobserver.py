@@ -796,7 +796,7 @@ class JobserverTest(unittest.TestCase):
                 j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2,))
                 j.add_done_callback(self.helper_callback, mutable, 4, 11)
 
-                # Confirm done/callbacks correctly even when submissions die
+                # Confirm done/callbacks correct even when submissions die
                 self.assertTrue(f.done())
                 self.assertTrue(g.done())
                 self.assertTrue(h.done())
