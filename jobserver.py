@@ -442,9 +442,7 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Usage examples within the module docstring
-# TODO Lambdas as work?  Think pickling woes prevent it...
-# TODO Unit tests should, but do not, pass on pypy3
-# TODO Confirm type annotations sane via mypy (or similar).
+# TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes.
 
 
 class JobserverTest(unittest.TestCase):
@@ -455,6 +453,8 @@ class JobserverTest(unittest.TestCase):
         js = Jobserver()
         f = js(len, (1, 2, 3))
         g = js(str, object=2)
+        h = js(lambda x: len(x), (1, 2, 3, 4))
+        self.assertEqual(4, h.result())
         self.assertEqual("2", g.result())
         self.assertEqual(3, f.result())
 
