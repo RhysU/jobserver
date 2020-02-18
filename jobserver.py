@@ -75,7 +75,7 @@ class SubmissionDied(Exception):
     """
     Reports a submission died for unknowable reasons, e.g. being killed.
 
-    Work this is killed, terminated, interrupted, etc. raises this exception.
+    Work that is killed, terminated, interrupted, etc. raises this exception.
     Exactly what has transpired is not reported.  Do not attempt to recover.
     """
 
