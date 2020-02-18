@@ -378,7 +378,7 @@ class Jobserver:
                     raise Blocked()
 
             # (5) Block until either some work completes or deadline hit
-            # Beware that completed work will requires callbacks from (1)
+            # Beware that completed work will require callbacks at step (1)
             assert block, "Sanity check control flow"
             if self._future_sentinels:
                 multiprocessing.connection.wait(
