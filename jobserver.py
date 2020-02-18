@@ -96,7 +96,8 @@ class Wrapper(typing.Generic[T]):
         result: typing.Optional[T] = None,
         raised: typing.Optional[Exception] = None
     ) -> None:
-        assert raised is None or result is None, "Both cannot be None"
+        """Provide just one of result or raised."""
+        assert raised is None or result is None
         self._result = result
         self._raised = raised
 
