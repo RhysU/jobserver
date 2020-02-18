@@ -313,7 +313,7 @@ class Jobserver:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
         Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
-        with all submission semantics per that methods default arguments.
+        with all submission semantics per that method's default arguments.
         """
         return self.submit(fn=fn, args=args, kwargs=kwargs)
 
