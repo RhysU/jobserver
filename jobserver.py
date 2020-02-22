@@ -23,11 +23,13 @@ or concurrent.futures.Executor with a few differences:
 For usage, see JobserverTest located within the same file as Jobserver.
 """
 import collections.abc
+import copy
 import multiprocessing
 import multiprocessing.connection
 import multiprocessing.reduction
 import os
 import os.path
+import pickle
 import queue
 import signal
 import tempfile
@@ -123,6 +125,7 @@ class Future(typing.Generic[T]):
 
     Futures report if a submission is done(), its result(), and may
     additionally be used to register callbacks issued at completion.
+    Futures can be neither copied nor pickled.
     Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
 
@@ -150,6 +153,7 @@ class Future(typing.Generic[T]):
         Register a function for execution sometime after Future.done(...).
 
         When already done(...), will immediately invoke the requested function.
+        Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
         self._callbacks.append((__internal, fn, args, kwargs))
@@ -228,6 +232,14 @@ class Future(typing.Generic[T]):
             raise Blocked()
 
         return self._wrapper.unwrap()
+
+    def __copy__(self):
+        """Disallow copying as duplicates cannot sensibly share resources."""
+        raise NotImplementedError("Futures cannot be copied.")
+
+    def __reduce__(self):
+        """Disallow pickling as duplicates cannot sensibly share resources."""
+        raise NotImplementedError("Futures cannot be pickled.")
 
 
 class JobserverQueue:
@@ -462,9 +474,8 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes!
-# TODO Default to forkserver when no context provided.
-# TODO Disable pickling via copyreg.
+# TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
+# TODO Clean bill of type hinting health from mypy.
 
 
 class JobserverTest(unittest.TestCase):
@@ -601,13 +612,33 @@ class JobserverTest(unittest.TestCase):
     def test_callback_semantics(self) -> None:
         """Inside a Future's callback the Future reports it is done."""
         for method in multiprocessing.get_all_start_methods():
-            for check_done in (True, False):
-                with self.subTest(method=method, check_done=check_done):
-                    context = multiprocessing.get_context(method)
-                    js = Jobserver(context=context, slots=3)
-                    f = js.submit(fn=len, args=((1, 2, 3),))
-                    f.add_done_callback(self.helper_check_semantics, f)
-                    self.assertEqual(3, f.result())
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+                f = js.submit(fn=len, args=((1, 2, 3),))
+                f.add_done_callback(self.helper_check_semantics, f)
+                self.assertEqual(3, f.result())
+
+    def test_duplication(self) -> None:
+        """Copying and pickling of Futures is explicitly disallowed."""
+        for method in multiprocessing.get_all_start_methods():
+            with self.subTest(method=method):
+                context = multiprocessing.get_context(method)
+                js = Jobserver(context=context, slots=3)
+                f = js.submit(fn=len, args=((1, 2, 3),))
+                # Cannot copy
+                with self.assertRaises(NotImplementedError):
+                    copy.copy(f)
+                with self.assertRaises(NotImplementedError):
+                    copy.deepcopy(f)
+                # Cannot pickle a Future directly
+                with self.assertRaises(NotImplementedError):
+                    pickle.dumps(f)
+                # Cannot submit a Future as part of additional work
+                # (as a consequence of the above when pickling required)
+                if method != "fork":
+                    with self.assertRaises(NotImplementedError):
+                        js.submit(fn=type, args=(f,))
 
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
