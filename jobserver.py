@@ -144,9 +144,9 @@ class Future(typing.Generic[T]):
         self._process = process
         self._connection = connection
         self._wrapper = None
-        self._callbacks = []  # Tuples per add_done_callback, _issue_callbacks
+        self._callbacks = []  # Tuples per when_done, _issue_callbacks
 
-    def add_done_callback(
+    def when_done(
         self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
     ) -> None:
         """
@@ -436,13 +436,13 @@ class Jobserver:
         # from within Future.done().  It keeps _worker_entrypoint() simple.
         # Restoring tokens MUST occur before Future unregistered (just below).
         while tokens:
-            future.add_done_callback(
+            future.when_done(
                 self._slots.put_nowait, tokens.pop(0), _Future__internal=True
             )
 
         # When a Future has completed, no longer track it within Jobserver.
         # Remove, versus discard, chosen to confirm removals previously known.
-        future.add_done_callback(
+        future.when_done(
             self._future_sentinels.pop, future, _Future__internal=True
         )
 
@@ -514,7 +514,7 @@ class JobserverTest(unittest.TestCase):
                         callbacks=False,
                         consume=1,
                     )
-                    f.add_done_callback(self.helper_callback, mutable, 0, 1)
+                    f.when_done(self.helper_callback, mutable, 0, 1)
                     g = js.submit(
                         fn=str,
                         kwargs=dict(object=2),
@@ -522,8 +522,8 @@ class JobserverTest(unittest.TestCase):
                         callbacks=False,
                         consume=1,
                     )
-                    g.add_done_callback(self.helper_callback, mutable, 1, 2)
-                    g.add_done_callback(self.helper_callback, mutable, 1, 3)
+                    g.when_done(self.helper_callback, mutable, 1, 2)
+                    g.when_done(self.helper_callback, mutable, 1, 3)
                     h = js.submit(
                         fn=len,
                         args=((1,),),
@@ -531,7 +531,7 @@ class JobserverTest(unittest.TestCase):
                         callbacks=False,
                         consume=1,
                     )
-                    h.add_done_callback(
+                    h.when_done(
                         self.helper_callback,
                         lizt=mutable,
                         index=2,
@@ -576,7 +576,7 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(mutable[2], 7)
                     self.assertEqual(1, h.result())
                     self.assertEqual(1, h.result(), "Multiple calls OK")
-                    h.add_done_callback(
+                    h.when_done(
                         self.helper_callback,
                         lizt=mutable,
                         index=2,
@@ -603,8 +603,8 @@ class JobserverTest(unittest.TestCase):
         self.assertTrue(f.done(block=False))
 
         # Confirm that inside a callback additional work can be registered
-        f.add_done_callback(self.helper_callback, mutable, 0, 1)
-        f.add_done_callback(self.helper_callback, mutable, 0, 2)
+        f.when_done(self.helper_callback, mutable, 0, 1)
+        f.when_done(self.helper_callback, mutable, 0, 2)
 
         # Confirm that inside a callback above work was immediately performed
         self.assertEqual(mutable[0], 3, "Two callbacks observed")
@@ -616,7 +616,7 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
-                f.add_done_callback(self.helper_check_semantics, f)
+                f.when_done(self.helper_check_semantics, f)
                 self.assertEqual(3, f.result())
 
     def test_duplication(self) -> None:
@@ -780,11 +780,11 @@ class JobserverTest(unittest.TestCase):
                     args=(ArithmeticError, "message123"),
                     block=True,
                 )
-                f.add_done_callback(self.helper_callback, mutable, 0, 1)
+                f.when_done(self.helper_callback, mutable, 0, 1)
                 with self.assertRaises(ArithmeticError):
                     f.result()
                 self.assertEqual(mutable[0], 1, "One callback observed")
-                f.add_done_callback(self.helper_callback, mutable, 0, 2)
+                f.when_done(self.helper_callback, mutable, 0, 2)
                 self.assertEqual(mutable[0], 3, "Callback after done")
                 with self.assertRaises(ArithmeticError):
                     f.result()
@@ -804,8 +804,8 @@ class JobserverTest(unittest.TestCase):
 
                 # Calling done() repeatedly correctly reports multiple errors
                 f = js.submit(fn=len, args=(("hello",)), block=True)
-                f.add_done_callback(self.helper_raise, ArithmeticError, "123")
-                f.add_done_callback(self.helper_raise, ZeroDivisionError, "45")
+                f.when_done(self.helper_raise, ArithmeticError, "123")
+                f.when_done(self.helper_raise, ZeroDivisionError, "45")
                 with self.assertRaises(CallbackRaised) as c:
                     f.done(block=True)
                 self.assertIsInstance(c.exception.__cause__, ArithmeticError)
@@ -821,7 +821,7 @@ class JobserverTest(unittest.TestCase):
 
                 # Now that work is complete, adding callback raises immediately
                 with self.assertRaises(CallbackRaised) as c:
-                    f.add_done_callback(self.helper_raise, UnicodeError, "67")
+                    f.when_done(self.helper_raise, UnicodeError, "67")
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
                 self.assertTrue(f.done(block=False))
 
@@ -846,15 +846,15 @@ class JobserverTest(unittest.TestCase):
                 context = multiprocessing.get_context(method)
                 js = Jobserver(context=context, slots=2)
                 f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
-                f.add_done_callback(self.helper_callback, mutable, 0, 2)
+                f.when_done(self.helper_callback, mutable, 0, 2)
                 g = js.submit(fn=self.helper_signal, args=(signal.SIGTERM,))
-                g.add_done_callback(self.helper_callback, mutable, 1, 3)
+                g.when_done(self.helper_callback, mutable, 1, 3)
                 h = js.submit(fn=self.helper_signal, args=(signal.SIGUSR1,))
-                h.add_done_callback(self.helper_callback, mutable, 2, 5)
+                h.when_done(self.helper_callback, mutable, 2, 5)
                 i = js.submit(fn=len, args=(("The jig is up!",)))
-                i.add_done_callback(self.helper_callback, mutable, 3, 7)
+                i.when_done(self.helper_callback, mutable, 3, 7)
                 j = js.submit(fn=self.helper_signal, args=(signal.SIGUSR2,))
-                j.add_done_callback(self.helper_callback, mutable, 4, 11)
+                j.when_done(self.helper_callback, mutable, 4, 11)
 
                 # Confirm done/callbacks correct even when submissions die
                 self.assertTrue(f.done())
