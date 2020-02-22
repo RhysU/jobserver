@@ -463,6 +463,8 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes!
+# TODO Default to forkserver when no context provided.
+# TODO Disable pickling via copyreg.
 
 
 class JobserverTest(unittest.TestCase):
@@ -580,6 +582,32 @@ class JobserverTest(unittest.TestCase):
                     self.assertEqual(3, f.result())
                     self.assertEqual(mutable[0], 1, "One callback observed")
                     self.assertEqual(4, i.result(), "Zero-consumption repeat")
+
+    def helper_check_semantics(self, f: Future[None]) -> None:
+        """Helper checking Future semantics *inside* a callback as expected."""
+        # Prepare how callbacks will be observed
+        mutable = [0]
+
+        # Confirm that inside a callback the Future reports done()
+        self.assertTrue(f.done(block=False))
+
+        # Confirm that inside a callback additional work can be registered
+        f.add_done_callback(self.helper_callback, mutable, 0, 1)
+        f.add_done_callback(self.helper_callback, mutable, 0, 2)
+
+        # Confirm that inside a callback above work was immediately performed
+        self.assertEqual(mutable[0], 3, "Two callbacks observed")
+
+    def test_callback_semantics(self) -> None:
+        """Inside a Future's callback the Future reports it is done."""
+        for method in multiprocessing.get_all_start_methods():
+            for check_done in (True, False):
+                with self.subTest(method=method, check_done=check_done):
+                    context = multiprocessing.get_context(method)
+                    js = Jobserver(context=context, slots=3)
+                    f = js.submit(fn=len, args=((1, 2, 3),))
+                    f.add_done_callback(self.helper_check_semantics, f)
+                    self.assertEqual(3, f.result())
 
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
