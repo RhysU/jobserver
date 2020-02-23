@@ -7,7 +7,4 @@ python:
 install:
   - pip install black flake8 mypy
 script: >
-  python -m unittest -v jobserver
-  black -l 79 jobserver.py
-  flake8 jobserver.py
-  mypy --no-strict-optional jobserver.py
+  - python -m unittest -v jobserver
