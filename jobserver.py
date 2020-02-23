@@ -26,7 +26,7 @@ import collections.abc
 import copy
 import multiprocessing
 import multiprocessing.connection
-import multiprocessing.reduction
+import multiprocessing.reduction  # type: ignore
 import os
 import os.path
 import pickle
@@ -139,12 +139,23 @@ class Future(typing.Generic[T]):
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
-        assert process is not None  # None after Process.join(...)
-        assert connection is not None  # None after recv/Connection.close(...)
-        self._process = process
-        self._connection = connection
-        self._wrapper = None
-        self._callbacks = []  # Tuples per when_done, _issue_callbacks
+        # Becomes None after Process.join(...)
+        assert process is not None
+        self._process = (
+            process
+        )  # type: typing.Optional[multiprocessing.Process]
+
+        # Becomes None after recv/Connection.close(...)
+        assert connection is not None
+        self._connection = (
+            connection
+        )  # type: typing.Optional[multiprocessing.connection.Connection]
+
+        # Becomes non-None after result is obtained
+        self._wrapper = None  # type: typing.Optional[Wrapper]
+
+        # Populated by calls to when_done(...)
+        self._callbacks = []  # type: typing.List[tuple]
 
     def when_done(
         self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
@@ -369,7 +380,7 @@ class Jobserver:
         del timeout
 
         # Acquire the requested tokens or raise Blocked when impossible
-        tokens = []
+        tokens = []  # type: typing.List[int]
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         while True:
             # (1) Eagerly clean up any completed work hence issuing callbacks
@@ -475,7 +486,6 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
-# TODO Clean bill of type hinting health from mypy.
 
 
 class JobserverTest(unittest.TestCase):
@@ -716,7 +726,7 @@ class JobserverTest(unittest.TestCase):
                 kwargs = [
                     dict(block=True, callbacks=True, timeout=None),
                     dict(block=True, callbacks=True, timeout=1000),
-                ]
+                ]  # type: typing.List[typing.Dict[str, typing.Any]]
                 fs = [
                     js.submit(fn=len, args=("x" * i,), **(kwargs[i % 2]))
                     for i in range(10 * slots)
@@ -756,7 +766,7 @@ class JobserverTest(unittest.TestCase):
                 e = Exception("Returned by method {}".format(method))
                 f = js.submit(fn=self.helper_return, args=(e,), block=True)
                 self.assertEqual(type(e), type(f.result()))
-                self.assertEqual(e.args, f.result().args)
+                self.assertEqual(e.args, f.result().args)  # type: ignore
 
     @staticmethod
     def helper_raise(klass: type, *args: typing.Any) -> typing.NoReturn:
