@@ -4,7 +4,5 @@ python:
   - "3.6"
   - "3.7"
   - "3.8"
-install:
-  - pip install black flake8 mypy
-script: >
+script:
   - python -m unittest -v jobserver
