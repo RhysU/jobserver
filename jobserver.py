@@ -21,6 +21,8 @@ or concurrent.futures.Executor with a few differences:
     * Lastly, the API communicates when Exceptions occur within a callback.
 
 For usage, see JobserverTest located within the same file as Jobserver.
+Implementation is intended to work on CPython 3.5, 3.6, 3.7, and 3.8.
+Implementation is both PEP8 (per flake8) and typehint clean (per mypy).
 """
 import collections.abc
 import copy
@@ -103,17 +105,13 @@ class Wrapper(typing.Generic[T]):
         self._result = result
         self._raised = raised
 
-    def raised(self) -> bool:
-        """Will unwrap(...) raise an Exception?"""
-        return self._raised is not None
-
-    def unwrap(self) -> T:
+    def unwrap(self) -> typing.Optional[T]:
         """Raise any wrapped Exception otherwise return the result."""
-        if self.raised():
+        if self._raised is not None:
             raise self._raised
         return self._result
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Wrapper(result={!r}, raised={!r})".format(
             self._result, self._raised
         )
@@ -204,7 +202,8 @@ class Future(typing.Generic[T]):
                     self._wrapper = Wrapper(raised=SubmissionDied())
             except EOFError:
                 self._wrapper = Wrapper(raised=SubmissionDied())
-            assert isinstance(self._wrapper, Wrapper), "Confirm invariant"
+            assert self._wrapper is not None, "Confirm invariant"
+            assert self._process is not None, "Confirm invariant"
             self._process.join()  # Always join(...) to reclaim OS resources
             self._process = None  # Allow reclaiming via garbage collection
         else:
@@ -232,7 +231,9 @@ class Future(typing.Generic[T]):
                 except Exception as e:
                     raise CallbackRaised() from e
 
-    def result(self, block: bool = True, timeout: float = None) -> T:
+    def result(
+        self, block: bool = True, timeout: typing.Optional[float] = None
+    ) -> T:
         """
         Obtain result when ready.  Raises Blocked if result unavailable.
 
@@ -242,13 +243,14 @@ class Future(typing.Generic[T]):
         if not self.done(block=block, timeout=timeout):
             raise Blocked()
 
-        return self._wrapper.unwrap()
+        assert isinstance(self._wrapper, Wrapper)
+        return typing.cast(T, self._wrapper.unwrap())
 
-    def __copy__(self):
+    def __copy__(self) -> typing.NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
         raise NotImplementedError("Futures cannot be copied.")
 
-    def __reduce__(self):
+    def __reduce__(self) -> typing.NoReturn:
         """Disallow pickling as duplicates cannot sensibly share resources."""
         raise NotImplementedError("Futures cannot be pickled.")
 
@@ -268,7 +270,9 @@ class JobserverQueue:
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()  # Some platforms may not need
 
-    def get(self, block: bool = True, timeout: float = None) -> typing.Any:
+    def get(
+        self, block: bool = True, timeout: typing.Optional[float] = None
+    ) -> typing.Any:
         """
         Get an object from the queue raising queue.Empty if unavailable.
 
@@ -345,14 +349,14 @@ class Jobserver:
         self,
         fn: typing.Callable[..., T],
         *,
-        args: typing.Sequence = None,
-        kwargs: typing.Dict[str, typing.Any] = None,
+        args: typing.Optional[typing.Sequence] = None,
+        kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
         block: bool = True,
         callbacks: bool = True,
         consume: int = 1,
-        env: typing.Dict[str, typing.Any] = None,
-        preexec_fn: typing.Callable[[], None] = None,
-        timeout: float = None
+        env: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        preexec_fn: typing.Optional[typing.Callable[[], None]] = None,
+        timeout: typing.Optional[float] = None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -498,7 +502,6 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
-# TODO Confirm typing.Optional[...] used internally consistently
 
 
 class JobserverTest(unittest.TestCase):
