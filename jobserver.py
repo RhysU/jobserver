@@ -434,7 +434,7 @@ class Jobserver:
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
             args = tuple(args) if args else ()
-            process = self._context.Process(
+            process = self._context.Process(  # type: ignore
                 target=self._worker_entrypoint,
                 args=((send, env, preexec_fn, fn) + args),
                 kwargs=kwargs if kwargs else {},
