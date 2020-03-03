@@ -4,5 +4,12 @@ python:
   - "3.6"
   - "3.7"
   - "3.8"
+install:
+  - pip install black flake8 mypy
 script:
-  - python -m unittest -v jobserver
+  - |
+    set -e
+    python -m unittest -v jobserver
+    black --check --line-length 79 jobserver.py
+    flake8 jobserver.py
+    mypy jobserver.py
