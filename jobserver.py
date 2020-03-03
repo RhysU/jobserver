@@ -350,23 +350,31 @@ class Jobserver:
         block: bool = True,
         callbacks: bool = True,
         consume: int = 1,
-        timeout: typing.Optional[float] = None
+        env: typing.Dict[str, typing.Any] = None,
+        preexec_fn: typing.Callable[[], None] = None,
+        timeout: float = None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
         Raises Blocked when insufficient resources available to accept work.
-        When consume == 0, no job slot is consumed by the submission.
         This method issues callbacks on completed work when callbacks is True.
         Timeout can only be specified for blocking operations.
         When specified, timeout is given in seconds and must be non-negative.
+
+        When consume == 0, no job slot is consumed by the submission.
+        Only consume == 0 or consume == 1 is permitted by the implementation.
+        When specified, the child calls os.environ.update(env) just before fn.
+        When specified, the child calls preexec_fn() just before fn(...).
+        When both are specified, os.environ is updated before preexec_fn()
         """
-        # Argument check, especially args/kwargs as misusage is easy and deadly
+        # Argument check, especially args/kwargs as misuse is easy and deadly
         assert fn is not None
         assert args is None or isinstance(args, collections.abc.Sequence)
         assert kwargs is None or isinstance(kwargs, collections.abc.Mapping)
         assert isinstance(block, bool)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
+        assert env is None or isinstance(env, collections.abc.Mapping)
 
         # Convert timeout into concrete deadline then defensively drop timeout
         if timeout is None:
@@ -424,7 +432,7 @@ class Jobserver:
             args = tuple(args) if args else ()
             process = self._context.Process(
                 target=self._worker_entrypoint,
-                args=((send, fn) + args),
+                args=((send, env, preexec_fn, fn) + args),
                 kwargs=kwargs if kwargs else {},
                 daemon=False,
             )
@@ -460,7 +468,7 @@ class Jobserver:
         return future
 
     @staticmethod
-    def _worker_entrypoint(send, fn, *args, **kwargs) -> None:
+    def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
         # Absent an always well-defined result the following finally
         # block may complain that "result" is unbound on, e.g, SIGKILL.
         # That is, the need for 'result = None' below is wildly unintuitive.
@@ -469,6 +477,10 @@ class Jobserver:
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception.
         try:
+            if env:
+                os.environ.update(env)
+            if preexec_fn:
+                preexec_fn()
             result = Wrapper(result=fn(*args, **kwargs))
         except Exception as exception:
             result = Wrapper(raised=exception)
@@ -486,6 +498,7 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
+# TODO Confirm typing.Optional[...] used internally consistently
 
 
 class JobserverTest(unittest.TestCase):
@@ -655,12 +668,13 @@ class JobserverTest(unittest.TestCase):
         """Confirm increasingly large objects can be processed."""
         for method in multiprocessing.get_all_start_methods():
             context = multiprocessing.get_context(method)
-            js = Jobserver(context=context, slots=1)
-            for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
-                with self.subTest(size=size):
-                    f = js.submit(fn=bytearray, args=(size,))
-                    x = f.result()
-                    self.assertEqual(len(x), size)
+            with self.subTest(method=method):
+                js = Jobserver(context=context, slots=1)
+                for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
+                    with self.subTest(size=size):
+                        f = js.submit(fn=bytearray, args=(size,))
+                        x = f.result()
+                        self.assertEqual(len(x), size)
 
     @staticmethod
     def helper_block(path: str, timeout: float) -> float:
@@ -712,6 +726,60 @@ class JobserverTest(unittest.TestCase):
                     # which is compared with the minimum stalled time.
                     self.assertGreater(f.result(block=True), timeout)
                     self.assertGreater(f.result(block=False), timeout)
+
+    # Uses "SENTINEL", not None, because None handling is tested elsewhere
+    @staticmethod
+    def helper_envget(key: str) -> typing.Optional[str]:
+        """Retrieve os.environ.get(key, "SENTINEL")."""
+        return os.environ.get(key, "SENTINEL")
+
+    @staticmethod
+    def helper_envset(key: str, value: str) -> None:
+        """Sets os.environ[key] = value."""
+        os.environ[key] = value
+
+    @staticmethod
+    def helper_preexec_fn() -> None:
+        """Mutates os.environ so that the change can be observed."""
+        os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
+
+    def test_environ(self) -> None:
+        """Confirm sub-process environment is modifiable via submit(...)."""
+        # Precondition: key must not be in environment
+        key = "JOBSERVER_TEST_ENVIRON"
+        self.assertIsNone(os.environ.get(key, None))
+
+        # Test observability of changes to the environment
+        for method in multiprocessing.get_all_start_methods():
+            context = multiprocessing.get_context(method)
+            js = Jobserver(context=context, slots=1)
+            with self.subTest(method=method):
+                # Notice f sets, g confirms unset, and h re-sets they key.
+                # Notice that i then uses preexec_fn, not env, to set the key.
+                # Then j uses both to confirm env updated before preexec_fn.
+                f = js.submit(
+                    fn=self.helper_envget, args=(key,), env={key: "5678"}
+                )
+                g = js.submit(fn=self.helper_envget, args=(key,), env={})
+                h = js.submit(
+                    fn=self.helper_envget, args=(key,), env={key: "1234"}
+                )
+                i = js.submit(
+                    fn=self.helper_envget,
+                    args=(key,),
+                    preexec_fn=self.helper_preexec_fn,
+                )
+                j = js.submit(
+                    fn=self.helper_envget,
+                    args=(key,),
+                    preexec_fn=self.helper_preexec_fn,
+                    env={key: "OVERWRITTEN"},
+                )
+                self.assertEqual("PREEXEC_FN", j.result())
+                self.assertEqual("PREEXEC_FN", i.result())
+                self.assertEqual("1234", h.result())
+                self.assertEqual("SENTINEL", g.result())
+                self.assertEqual("5678", f.result())
 
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
