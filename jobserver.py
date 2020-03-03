@@ -314,7 +314,7 @@ class Jobserver:
         When not provided, context defaults to multiprocessing.get_context().
         When not provided, slots defaults to context.cpu_count().
         """
-        # Prepare required resources ensuring their LIFO-ordered tear down
+        # Prepare required resources
         if context is None:
             context = multiprocessing.get_context()
         self._context = context
