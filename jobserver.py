@@ -18,6 +18,7 @@ or concurrent.futures.Executor with a few differences:
       more 3rd party libraries.
     * Fourth, Futures are eagerly scanned to quickly reclaim resources.
     * Fifth, Futures can detect when a child process died unexpectedly.
+    * Sixth, the user can specify additional work acceptance criteria.
     * Lastly, the API communicates when Exceptions occur within a callback.
 
 For usage, see JobserverTest located within the same file as Jobserver.
@@ -365,6 +366,9 @@ class Jobserver:
         consume: int = 1,
         env: typing.Optional[typing.Dict[str, typing.Any]] = None,
         preexec_fn: typing.Optional[typing.Callable[[], None]] = None,
+        sleep_seconds: typing.Optional[
+            typing.Callable[[], typing.Optional[float]]
+        ] = None,
         timeout: typing.Optional[float] = None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
@@ -379,6 +383,12 @@ class Jobserver:
         When specified, the child calls os.environ.update(env) just before fn.
         When specified, the child calls preexec_fn() just before fn(...).
         When both are specified, os.environ is updated before preexec_fn()
+
+        Optional sleep_seconds() permits injecting additional logic as
+        to when a slot may be consumed.  For example, one can accept work
+        only when sufficient RAM is available.  Function sleep_seconds()
+        should either return None when work is acceptable or return the
+        non-negative number of seconds for which this process should sleep.
         """
         # Argument check, especially args/kwargs as misuse is easy and deadly
         assert fn is not None
@@ -413,16 +423,26 @@ class Jobserver:
             if len(tokens) >= consume:
                 break
 
+            # (3) When sleep_seconds() vetoes new work sleep then GOTO (1)
+            # unless sleeping would push past a blocking timeout threshold.
+            seconds = None if sleep_seconds is None else sleep_seconds()
+            if seconds is not None:
+                assert seconds >= 0.0, "Invariant for sleep_seconds()"
+                if not block or time.monotonic() + seconds > deadline:
+                    raise Blocked()
+                time.sleep(seconds)
+                continue
+
             try:
-                # (3) If any slot immediately available grab then GOTO (1)
+                # (4) If any slot immediately available grab then GOTO (1)
                 tokens.append(self._slots.get(block=False, timeout=None))
                 continue
             except queue.Empty:
-                # (4) Only report failure in (3) non-blocking or deadline hit
-                if not block or time.monotonic() >= deadline:
+                # (5) Only report failure in (3) non-blocking or deadline hit
+                if not block or time.monotonic() > deadline:
                     raise Blocked()
 
-            # (5) Block until either some work completes or deadline hit.
+            # (6) Block until either some work completes or deadline hit.
             # (Work completion might be due to some grandchild restoring slots
             # which this process cannot observe via self._future_sentinels!)
             # Beware that completed work will require callbacks at step (1)
@@ -512,6 +532,7 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
+# TODO Unit tests for new sleep_seconds() functionality.
 
 
 class JobserverTest(unittest.TestCase):
