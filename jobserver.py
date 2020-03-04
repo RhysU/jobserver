@@ -320,14 +320,15 @@ class Jobserver:
         When not provided, context defaults to multiprocessing.get_context().
         As shorthand, multiprocessing.get_context(string) is used for a string.
 
-        When not provided, slots defaults to context.cpu_count().
+        When not provided, slots defaults to len(os.sched_getaffinity(0))
+        which reports the number of usable CPUs for the current process.
         """
         # Prepare required resources
         if context is None or isinstance(context, str):
             context = multiprocessing.get_context(method=context)
         self._context = context
         if slots is None:
-            slots = self._context.cpu_count()
+            slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
         assert isinstance(slots, int) and slots >= 1
         self._slots = JobserverQueue(context=self._context)
         self._future_sentinels = {}  # type: typing.Dict[Future, int]
