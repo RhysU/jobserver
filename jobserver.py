@@ -309,18 +309,22 @@ class Jobserver:
 
     def __init__(
         self,
-        context: typing.Optional[multiprocessing.context.BaseContext] = None,
+        context: typing.Union[
+            None, str, multiprocessing.context.BaseContext
+        ] = None,
         slots: typing.Optional[int] = None,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
 
         When not provided, context defaults to multiprocessing.get_context().
+        As shorthand, multiprocessing.get_context(string) is used for a string.
+
         When not provided, slots defaults to context.cpu_count().
         """
         # Prepare required resources
-        if context is None:
-            context = multiprocessing.get_context()
+        if context is None or isinstance(context, str):
+            context = multiprocessing.get_context(method=context)
         self._context = context
         if slots is None:
             slots = self._context.cpu_count()
@@ -639,8 +643,7 @@ class JobserverTest(unittest.TestCase):
         """Inside a Future's callback the Future reports it is done."""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
+                js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
                 f.when_done(self.helper_check_semantics, f)
                 self.assertEqual(3, f.result())
@@ -649,8 +652,7 @@ class JobserverTest(unittest.TestCase):
         """Copying and pickling of Futures is explicitly disallowed."""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
+                js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
                 # Cannot copy
                 with self.assertRaises(NotImplementedError):
@@ -670,9 +672,8 @@ class JobserverTest(unittest.TestCase):
     def test_large_objects(self) -> None:
         """Confirm increasingly large objects can be processed."""
         for method in multiprocessing.get_all_start_methods():
-            context = multiprocessing.get_context(method)
             with self.subTest(method=method):
-                js = Jobserver(context=context, slots=1)
+                js = Jobserver(context=method, slots=1)
                 for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
                     with self.subTest(size=size):
                         f = js.submit(fn=bytearray, args=(size,))
@@ -693,8 +694,7 @@ class JobserverTest(unittest.TestCase):
         for method in multiprocessing.get_all_start_methods():
             for check_done in (True, False):
                 with self.subTest(method=method, check_done=check_done):
-                    context = multiprocessing.get_context(method)
-                    js = Jobserver(context=context, slots=1)
+                    js = Jobserver(context=method, slots=1)
                     timeout = 0.1
                     # Future f cannot complete until file t is removed
                     with tempfile.NamedTemporaryFile() as t:
@@ -754,8 +754,7 @@ class JobserverTest(unittest.TestCase):
 
         # Test observability of changes to the environment
         for method in multiprocessing.get_all_start_methods():
-            context = multiprocessing.get_context(method)
-            js = Jobserver(context=context, slots=1)
+            js = Jobserver(context=method, slots=1)
             with self.subTest(method=method):
                 # Notice f sets, g confirms unset, and h re-sets they key.
                 # Notice that i then uses preexec_fn, not env, to set the key.
@@ -817,8 +816,7 @@ class JobserverTest(unittest.TestCase):
         """None can be returned from a Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
+                js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=self.helper_none, args=(), block=True)
                 self.assertIsNone(f.result())
 
@@ -832,8 +830,7 @@ class JobserverTest(unittest.TestCase):
         """An Exception can be returned, not raised, from a Future?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
+                js = Jobserver(context=method, slots=3)
                 e = Exception("Returned by method {}".format(method))
                 f = js.submit(fn=self.helper_return, args=(e,), block=True)
                 self.assertEqual(type(e), type(f.result()))
@@ -852,8 +849,7 @@ class JobserverTest(unittest.TestCase):
                 mutable = [0]
 
                 # Prepare work interleaving exceptions and success cases
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
+                js = Jobserver(context=method, slots=3)
 
                 # Confirm exception is raised repeatedly
                 f = js.submit(
@@ -880,8 +876,7 @@ class JobserverTest(unittest.TestCase):
         """Future.done() raises Exceptions thrown while processing work?"""
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
-                js = Jobserver(context=context, slots=3)
+                js = Jobserver(context=method, slots=3)
 
                 # Calling done() repeatedly correctly reports multiple errors
                 f = js.submit(fn=len, args=(("hello",)), block=True)
