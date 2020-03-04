@@ -22,7 +22,7 @@ or concurrent.futures.Executor with a few differences:
 
 For usage, see JobserverTest located within the same file as Jobserver.
 Implementation is intended to work on CPython 3.5, 3.6, 3.7, and 3.8.
-Implementation is both PEP8 (per flake8) and typehint clean (per mypy).
+Implementation is both PEP8 (per flake8) and type-hinting clean (per mypy).
 """
 import collections.abc
 import copy
@@ -202,8 +202,8 @@ class Future(typing.Generic[T]):
                     self._wrapper = Wrapper(raised=SubmissionDied())
             except EOFError:
                 self._wrapper = Wrapper(raised=SubmissionDied())
-            assert self._wrapper is not None, "Confirm invariant"
-            assert self._process is not None, "Confirm invariant"
+            assert self._wrapper is not None, "Confirm logic invariant"
+            assert self._process is not None, "Confirm type hinting invariant"
             self._process.join()  # Always join(...) to reclaim OS resources
             self._process = None  # Allow reclaiming via garbage collection
         else:
@@ -269,6 +269,10 @@ class JobserverQueue:
         self._reader, self._writer = context.Pipe(duplex=False)
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()  # Some platforms may not need
+
+    def fileno(self) -> int:
+        """The file descriptor on which to wait(...) to get(...) new data."""
+        return self._reader.fileno()
 
     def get(
         self, block: bool = True, timeout: typing.Optional[float] = None
@@ -418,14 +422,15 @@ class Jobserver:
                 if not block or time.monotonic() >= deadline:
                     raise Blocked()
 
-            # (5) Block until either some work completes or deadline hit
+            # (5) Block until either some work completes or deadline hit.
+            # (Work completion might be due to some grandchild restoring slots
+            # which this process cannot observe via self._future_sentinels!)
             # Beware that completed work will require callbacks at step (1)
             assert block, "Sanity check control flow"
-            if self._future_sentinels:
-                multiprocessing.connection.wait(
-                    list(self._future_sentinels.values()),
-                    timeout=deadline - time.monotonic(),
-                )
+            multiprocessing.connection.wait(
+                [self._slots.fileno()] + list(self._future_sentinels.values()),
+                timeout=deadline - time.monotonic(),
+            )
 
         # Neither block nor deadline are relevant below
         del block, deadline
