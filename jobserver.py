@@ -438,6 +438,7 @@ class Jobserver:
                     raise Blocked()
                 time.sleep(seconds)
                 continue
+            del seconds
 
             try:
                 # (4) If any slot immediately available grab then GOTO (1)
