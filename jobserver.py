@@ -193,9 +193,8 @@ class Future(typing.Generic[T]):
             return True
 
         # Attempt to read the result Wrapper from the underlying Connection
-        # (possibly converting Queue's timeout semantic to Connection.poll).
+        # (note conversion of Queue's timeout semantic for Connection.poll).
         # Any EOFError is treated as an unexpected hang up from the other end.
-        # Confusingly, as a Wrapper is anticipated, None news is bad news.
         assert self._connection is not None
         if self._connection.poll(timeout=timeout if block else 0):
             try:
@@ -204,6 +203,8 @@ class Future(typing.Generic[T]):
                     self._wrapper = Wrapper(raised=SubmissionDied())
             except EOFError:
                 self._wrapper = Wrapper(raised=SubmissionDied())
+
+            # Confusingly, as a Wrapper is anticipated, None news is bad news.
             assert self._wrapper is not None, "Confirm logic invariant"
             assert self._process is not None, "Confirm type hinting invariant"
             self._process.join()  # Always join(...) to reclaim OS resources
