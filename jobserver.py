@@ -291,7 +291,7 @@ class JobserverQueue:
                 raise queue.Empty
         return multiprocessing.reduction.ForkingPickler.loads(recv)
 
-    def put_nowait(self, obj: typing.Any) -> None:
+    def put_nowait(self, obj) -> None:
         """
         Put an object into the queue.
 
@@ -349,10 +349,7 @@ class Jobserver:
             self._slots.put_nowait(i)
 
     def __call__(
-        self,
-        fn: typing.Callable[..., T],
-        *args: typing.Any,
-        **kwargs: typing.Any
+        self, fn: typing.Callable[..., T], *args, **kwargs
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -869,7 +866,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(e.args, f.result().args)  # type: ignore
 
     @staticmethod
-    def helper_raise(klass: type, *args: typing.Any) -> typing.NoReturn:
+    def helper_raise(klass: type, *args) -> typing.NoReturn:
         """Helper raising the requested Exception class."""
         raise klass(*args)
 
