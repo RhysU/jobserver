@@ -27,6 +27,7 @@ Implementation is both PEP8 (per flake8) and type-hinting clean (per mypy).
 """
 import collections.abc
 import copy
+import itertools
 import multiprocessing
 import multiprocessing.connection
 import multiprocessing.reduction  # type: ignore
@@ -430,7 +431,7 @@ class Jobserver:
             # Unless sleeping would push past a blocking timeout threshold!
             seconds = sleep_fn()
             if seconds is not None:
-                assert seconds >= 0.0, "Invariant for sleep_fn()"
+                seconds = min(seconds, 1.0e-2)  # 10 millisecond resolution
                 if not block or time.monotonic() + seconds > deadline:
                     raise Blocked()
                 time.sleep(seconds)
@@ -534,7 +535,6 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
-# TODO Unit tests for new sleep_fn() functionality.
 
 
 class JobserverTest(unittest.TestCase):
@@ -979,6 +979,29 @@ class JobserverTest(unittest.TestCase):
                     g.result()
                 with self.assertRaises(SubmissionDied):
                     f.result()
+
+    def test_sleep_fn(self) -> None:
+        """Confirm sleep_fn(...) invoked and handled per documentation."""
+        for method in multiprocessing.get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+
+                # Confirm negative sleep is detectable with fn never called
+                with self.assertRaises(ValueError):
+                    js.submit(fn=len, sleep_fn=lambda: -1.0)
+
+                # Confirm sleep_fn(...) returning zero can proceed
+                zs = iter(itertools.cycle((0, None)))
+                f = js.submit(fn=len, args=((1,),), sleep_fn=lambda: next(zs))
+
+                # Confirm sleep_fn(...) returning finite sleep can proceed
+                gs = iter(itertools.cycle((0.1, 0.05, None)))
+                g = js.submit(fn=len, args=((),), sleep_fn=lambda: next(gs))
+
+                # Confirm as expected.  Importantly, results not previously
+                # retrieved implying above submissions finalized results.
+                self.assertEqual(1, f.result())
+                self.assertEqual(0, g.result())
 
     @classmethod
     def helper_recurse(cls, js: Jobserver, maxdepth: int) -> int:
