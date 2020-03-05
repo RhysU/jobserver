@@ -372,9 +372,7 @@ class Jobserver:
         consume: int = 1,
         env: typing.Iterable = (),  # Iterable[Tuple[str,str]] breaks!
         preexec_fn: typing.Callable[[], None] = noop,
-        sleep_seconds: typing.Optional[
-            typing.Callable[[], typing.Optional[float]]
-        ] = None,
+        sleep_fn: typing.Callable[[], typing.Optional[float]] = noop,
         timeout: typing.Optional[float] = None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
@@ -390,9 +388,9 @@ class Jobserver:
         When specified, the child calls preexec_fn() just before fn(...).
         When both are specified, os.environ is updated before preexec_fn()
 
-        Optional sleep_seconds() permits injecting additional logic as
+        Optional sleep_fn() permits injecting additional logic as
         to when a slot may be consumed.  For example, one can accept work
-        only when sufficient RAM is available.  Function sleep_seconds()
+        only when sufficient RAM is available.  Function sleep_fn()
         should either return None when work is acceptable or return the
         non-negative number of seconds for which this process should sleep.
         """
@@ -405,6 +403,7 @@ class Jobserver:
         assert isinstance(consume, int)
         assert isinstance(env, collections.abc.Iterable)
         assert preexec_fn is not None
+        assert sleep_fn is not None
 
         # Convert timeout into concrete deadline then defensively drop timeout
         if timeout is None:
@@ -430,11 +429,11 @@ class Jobserver:
             if len(tokens) >= consume:
                 break
 
-            # (3) When sleep_seconds() vetoes new work sleep then GOTO (1)
-            # unless sleeping would push past a blocking timeout threshold.
-            seconds = None if sleep_seconds is None else sleep_seconds()
+            # (3) When sleep_fn() vetoes new work sleep then GOTO (1).
+            # Unless sleeping would push past a blocking timeout threshold!
+            seconds = sleep_fn()
             if seconds is not None:
-                assert seconds >= 0.0, "Invariant for sleep_seconds()"
+                assert seconds >= 0.0, "Invariant for sleep_fn()"
                 if not block or time.monotonic() + seconds > deadline:
                     raise Blocked()
                 time.sleep(seconds)
@@ -537,7 +536,7 @@ class Jobserver:
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
 # TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
-# TODO Unit tests for new sleep_seconds() functionality.
+# TODO Unit tests for new sleep_fn() functionality.
 
 
 class JobserverTest(unittest.TestCase):
