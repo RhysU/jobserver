@@ -364,7 +364,7 @@ class Jobserver:
         block: bool = True,
         callbacks: bool = True,
         consume: int = 1,
-        env: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        env: typing.Iterable = (),  # Iterable[Tuple[str,str]] breaks!
         preexec_fn: typing.Optional[typing.Callable[[], None]] = None,
         sleep_seconds: typing.Optional[
             typing.Callable[[], typing.Optional[float]]
@@ -397,7 +397,7 @@ class Jobserver:
         assert isinstance(block, bool)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
-        assert env is None or isinstance(env, collections.abc.Mapping)
+        assert isinstance(env, collections.abc.Iterable)
 
         # Convert timeout into concrete deadline then defensively drop timeout
         if timeout is None:
@@ -511,8 +511,7 @@ class Jobserver:
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception.
         try:
-            if env:
-                os.environ.update(env)
+            os.environ.update(env)
             if preexec_fn:
                 preexec_fn()
             result = Wrapper(result=fn(*args, **kwargs))
