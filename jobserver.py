@@ -999,7 +999,7 @@ class JobserverTest(unittest.TestCase):
                 g = js.submit(fn=len, args=((),), sleep_fn=lambda: next(gs))
 
                 # Confirm repeated sleeping can cause a timeout to occur.
-                # Again, fn is never called as sleep_fn vetoes the invocation.
+                # Note fn is never called as sleep_fn vetoes the invocation.
                 hs = iter(itertools.cycle((0.1,)))
                 with self.assertRaises(Blocked):
                     js.submit(fn=len, sleep_fn=lambda: next(hs), timeout=0.35)
