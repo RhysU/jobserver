@@ -271,8 +271,8 @@ class JobserverQueue:
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()  # Some platforms may not need
 
-    def fileno(self) -> int:
-        """The file descriptor on which to wait(...) to get(...) new data."""
+    def waitable(self) -> int:
+        """The object on which to wait(...) to get(...) new data."""
         return self._reader.fileno()
 
     def get(
@@ -455,7 +455,8 @@ class Jobserver:
             # Beware that completed work will require callbacks at step (1)
             assert block, "Sanity check control flow"
             multiprocessing.connection.wait(
-                [self._slots.fileno()] + list(self._future_sentinels.values()),
+                (self._slots.waitable(),)
+                + tuple(self._future_sentinels.values()),
                 timeout=deadline - time.monotonic(),
             )
 
@@ -764,7 +765,7 @@ class JobserverTest(unittest.TestCase):
 
     # Uses "SENTINEL", not None, because None handling is tested elsewhere
     @staticmethod
-    def helper_envget(key: str) -> typing.Optional[str]:
+    def helper_envget(key: str) -> str:
         """Retrieve os.environ.get(key, "SENTINEL")."""
         return os.environ.get(key, "SENTINEL")
 
