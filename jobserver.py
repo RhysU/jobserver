@@ -365,7 +365,7 @@ class Jobserver:
         self,
         fn: typing.Callable[..., T],
         *,
-        args: typing.Optional[typing.Sequence] = None,
+        args: typing.Sequence = (),
         kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
         block: bool = True,
         callbacks: bool = True,
@@ -396,7 +396,7 @@ class Jobserver:
         """
         # Argument check, especially args/kwargs as misuse is easy and deadly
         assert fn is not None
-        assert args is None or isinstance(args, collections.abc.Sequence)
+        assert isinstance(args, collections.abc.Sequence)
         assert kwargs is None or isinstance(kwargs, collections.abc.Mapping)
         assert isinstance(block, bool)
         assert isinstance(callbacks, bool)
@@ -471,10 +471,9 @@ class Jobserver:
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
-            args = tuple(args) if args else ()
             process = self._context.Process(  # type: ignore
                 target=self._worker_entrypoint,
-                args=((send, env, preexec_fn, fn) + args),
+                args=((send, env, preexec_fn, fn) + tuple(args)),
                 kwargs=kwargs if kwargs else {},
                 daemon=False,
             )
