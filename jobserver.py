@@ -302,6 +302,12 @@ class JobserverQueue:
             self._writer.send_bytes(send)
 
 
+# Appears as a default argument in Jobserver thus simplifying some logic.
+def noop(*args, **kwargs) -> None:
+    """A "no nothing" function conformant to PEP-559."""
+    return None
+
+
 # Throughout, put_nowait(...) denotes places where blocking should not happen.
 class Jobserver:
     """
@@ -365,7 +371,7 @@ class Jobserver:
         callbacks: bool = True,
         consume: int = 1,
         env: typing.Iterable = (),  # Iterable[Tuple[str,str]] breaks!
-        preexec_fn: typing.Optional[typing.Callable[[], None]] = None,
+        preexec_fn: typing.Callable[[], None] = noop,
         sleep_seconds: typing.Optional[
             typing.Callable[[], typing.Optional[float]]
         ] = None,
@@ -398,6 +404,7 @@ class Jobserver:
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
         assert isinstance(env, collections.abc.Iterable)
+        assert preexec_fn is not None
 
         # Convert timeout into concrete deadline then defensively drop timeout
         if timeout is None:
@@ -512,8 +519,7 @@ class Jobserver:
         # in degenerate case where client code returns an Exception.
         try:
             os.environ.update(env)
-            if preexec_fn:
-                preexec_fn()
+            preexec_fn()
             result = Wrapper(result=fn(*args, **kwargs))
         except Exception as exception:
             result = Wrapper(raised=exception)
