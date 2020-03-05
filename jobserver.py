@@ -363,7 +363,7 @@ class Jobserver:
         fn: typing.Callable[..., T],
         *,
         args: typing.Sequence = (),
-        kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+        kwargs: typing.Optional[typing.Mapping[str, typing.Any]] = None,
         block: bool = True,
         callbacks: bool = True,
         consume: int = 1,
