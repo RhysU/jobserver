@@ -475,9 +475,9 @@ class Jobserver:
         # This choice causes token release only after future.process.join()
         # from within Future.done().  It keeps _worker_entrypoint() simple.
         # Restoring tokens MUST occur before Future unregistered (just below).
-        while tokens:
+        if tokens:
             future.when_done(
-                self._slots.put, tokens.pop(0), _Future__internal=True
+                self._slots.put, *tokens, _Future__internal=True
             )
 
         # When a Future has completed, no longer track it within Jobserver.
