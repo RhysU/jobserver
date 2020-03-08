@@ -26,6 +26,7 @@ For usage, see JobserverTest located within the same file as Jobserver.
 Implementation is intended to work on CPython 3.5, 3.6, 3.7, and 3.8.
 Implementation is both PEP8 (per flake8) and type-hinting clean (per mypy).
 """
+import abc
 import collections.abc
 import copy
 import itertools
@@ -92,35 +93,45 @@ class SubmissionDied(Exception):
     pass
 
 
-# Down the road, Wrapper might be extended with "big object"
-# support that chooses to place data in shared memory or on disk.
-# Likely only necessary if/when sending results via pipe breaks down.
-class Wrapper(typing.Generic[T]):
+class Wrapper(abc.ABC, typing.Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
-    __slots__ = ("_result", "_raised")
+    __slots__ = ()
 
-    def __init__(
-        self,
-        *,
-        result: typing.Optional[T] = None,
-        raised: typing.Optional[Exception] = None
-    ) -> None:
-        """Provide just one of result or raised."""
-        assert raised is None or result is None
+    @abc.abstractmethod
+    def unwrap(self) -> T:
+        """Raise any wrapped Exception otherwise return some result."""
+        raise NotImplementedError()
+
+
+# Down the road, ResultWrapper might be extended with "big object"
+# support that chooses to place data in shared memory or on disk.
+# Likely only necessary if/when sending results via pipe breaks down.
+class ResultWrapper(Wrapper[T]):
+    """Specialization of Wrapper for when a result is available."""
+
+    __slots__ = ("_result",)
+
+    def __init__(self, result: T) -> None:
+        """Wrap the provided result for use during unwrap()."""
         self._result = result
-        self._raised = raised
 
-    def unwrap(self) -> typing.Optional[T]:
-        """Raise any wrapped Exception otherwise return the result."""
-        if self._raised is not None:
-            raise self._raised
+    def unwrap(self) -> T:
         return self._result
 
-    def __repr__(self) -> str:
-        return "Wrapper(result={!r}, raised={!r})".format(
-            self._result, self._raised
-        )
+
+class ExceptionWrapper(Wrapper[T]):
+    """Specialization of Wrapper for when an Exception has been raised."""
+
+    __slots__ = ("_raised",)
+
+    def __init__(self, raised: Exception) -> None:
+        """Wrap the provided Exception for use during unwrap()."""
+        assert isinstance(raised, Exception)
+        self._raised = raised
+
+    def unwrap(self) -> typing.NoReturn:
+        raise self._raised
 
 
 class Future(typing.Generic[T]):
@@ -189,7 +200,7 @@ class Future(typing.Generic[T]):
             self._wrapper = self._connection.recv()
             assert isinstance(self._wrapper, Wrapper)
         except EOFError:
-            self._wrapper = Wrapper(raised=SubmissionDied())
+            self._wrapper = ExceptionWrapper(SubmissionDied())
 
         # Now join(...) and set to None thus reclaiming OS/Python resources.
         assert self._process is not None
@@ -228,7 +239,7 @@ class Future(typing.Generic[T]):
             raise Blocked()
 
         assert self._wrapper is not None
-        return typing.cast(T, self._wrapper.unwrap())
+        return self._wrapper.unwrap()
 
     def __copy__(self) -> typing.NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
@@ -475,19 +486,15 @@ class Jobserver:
 
     @staticmethod
     def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
-        # Absent an always well-defined result the following finally
-        # block may complain that "result" is unbound on, e.g, SIGKILL.
-        # That is, the need for 'result = None' below is wildly unintuitive.
-        result = None
-
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception.
+        result = None  # type: typing.Optional[Wrapper[typing.Any]]
         try:
             os.environ.update(env)
             preexec_fn()
-            result = Wrapper(result=fn(*args, **kwargs))
+            result = ResultWrapper(fn(*args, **kwargs))
         except Exception as exception:
-            result = Wrapper(raised=exception)
+            result = ExceptionWrapper(exception)
         finally:
             # Ignore broken pipes which naturally occur when the destination
             # terminates (or otherwise hangs up) before the result is ready.
