@@ -126,7 +126,6 @@ class Future(typing.Generic[T]):
     Futures report if a submission is done(), its result(), and may
     additionally be used to register callbacks issued at completion.
     Futures can be neither copied nor pickled.
-    Throughout API, arguments block/timeout follow queue.Queue semantics.
     """
 
     __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
@@ -171,29 +170,21 @@ class Future(typing.Generic[T]):
         if self._connection is None:
             self._issue_callbacks()
 
-    def done(
-        self, block: bool = True, timeout: typing.Optional[float] = None
-    ) -> bool:
+    def done(self, timeout: typing.Optional[float] = None) -> bool:
         """
         Is result ready?  Never raises Blocked instead returning False.
 
-        Argument timeout can only be specified for blocking operations.
-        When specified, timeout is given in seconds and must be non-negative.
+        Timeout is given in seconds with None meaning to block indefinitely.
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Sanity check requested block/timeout
-        if timeout is not None:
-            assert block, "Non-blocking operation cannot specify a timeout"
-            assert timeout >= 0, "Blocking allows only a non-negative timeout"
-
         # Multiple calls to done() may be required to issue all callbacks.
         if self._connection is None:
             self._issue_callbacks()
             return True
 
         # Possibly wait until a result is available for reading.
-        if not self._connection.poll(timeout=timeout if block else 0):
+        if not self._connection.poll(timeout=timeout):
             return False
 
         # Attempt to read the result Wrapper from the underlying Connection
@@ -229,16 +220,15 @@ class Future(typing.Generic[T]):
                 except Exception as e:
                     raise CallbackRaised() from e
 
-    def result(
-        self, block: bool = True, timeout: typing.Optional[float] = None
-    ) -> T:
+    def result(self, timeout: typing.Optional[float] = None) -> T:
         """
         Obtain result when ready.  Raises Blocked if result unavailable.
 
+        Timeout is given in seconds with None meaning to block indefinitely.
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        if not self.done(block=block, timeout=timeout):
+        if not self.done(timeout=timeout):
             raise Blocked()
 
         assert self._wrapper is not None
@@ -257,7 +247,7 @@ class JobserverQueue:
     """
     A SimpleQueue-variant providing the minimal semantics Jobserver requires.
 
-    Vanilla multiprocessing.SimpleQueue lacks block/timeout on get(...).
+    Vanilla multiprocessing.SimpleQueue lacks timeout on get(...).
     Vanilla multiprocessing.Queue has wildly undesired threading machinery.
     """
 
@@ -272,17 +262,14 @@ class JobserverQueue:
         """The object on which to wait(...) to get(...) new data."""
         return self._reader.fileno()
 
-    def get(
-        self, block: bool = True, timeout: typing.Optional[float] = None
-    ) -> typing.Any:
+    def get(self, timeout: typing.Optional[float] = None) -> typing.Any:
         """
         Get an object from the queue raising queue.Empty if unavailable.
 
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
-        assert block or timeout is None, "block == False cannot have timeout"
         with self._read_lock:
-            if self._reader.poll(timeout=timeout if block else 0.0):
+            if self._reader.poll(timeout=timeout):
                 recv = self._reader.recv_bytes()
             else:
                 raise queue.Empty
@@ -306,11 +293,7 @@ def noop(*args, **kwargs) -> None:
 
 
 class Jobserver:
-    """
-    A Jobserver exposing a Future interface built atop multiprocessing.
-
-    Throughout API, arguments block/timeout follow queue.Queue semantics.
-    """
+    """A Jobserver exposing a Future interface built atop multiprocessing."""
 
     __slots__ = ("_context", "_slots", "_future_sentinels")
 
@@ -360,7 +343,6 @@ class Jobserver:
         *,
         args: typing.Sequence = (),
         kwargs: typing.Optional[typing.Mapping[str, typing.Any]] = None,
-        block: bool = True,
         callbacks: bool = True,
         consume: int = 1,
         env: typing.Iterable = (),  # Iterable[Tuple[str,str]] breaks!
@@ -372,8 +354,7 @@ class Jobserver:
 
         Raises Blocked when insufficient resources available to accept work.
         This method issues callbacks on completed work when callbacks is True.
-        Timeout can only be specified for blocking operations.
-        When specified, timeout is given in seconds and must be non-negative.
+        Timeout is given in seconds with None meaning block indefinitely.
 
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
@@ -390,7 +371,6 @@ class Jobserver:
         assert fn is not None
         assert isinstance(args, collections.abc.Sequence)
         assert kwargs is None or isinstance(kwargs, collections.abc.Mapping)
-        assert isinstance(block, bool)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
         assert isinstance(env, collections.abc.Iterable)
@@ -403,8 +383,6 @@ class Jobserver:
             # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
             deadline = time.monotonic() + (60 * 60 * 24 * 7)  # One week
         else:
-            assert block, "Non-blocking operation cannot specify a timeout"
-            assert timeout >= 0, "Blocking allows only a non-negative timeout"
             deadline = time.monotonic() + float(timeout)
         del timeout
 
@@ -415,7 +393,7 @@ class Jobserver:
             # (1) Eagerly clean up any completed work hence issuing callbacks
             if callbacks:
                 for future in list(self._future_sentinels.keys()):
-                    future.done(block=False, timeout=None)
+                    future.done(timeout=0)
 
             # (2) Exit loop if all requested resources have been acquired
             if len(tokens) >= consume:
@@ -426,7 +404,7 @@ class Jobserver:
             seconds = sleep_fn()
             if seconds is not None:
                 seconds = min(seconds, 1.0e-2)  # 10 millisecond resolution
-                if not block or time.monotonic() + seconds > deadline:
+                if time.monotonic() + seconds > deadline:
                     raise Blocked()
                 time.sleep(seconds)
                 continue
@@ -434,26 +412,25 @@ class Jobserver:
 
             try:
                 # (4) If any slot immediately available grab then GOTO (1)
-                tokens.append(self._slots.get(block=False, timeout=None))
+                tokens.append(self._slots.get(timeout=0))
                 continue
             except queue.Empty:
                 # (5) Only report failure in (3) non-blocking or deadline hit
-                if not block or time.monotonic() > deadline:
+                if time.monotonic() > deadline:
                     raise Blocked()
 
             # (6) Block until either some work completes or deadline hit.
             # (Work completion might be due to some grandchild restoring slots
             # which this process cannot observe via self._future_sentinels!)
             # Beware that completed work will require callbacks at step (1)
-            assert block, "Sanity check control flow"
             multiprocessing.connection.wait(
                 (self._slots.waitable(),)
                 + tuple(self._future_sentinels.values()),
                 timeout=deadline - time.monotonic(),
             )
 
-        # Neither block nor deadline are relevant below
-        del block, deadline
+        # Deadline is irrelevant below so defensively delete it
+        del deadline
 
         # Now, with required slots consumed, begin consuming resources:
         assert len(tokens) >= consume, "Sanity check slot acquisition"
@@ -565,26 +542,26 @@ class JobserverTest(unittest.TestCase):
                     f = js.submit(
                         fn=len,
                         args=((1, 2, 3),),
-                        block=True,
                         callbacks=False,
                         consume=1,
+                        timeout=None,
                     )
                     f.when_done(self.helper_callback, mutable, 0, 1)
                     g = js.submit(
                         fn=str,
                         kwargs=dict(object=2),
-                        block=True,
                         callbacks=False,
                         consume=1,
+                        timeout=None,
                     )
                     g.when_done(self.helper_callback, mutable, 1, 2)
                     g.when_done(self.helper_callback, mutable, 1, 3)
                     h = js.submit(
                         fn=len,
                         args=((1,),),
-                        block=True,
                         callbacks=False,
                         consume=1,
+                        timeout=None,
                     )
                     h.when_done(
                         self.helper_callback,
@@ -598,18 +575,18 @@ class JobserverTest(unittest.TestCase):
                         js.submit(
                             fn=len,
                             args=((),),
-                            block=False,
                             callbacks=False,
                             consume=1,
+                            timeout=0,
                         )
 
                     # Confirm zero-consumption requests accepted immediately
                     i = js.submit(
                         fn=len,
                         args=((1, 2, 3, 4),),
-                        block=False,
                         callbacks=False,
                         consume=0,
+                        timeout=0,
                     )
 
                     # Again, try too much work given fixed slot count
@@ -617,9 +594,9 @@ class JobserverTest(unittest.TestCase):
                         js.submit(
                             fn=len,
                             args=((),),
-                            block=False,
                             callbacks=False,
                             consume=1,
+                            timeout=0,
                         )
 
                     # Confirm results in something other than submission order
@@ -655,7 +632,7 @@ class JobserverTest(unittest.TestCase):
         mutable = [0]
 
         # Confirm that inside a callback the Future reports done()
-        self.assertTrue(f.done(block=False))
+        self.assertTrue(f.done(timeout=0))
 
         # Confirm that inside a callback additional work can be registered
         f.when_done(self.helper_callback, mutable, 0, 1)
@@ -728,32 +705,27 @@ class JobserverTest(unittest.TestCase):
                         )
                         # Because Future f is stalled, new work not accepted
                         with self.assertRaises(Blocked):
-                            js.submit(fn=len, args=("abc",), block=False)
+                            js.submit(fn=len, args=("abc",), timeout=0)
                         with self.assertRaises(Blocked):
                             js.submit(
-                                fn=len,
-                                args=("abc",),
-                                block=True,
-                                timeout=1.5 * timeout,
+                                fn=len, args=("abc",), timeout=1.5 * timeout
                             )
                         # Future f reports not done() blocking or otherwise
                         if check_done:
-                            self.assertFalse(f.done(block=False))
-                            self.assertFalse(
-                                f.done(block=True, timeout=1.5 * timeout)
-                            )
+                            self.assertFalse(f.done(timeout=0))
+                            self.assertFalse(f.done(timeout=1.5 * timeout))
                         # Future f reports no result() blocking or otherwise
                         with self.assertRaises(Blocked):
-                            f.result(block=False)
+                            f.result(timeout=0)
                         with self.assertRaises(Blocked):
-                            f.result(block=True, timeout=1.5 * timeout)
+                            f.result(timeout=1.5 * timeout)
                     # With file t removed, done() will report True
                     if check_done:
-                        self.assertTrue(f.done(block=True))
+                        self.assertTrue(f.done(timeout=None))
                     # With file t removed, result() now gives a result,
                     # which is compared with the minimum stalled time.
-                    self.assertGreater(f.result(block=True), timeout)
-                    self.assertGreater(f.result(block=False), timeout)
+                    self.assertGreater(f.result(timeout=None), timeout)
+                    self.assertGreater(f.result(timeout=0), timeout)
 
     # Uses "SENTINEL", not None, because None handling is tested elsewhere
     @staticmethod
@@ -819,8 +791,8 @@ class JobserverTest(unittest.TestCase):
 
                 # Alternate between submissions with and without timeouts
                 kwargs = [
-                    dict(block=True, callbacks=True, timeout=None),
-                    dict(block=True, callbacks=True, timeout=1000),
+                    dict(callbacks=True, timeout=None),
+                    dict(callbacks=True, timeout=1000),
                 ]  # type: typing.List[typing.Dict[str, typing.Any]]
                 fs = [
                     js.submit(fn=len, args=("x" * i,), **(kwargs[i % 2]))
@@ -829,7 +801,7 @@ class JobserverTest(unittest.TestCase):
 
                 # Confirm all work completed
                 for i, f in enumerate(fs):
-                    self.assertEqual(i, f.result(block=True))
+                    self.assertEqual(i, f.result(timeout=None))
 
     @staticmethod
     def helper_none() -> None:
@@ -842,7 +814,7 @@ class JobserverTest(unittest.TestCase):
         for method in multiprocessing.get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
-                f = js.submit(fn=self.helper_none, args=(), block=True)
+                f = js.submit(fn=self.helper_none, args=(), timeout=None)
                 self.assertIsNone(f.result())
 
     @staticmethod
@@ -857,7 +829,7 @@ class JobserverTest(unittest.TestCase):
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 e = Exception("Returned by method {}".format(method))
-                f = js.submit(fn=self.helper_return, args=(e,), block=True)
+                f = js.submit(fn=self.helper_return, args=(e,), timeout=None)
                 self.assertEqual(type(e), type(f.result()))
                 self.assertEqual(e.args, f.result().args)  # type: ignore
 
@@ -880,7 +852,7 @@ class JobserverTest(unittest.TestCase):
                 f = js.submit(
                     fn=self.helper_raise,
                     args=(ArithmeticError, "message123"),
-                    block=True,
+                    timeout=None,
                 )
                 f.when_done(self.helper_callback, mutable, 0, 1)
                 with self.assertRaises(ArithmeticError):
@@ -894,7 +866,7 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(mutable[0], 3, "Callback idempotent")
 
                 # Confirm other work processed without issue
-                g = js.submit(fn=str, kwargs=dict(object=2), block=True)
+                g = js.submit(fn=str, kwargs=dict(object=2), timeout=None)
                 self.assertEqual("2", g.result())
 
     def test_done_callback_raises(self) -> None:
@@ -904,17 +876,17 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=method, slots=3)
 
                 # Calling done() repeatedly correctly reports multiple errors
-                f = js.submit(fn=len, args=(("hello",)), block=True)
+                f = js.submit(fn=len, args=(("hello",)), timeout=None)
                 f.when_done(self.helper_raise, ArithmeticError, "123")
                 f.when_done(self.helper_raise, ZeroDivisionError, "45")
                 with self.assertRaises(CallbackRaised) as c:
-                    f.done(block=True)
+                    f.done(timeout=None)
                 self.assertIsInstance(c.exception.__cause__, ArithmeticError)
                 with self.assertRaises(CallbackRaised) as c:
-                    f.done(block=True)
+                    f.done(timeout=None)
                 self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
-                self.assertTrue(f.done(block=True))
-                self.assertTrue(f.done(block=False))
+                self.assertTrue(f.done(timeout=None))
+                self.assertTrue(f.done(timeout=0))
 
                 # After callbacks have completed, the result is available.
                 self.assertEqual(f.result(), 5)
@@ -924,7 +896,7 @@ class JobserverTest(unittest.TestCase):
                 with self.assertRaises(CallbackRaised) as c:
                     f.when_done(self.helper_raise, UnicodeError, "67")
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
-                self.assertTrue(f.done(block=False))
+                self.assertTrue(f.done(timeout=0.0))
 
                 # After callbacks have completed, result is still available.
                 self.assertEqual(f.result(), 5)
@@ -1012,11 +984,11 @@ class JobserverTest(unittest.TestCase):
             return 0
         try:
             f = js.submit(
-                fn=cls.helper_recurse, args=(js, maxdepth - 1), block=False
+                fn=cls.helper_recurse, args=(js, maxdepth - 1), timeout=0
             )
         except Blocked:
             return 0
-        return 1 + f.result(block=True)
+        return 1 + f.result(timeout=None)
 
     def test_submission_nested(self) -> None:
         """Jobserver resource limits honored during nested submissions."""
