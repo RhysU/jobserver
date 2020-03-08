@@ -152,7 +152,7 @@ class Future(typing.Generic[T]):
         )  # type: typing.Optional[multiprocessing.connection.Connection]
 
         # Becomes non-None after result is obtained
-        self._wrapper = None  # type: typing.Optional[Wrapper]
+        self._wrapper = None  # type: typing.Optional[Wrapper[T]]
 
         # Populated by calls to when_done(...)
         self._callbacks = []  # type: typing.List[tuple]
@@ -241,7 +241,7 @@ class Future(typing.Generic[T]):
         if not self.done(block=block, timeout=timeout):
             raise Blocked()
 
-        assert isinstance(self._wrapper, Wrapper)
+        assert self._wrapper is not None
         return typing.cast(T, self._wrapper.unwrap())
 
     def __copy__(self) -> typing.NoReturn:
