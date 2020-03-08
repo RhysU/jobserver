@@ -252,7 +252,7 @@ class Future(typing.Generic[T]):
 
 class JobserverQueue:
     """
-    A SimpleQueue-variant providing the minimal semantics Jobserver requires.
+    An unbounded SimpleQueue-variant providing the semantics Jobserver needs.
 
     Vanilla multiprocessing.SimpleQueue lacks timeout on get(...).
     Vanilla multiprocessing.Queue has wildly undesired threading machinery.
@@ -263,7 +263,7 @@ class JobserverQueue:
     def __init__(self, context: BaseContext) -> None:
         self._reader, self._writer = context.Pipe(duplex=False)
         self._read_lock = context.Lock()
-        self._write_lock = context.Lock()  # Some platforms may not need
+        self._write_lock = context.Lock()
 
     def waitable(self) -> int:
         """The object on which to wait(...) to get(...) new data."""
@@ -271,7 +271,7 @@ class JobserverQueue:
 
     def get(self, timeout: typing.Optional[float] = None) -> typing.Any:
         """
-        Get an object from the queue raising queue.Empty if unavailable.
+        Get one object from the queue raising queue.Empty if unavailable.
 
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
@@ -282,15 +282,17 @@ class JobserverQueue:
                 raise queue.Empty
         return ForkingPickler.loads(recv)
 
-    def put_nowait(self, obj) -> None:
+    def put(self, *args) -> None:
         """
-        Put an object into the queue.
+        Put zero or more objects into the queue, contiguously.
 
         Raises BrokenPipeError if the receiving half has hung up.
         """
-        send = ForkingPickler.dumps(obj)
-        with self._write_lock:
-            self._writer.send_bytes(send)
+        if args:
+            send = [ForkingPickler.dumps(arg) for arg in args]
+            with self._write_lock:
+                while send:
+                    self._writer.send_bytes(send.pop(0))
 
 
 # Appears as a default argument in Jobserver thus simplifying some logic.
@@ -329,8 +331,7 @@ class Jobserver:
             slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
         assert isinstance(slots, int) and slots >= 1
         self._slots = JobserverQueue(context=self._context)
-        for i in range(slots):
-            self._slots.put_nowait(i)
+        self._slots.put(*range(slots))
 
         # Tracks outstanding Futures (and wait-able sentinels)
         self._future_sentinels = {}  # type: typing.Dict[Future, int]
@@ -463,7 +464,7 @@ class Jobserver:
         except Exception:
             # Unwinding any consumed slots on unexpected errors
             while tokens:
-                self._slots.put_nowait(tokens.pop(0))
+                self._slots.put(tokens.pop(0))
             raise
         finally:
             # Re-mutate members to restore known-Future tracking
@@ -476,7 +477,7 @@ class Jobserver:
         # Restoring tokens MUST occur before Future unregistered (just below).
         while tokens:
             future.when_done(
-                self._slots.put_nowait, tokens.pop(0), _Future__internal=True
+                self._slots.put, tokens.pop(0), _Future__internal=True
             )
 
         # When a Future has completed, no longer track it within Jobserver.
