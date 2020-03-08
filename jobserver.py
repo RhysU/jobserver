@@ -192,38 +192,33 @@ class Future(typing.Generic[T]):
             self._issue_callbacks()
             return True
 
-        # Attempt to read the result Wrapper from the underlying Connection
-        # (note conversion of Queue's timeout semantic for Connection.poll).
-        # Any EOFError is treated as an unexpected hang up from the other end.
-        assert self._connection is not None
-        if self._connection.poll(timeout=timeout if block else 0):
-            try:
-                self._wrapper = self._connection.recv()
-                if self._wrapper is None:
-                    self._wrapper = Wrapper(raised=SubmissionDied())
-            except EOFError:
-                self._wrapper = Wrapper(raised=SubmissionDied())
-
-            # Confusingly, as a Wrapper is anticipated, None news is bad news.
-            assert self._wrapper is not None, "Confirm logic invariant"
-            assert self._process is not None, "Confirm type hinting invariant"
-            self._process.join()  # Always join(...) to reclaim OS resources
-            self._process = None  # Allow reclaiming via garbage collection
-        else:
+        # Possibly wait until a result is available for reading.
+        if not self._connection.poll(timeout=timeout if block else 0):
             return False
 
-        # Callbacks must observe "self.connection is None" otherwise
-        # they might observe different state when done vs not-done.
-        # (Notice should close() throw, close() will never be re-tried).
+        # Attempt to read the result Wrapper from the underlying Connection
+        # Any EOFError is treated as an unexpected hang up from the other end.
+        try:
+            self._wrapper = self._connection.recv()
+            assert isinstance(self._wrapper, Wrapper)
+        except EOFError:
+            self._wrapper = Wrapper(raised=SubmissionDied())
+
+        # Now join(...) and set to None thus reclaiming OS/Python resources.
+        assert self._process is not None
+        self._process.join()
+        self._process = None
+
+        # Should close() throw just below notice it will never be retried.
         connection, self._connection = self._connection, None
         connection.close()
         self._issue_callbacks()
-
         return True
 
     def _issue_callbacks(self):
         # Only a non-internal callback may cause CallbackRaised.
         # Otherwise, we might obfuscate bugs within this module's logic.
+        assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
             internal, fn, args, kwargs = self._callbacks.pop(0)
             if internal:
