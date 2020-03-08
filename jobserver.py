@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-A nestable, multiprocessing Jobserver providing Futures which permit callbacks.
+A nestable, multiprocessing Jobserver having Futures which permit callbacks.
 
 This Jobserver is similar in spirit to multiprocessing.Pool
 or concurrent.futures.Executor with a few differences:
@@ -19,6 +19,7 @@ or concurrent.futures.Executor with a few differences:
     * Fourth, Futures are eagerly scanned to quickly reclaim resources.
     * Fifth, Futures can detect when a child process died unexpectedly.
     * Sixth, the user can specify additional work acceptance criteria.
+      For example, not launching work unless some amount of RAM is available.
     * Lastly, the API communicates when Exceptions occur within a callback.
 
 For usage, see JobserverTest located within the same file as Jobserver.
