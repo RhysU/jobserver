@@ -301,11 +301,10 @@ class JobserverQueue:
 
 # Appears as a default argument in Jobserver thus simplifying some logic.
 def noop(*args, **kwargs) -> None:
-    """A "no nothing" function conformant to PEP-559."""
+    """A "do nothing" function conformant to PEP-559."""
     return None
 
 
-# Throughout, put_nowait(...) denotes places where blocking should not happen.
 class Jobserver:
     """
     A Jobserver exposing a Future interface built atop multiprocessing.
