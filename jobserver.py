@@ -460,6 +460,7 @@ class Jobserver:
         try:
             # Temporarily mutate members to clear known Futures for new worker
             registered, self._future_sentinels = self._future_sentinels, {}
+
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
@@ -471,6 +472,7 @@ class Jobserver:
             )
             future = Future(process, recv)
             process.start()
+
             # Prepare to track the Future and the wait(...)-able sentinel
             registered[future] = process.sentinel
         except Exception:
