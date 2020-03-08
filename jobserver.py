@@ -377,9 +377,8 @@ class Jobserver:
 
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
-        When specified, the child calls os.environ.update(env) just before fn.
-        When specified, the child calls preexec_fn() just before fn(...).
-        When both are specified, os.environ is updated before preexec_fn()
+        When provided, child first calls os.environ.update(env) just before fn.
+        When provided, child next calls preexec_fn() just before fn(...).
 
         Optional sleep_fn() permits injecting additional logic as
         to when a slot may be consumed.  For example, one can accept work
@@ -398,7 +397,7 @@ class Jobserver:
         assert preexec_fn is not None
         assert sleep_fn is not None
 
-        # Convert timeout into concrete deadline then defensively drop timeout
+        # Convert timeout into concrete deadline then defensively del timeout
         if timeout is None:
             # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
             # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
