@@ -28,9 +28,6 @@ Implementation is both PEP8 (per flake8) and type-hinting clean (per mypy).
 import collections.abc
 import copy
 import itertools
-import multiprocessing
-import multiprocessing.connection
-import multiprocessing.reduction  # type: ignore
 import os
 import os.path
 import pickle
@@ -40,6 +37,12 @@ import tempfile
 import time
 import typing
 import unittest
+
+# Implementation depends upon an explicit subset of multiprocessing.
+from multiprocessing import Process, get_all_start_methods, get_context
+from multiprocessing.connection import Connection, wait
+from multiprocessing.context import BaseContext
+from multiprocessing.reduction import ForkingPickler  # type: ignore
 
 __all__ = [
     "Blocked",
@@ -130,25 +133,17 @@ class Future(typing.Generic[T]):
 
     __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
 
-    def __init__(
-        self,
-        process: multiprocessing.Process,
-        connection: multiprocessing.connection.Connection,
-    ) -> None:
+    def __init__(self, process: Process, connection: Connection) -> None:
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
         # Becomes None after Process.join(...)
         assert process is not None
-        self._process = (
-            process
-        )  # type: typing.Optional[multiprocessing.Process]
+        self._process = process  # type: typing.Optional[Process]
 
         # Becomes None after recv/Connection.close(...)
         assert connection is not None
-        self._connection = (
-            connection
-        )  # type: typing.Optional[multiprocessing.connection.Connection]
+        self._connection = connection  # type: typing.Optional[Connection]
 
         # Becomes non-None after result is obtained
         self._wrapper = None  # type: typing.Optional[Wrapper[T]]
@@ -253,7 +248,7 @@ class JobserverQueue:
 
     __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
 
-    def __init__(self, context: multiprocessing.context.BaseContext) -> None:
+    def __init__(self, context: BaseContext) -> None:
         self._reader, self._writer = context.Pipe(duplex=False)
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()  # Some platforms may not need
@@ -273,7 +268,7 @@ class JobserverQueue:
                 recv = self._reader.recv_bytes()
             else:
                 raise queue.Empty
-        return multiprocessing.reduction.ForkingPickler.loads(recv)
+        return ForkingPickler.loads(recv)
 
     def put_nowait(self, obj) -> None:
         """
@@ -281,7 +276,7 @@ class JobserverQueue:
 
         Raises BrokenPipeError if the receiving half has hung up.
         """
-        send = multiprocessing.reduction.ForkingPickler.dumps(obj)
+        send = ForkingPickler.dumps(obj)
         with self._write_lock:
             self._writer.send_bytes(send)
 
@@ -299,9 +294,7 @@ class Jobserver:
 
     def __init__(
         self,
-        context: typing.Union[
-            None, str, multiprocessing.context.BaseContext
-        ] = None,
+        context: typing.Union[None, str, BaseContext] = None,
         slots: typing.Optional[int] = None,
     ) -> None:
         """
@@ -315,7 +308,7 @@ class Jobserver:
         """
         # Prepare required resources
         if context is None or isinstance(context, str):
-            context = multiprocessing.get_context(method=context)
+            context = get_context(method=context)
         self._context = context
         if slots is None:
             slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
@@ -423,7 +416,7 @@ class Jobserver:
             # (Work completion might be due to some grandchild restoring slots
             # which this process cannot observe via self._future_sentinels!)
             # Beware that completed work will require callbacks at step (1)
-            multiprocessing.connection.wait(
+            wait(
                 (self._slots.waitable(),)
                 + tuple(self._future_sentinels.values()),
                 timeout=deadline - time.monotonic(),
@@ -530,14 +523,14 @@ class JobserverTest(unittest.TestCase):
 
     def test_basic(self) -> None:
         """Basic submission up to slot limit along with callbacks firing?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             for check_done in (True, False):
                 with self.subTest(method=method, check_done=check_done):
                     # Prepare how callbacks will be observed
                     mutable = [0, 0, 0]
 
                     # Prepare work filling all slots
-                    context = multiprocessing.get_context(method)
+                    context = get_context(method)
                     js = Jobserver(context=context, slots=3)
                     f = js.submit(
                         fn=len,
@@ -643,7 +636,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_callback_semantics(self) -> None:
         """Inside a Future's callback the Future reports it is done."""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
@@ -652,7 +645,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_duplication(self) -> None:
         """Copying and pickling of Futures is explicitly disallowed."""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
@@ -673,7 +666,7 @@ class JobserverTest(unittest.TestCase):
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
         """Confirm increasingly large objects can be processed."""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
@@ -693,7 +686,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_nonblocking(self) -> None:
         """Ensure non-blocking done() and submit() semantics clean."""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             for check_done in (True, False):
                 with self.subTest(method=method, check_done=check_done):
                     js = Jobserver(context=method, slots=1)
@@ -750,7 +743,7 @@ class JobserverTest(unittest.TestCase):
         self.assertIsNone(os.environ.get(key, None))
 
         # Test observability of changes to the environment
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             js = Jobserver(context=method, slots=1)
             with self.subTest(method=method):
                 # Notice f sets, g confirms unset, and h re-sets they key.
@@ -782,10 +775,10 @@ class JobserverTest(unittest.TestCase):
 
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Prepare workload based on number of available slots
-                context = multiprocessing.get_context(method)
+                context = get_context(method)
                 slots = 2
                 js = Jobserver(context=context, slots=slots)
 
@@ -811,7 +804,7 @@ class JobserverTest(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self) -> None:
         """None can be returned from a Future?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=self.helper_none, args=(), timeout=None)
@@ -825,7 +818,7 @@ class JobserverTest(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
         """An Exception can be returned, not raised, from a Future?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 e = Exception("Returned by method {}".format(method))
@@ -840,7 +833,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_raises(self) -> None:
         """Future.result() raises Exceptions thrown while processing work?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Prepare how callbacks will be observed
                 mutable = [0]
@@ -871,7 +864,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_done_callback_raises(self) -> None:
         """Future.done() raises Exceptions thrown while processing work?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
 
@@ -910,13 +903,13 @@ class JobserverTest(unittest.TestCase):
 
     def test_submission_died(self) -> None:
         """Signal receipt by worker can be detected via Future?"""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Permit observing callback side-effects
                 mutable = [0, 0, 0, 0, 0]
 
                 # Prepare jobs with workers possibly receiving signals
-                context = multiprocessing.get_context(method)
+                context = get_context(method)
                 js = Jobserver(context=context, slots=2)
                 f = js.submit(fn=self.helper_signal, args=(signal.SIGKILL,))
                 f.when_done(self.helper_callback, mutable, 0, 2)
@@ -950,7 +943,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_sleep_fn(self) -> None:
         """Confirm sleep_fn(...) invoked and handled per documentation."""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
 
@@ -992,9 +985,9 @@ class JobserverTest(unittest.TestCase):
 
     def test_submission_nested(self) -> None:
         """Jobserver resource limits honored during nested submissions."""
-        for method in multiprocessing.get_all_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
-                context = multiprocessing.get_context(method)
+                context = get_context(method)
                 self.assertEqual(
                     0,
                     self.helper_recurse(
