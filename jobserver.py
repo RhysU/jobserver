@@ -318,19 +318,22 @@ class Jobserver:
         When not provided, slots defaults to len(os.sched_getaffinity(0))
         which reports the number of usable CPUs for the current process.
         """
-        # Prepare required resources
+        # Obtain some multiprocessing Context
         if context is None or isinstance(context, str):
             context = get_context(method=context)
+        assert isinstance(context, BaseContext)
         self._context = context
+
+        # Issue one token for each requested slot
         if slots is None:
             slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
         assert isinstance(slots, int) and slots >= 1
         self._slots = JobserverQueue(context=self._context)
-        self._future_sentinels = {}  # type: typing.Dict[Future, int]
-
-        # Issue one token for each requested slot
         for i in range(slots):
             self._slots.put_nowait(i)
+
+        # Tracks outstanding Futures (and wait-able sentinels)
+        self._future_sentinels = {}  # type: typing.Dict[Future, int]
 
     def __call__(
         self, fn: typing.Callable[..., T], *args, **kwargs
