@@ -380,6 +380,7 @@ class Jobserver:
         assert isinstance(kwargs, collections.abc.Mapping)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
+        assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         assert isinstance(env, collections.abc.Iterable)
         assert preexec_fn is not None
         assert sleep_fn is not None
@@ -395,45 +396,42 @@ class Jobserver:
 
         # Acquire the requested tokens or raise Blocked when impossible
         tokens = []  # type: typing.List[int]
-        assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         while True:
-            # (1) Eagerly clean up any completed work hence issuing callbacks
+            # (1) Eagerly clean up any completed work (including callbacks)
             if callbacks:
-                for future in list(self._future_sentinels.keys()):
+                for future in tuple(self._future_sentinels.keys()):
                     future.done(timeout=0)
 
             # (2) Exit loop if all requested resources have been acquired
             if len(tokens) >= consume:
                 break
 
-            # (3) When sleep_fn() vetoes new work sleep then GOTO (1).
-            # Unless sleeping would push past a blocking timeout threshold!
-            seconds = sleep_fn()
-            if seconds is not None:
-                seconds = min(seconds, 1.0e-2)  # 10 millisecond resolution
-                if time.monotonic() + seconds > deadline:
+            # (2) When sleep_fn() vetoes new work proceed to sleep.
+            # Sleep curtailed by deadline and a 10 millisecond resolution.
+            sleep = sleep_fn()
+            monotonic = time.monotonic()
+            if sleep is not None:
+                assert sleep >= 0.0
+                time.sleep(max(1.0e-2, min(sleep, deadline - monotonic)))
+                if monotonic >= deadline:
                     raise Blocked()
-                time.sleep(seconds)
                 continue
 
             try:
-                # (4) If any slot immediately available grab then GOTO (1)
+                # (4) Grab any immediately available token.
                 tokens.append(self._slots.get(timeout=0))
-                continue
             except queue.Empty:
-                # (5) Only report failure in (3) non-blocking or deadline hit
-                if time.monotonic() > deadline:
+                # (5) Otherwise, possibly throw in the towel...
+                monotonic = time.monotonic()
+                if monotonic >= deadline:
                     raise Blocked()
 
-            # (6) Block until either some work completes or deadline hit.
-            # (Work completion might be due to some grandchild restoring slots
-            # which this process cannot observe via self._future_sentinels!)
-            # Beware that completed work will require callbacks at step (1)
-            wait(
-                (self._slots.waitable(),)
-                + tuple(self._future_sentinels.values()),
-                timeout=deadline - time.monotonic(),
-            )
+                # (6) ...then block until some interesting event.
+                wait(
+                    tuple(self._future_sentinels.values())  # "Child" result
+                    + (self._slots.waitable(),),  # "Grandchild" restores token
+                    timeout=deadline - monotonic,
+                )
         del deadline
 
         # Now, with required slots consumed, begin consuming resources:
@@ -953,7 +951,7 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=method, slots=1)
 
                 # Confirm negative sleep is detectable with fn never called
-                with self.assertRaises(ValueError):
+                with self.assertRaises(AssertionError):
                     js.submit(fn=len, sleep_fn=lambda: -1.0)
 
                 # Confirm sleep_fn(...) returning zero can proceed
