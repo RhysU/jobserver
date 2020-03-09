@@ -435,8 +435,6 @@ class Jobserver:
                 + tuple(self._future_sentinels.values()),
                 timeout=deadline - time.monotonic(),
             )
-
-        # Deadline is irrelevant below so defensively delete it
         del deadline
 
         # Now, with required slots consumed, begin consuming resources:
@@ -467,7 +465,7 @@ class Jobserver:
         finally:
             # Re-mutate members to restore known-Future tracking
             self._future_sentinels = registered
-            del registered
+        del registered
 
         # As the above process.start() succeeded, now Future restores tokens.
         # This choice causes token release only after future.process.join()
