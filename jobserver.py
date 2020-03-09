@@ -31,12 +31,12 @@ import collections.abc
 import copy
 import itertools
 import os
-import os.path
 import pickle
 import queue
 import signal
 import tempfile
 import time
+import types
 import typing
 import unittest
 
@@ -349,7 +349,7 @@ class Jobserver:
         fn: typing.Callable[..., T],
         *,
         args: typing.Sequence = (),
-        kwargs: typing.Optional[typing.Mapping[str, typing.Any]] = None,
+        kwargs: typing.Mapping[str, typing.Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
         env: typing.Iterable = (),  # Iterable[Tuple[str,str]] breaks!
@@ -377,7 +377,7 @@ class Jobserver:
         # Argument check, especially args/kwargs as misuse is easy and deadly
         assert fn is not None
         assert isinstance(args, collections.abc.Sequence)
-        assert kwargs is None or isinstance(kwargs, collections.abc.Mapping)
+        assert isinstance(kwargs, collections.abc.Mapping)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
         assert isinstance(env, collections.abc.Iterable)
@@ -451,7 +451,7 @@ class Jobserver:
             process = self._context.Process(  # type: ignore
                 target=self._worker_entrypoint,
                 args=((send, env, preexec_fn, fn) + tuple(args)),
-                kwargs=kwargs if kwargs else {},
+                kwargs=kwargs,
                 daemon=False,
             )
             future = Future(process, recv)
