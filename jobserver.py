@@ -470,6 +470,7 @@ class Jobserver:
         # Restoring tokens MUST occur before Future unregistered (just below).
         if tokens:
             future.when_done(self._slots.put, *tokens, _Future__internal=True)
+        del tokens
 
         # When a Future has completed, no longer track it within Jobserver.
         # Remove, versus discard, chosen to confirm removals previously known.
