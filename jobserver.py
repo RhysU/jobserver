@@ -159,7 +159,7 @@ class Future(typing.Generic[T]):
         self._wrapper = None  # type: typing.Optional[Wrapper[T]]
 
         # Populated by calls to when_done(...)
-        self._callbacks = []  # type: typing.List[tuple]
+        self._callbacks = []  # type: typing.List[typing.Tuple]
 
     def when_done(
         self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
