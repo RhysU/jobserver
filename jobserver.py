@@ -149,12 +149,10 @@ class Future(typing.Generic[T]):
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
-        # Becomes None after Process.join(...)
-        assert process is not None
+        assert process is not None  # Becomes None after Process.join()
         self._process = process  # type: typing.Optional[Process]
 
-        # Becomes None after recv/Connection.close(...)
-        assert connection is not None
+        assert connection is not None  # Becomes None after Connection.close()
         self._connection = connection  # type: typing.Optional[Connection]
 
         # Becomes non-None after result is obtained
@@ -198,7 +196,7 @@ class Future(typing.Generic[T]):
         # Any EOFError is treated as an unexpected hang up from the other end.
         try:
             self._wrapper = self._connection.recv()
-            assert isinstance(self._wrapper, Wrapper)
+            assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
         except EOFError:
             self._wrapper = ExceptionWrapper(SubmissionDied())
 
