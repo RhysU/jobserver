@@ -189,7 +189,7 @@ class Future(typing.Generic[T]):
             return True
 
         # Possibly wait until a result is available for reading.
-        if not self._connection.poll(timeout=timeout):
+        if not self._connection.poll(timeout):
             return False
 
         # Attempt to read the result Wrapper from the underlying Connection
@@ -233,7 +233,7 @@ class Future(typing.Generic[T]):
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        if not self.done(timeout=timeout):
+        if not self.done(timeout):
             raise Blocked()
 
         assert self._wrapper is not None
@@ -248,9 +248,9 @@ class Future(typing.Generic[T]):
         raise NotImplementedError("Futures cannot be pickled.")
 
 
-class JobserverQueue:
+class MinimalQueue(typing.Generic[T]):
     """
-    An unbounded SimpleQueue-variant providing the semantics Jobserver needs.
+    An unbounded SimpleQueue-variant providing minimal semantics for Jobserver.
 
     Vanilla multiprocessing.SimpleQueue lacks timeout on get(...).
     Vanilla multiprocessing.Queue has wildly undesired threading machinery.
@@ -267,20 +267,20 @@ class JobserverQueue:
         """The object on which to wait(...) to get(...) new data."""
         return self._reader.fileno()
 
-    def get(self, timeout: typing.Optional[float] = None) -> typing.Any:
+    def get(self, timeout: typing.Optional[float] = None) -> T:
         """
         Get one object from the queue raising queue.Empty if unavailable.
 
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
         with self._read_lock:
-            if self._reader.poll(timeout=timeout):
+            if self._reader.poll(timeout):
                 recv = self._reader.recv_bytes()
             else:
                 raise queue.Empty
         return ForkingPickler.loads(recv)
 
-    def put(self, *args) -> None:
+    def put(self, *args: T) -> None:
         """
         Put zero or more objects into the queue, contiguously.
 
@@ -320,7 +320,7 @@ class Jobserver:
         """
         # Obtain some multiprocessing Context
         if context is None or isinstance(context, str):
-            context = get_context(method=context)
+            context = get_context(context)
         assert isinstance(context, BaseContext)
         self._context = context
 
@@ -328,7 +328,7 @@ class Jobserver:
         if slots is None:
             slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
         assert isinstance(slots, int) and slots >= 1
-        self._slots = JobserverQueue(context=self._context)
+        self._slots = MinimalQueue(self._context)  # type: MinimalQueue[int]
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures (and wait-able sentinels)
