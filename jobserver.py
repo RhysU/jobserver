@@ -521,7 +521,7 @@ class Jobserver:
         return time.monotonic() + (
             (60 * 60 * 24 * 7)  # 604.8k seconds ought to be enough for anyone
             if relative_timeout is None
-            else float(relative_timeout)
+            else relative_timeout
         )
 
 
