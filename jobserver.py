@@ -348,7 +348,7 @@ class Jobserver:
         self,
         fn: typing.Callable[..., T],
         *,
-        args: typing.Sequence = (),
+        args: typing.Iterable = (),
         kwargs: typing.Mapping[str, typing.Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
@@ -376,7 +376,7 @@ class Jobserver:
         """
         # Argument check, especially args/kwargs as misuse is easy and deadly
         assert fn is not None
-        assert isinstance(args, collections.abc.Sequence)
+        assert isinstance(args, collections.abc.Iterable)
         assert isinstance(kwargs, collections.abc.Mapping)
         assert isinstance(callbacks, bool)
         assert isinstance(consume, int)
