@@ -25,6 +25,7 @@ or concurrent.futures.Executor with a few differences:
 For usage, see JobserverTest located within the same file as Jobserver.
 Implementation is intended to work on CPython 3.5, 3.6, 3.7, and 3.8.
 Implementation is both PEP 8 (per flake8) and type-hinting clean (per mypy).
+Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
 import abc
 import collections.abc
