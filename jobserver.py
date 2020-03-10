@@ -24,7 +24,7 @@ or concurrent.futures.Executor with a few differences:
 
 For usage, see JobserverTest located within the same file as Jobserver.
 Implementation is intended to work on CPython 3.5, 3.6, 3.7, and 3.8.
-Implementation is both PEP8 (per flake8) and type-hinting clean (per mypy).
+Implementation is both PEP 8 (per flake8) and type-hinting clean (per mypy).
 """
 import abc
 import collections.abc
@@ -76,7 +76,7 @@ class CallbackRaised(Exception):
     If the caller requires that all callbacks are attempted, the caller
     MUST re-invoke the same method until no CallbackRaised occurs.
     These MAY/MUST semantics allow the caller to decide how much additional
-    processing to perform after seeing the 1st, 2nd, or N-th error.
+    processing to perform after seeing the 1st, 2nd, or Nth error.
     """
 
     pass
@@ -295,7 +295,7 @@ class MinimalQueue(typing.Generic[T]):
 
 # Appears as a default argument in Jobserver to simplify some logic therein.
 def noop(*args, **kwargs) -> None:
-    """A "do nothing" function conformant to (the rejected) PEP-559."""
+    """A "do nothing" function conforming to (the rejected) PEP-559."""
     return None
 
 
@@ -528,7 +528,6 @@ class Jobserver:
 ###########################################################################
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
 ###########################################################################
-# TODO Unit tests should, but do not, pass on pypy3.  Signal-related woes?!
 
 
 class JobserverTest(unittest.TestCase):
@@ -917,7 +916,7 @@ class JobserverTest(unittest.TestCase):
 
     @staticmethod
     def helper_signal(sig: signal.Signals) -> typing.NoReturn:
-        """Helper sending signal sig to the current process."""
+        """Helper sending the given signal to the current process."""
         os.kill(os.getpid(), sig)
         assert False, "Unreachable"
 
@@ -991,13 +990,13 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(0, g.result())
 
     @classmethod
-    def helper_recurse(cls, js: Jobserver, maxdepth: int) -> int:
-        """Helper submitting work until either Blocked or maxdepth reached."""
-        if maxdepth < 1:
+    def helper_recurse(cls, js: Jobserver, max_depth: int) -> int:
+        """Helper submitting work until either Blocked or max_depth reached."""
+        if max_depth < 1:
             return 0
         try:
             f = js.submit(
-                fn=cls.helper_recurse, args=(js, maxdepth - 1), timeout=0
+                fn=cls.helper_recurse, args=(js, max_depth - 1), timeout=0
             )
         except Blocked:
             return 0
@@ -1011,21 +1010,21 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual(
                     0,
                     self.helper_recurse(
-                        js=Jobserver(context=context, slots=3), maxdepth=0
+                        js=Jobserver(context=context, slots=3), max_depth=0
                     ),
                     msg="Recursive base case must terminate recursion",
                 )
                 self.assertEqual(
                     1,
                     self.helper_recurse(
-                        js=Jobserver(context=context, slots=3), maxdepth=1
+                        js=Jobserver(context=context, slots=3), max_depth=1
                     ),
                     msg="One inductive step must be possible",
                 )
                 self.assertEqual(
                     4,
                     self.helper_recurse(
-                        js=Jobserver(context=context, slots=4), maxdepth=6
+                        js=Jobserver(context=context, slots=4), max_depth=6
                     ),
                     msg="Recursion is limited by number of available slots",
                 )
