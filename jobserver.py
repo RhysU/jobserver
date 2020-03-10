@@ -527,101 +527,96 @@ class JobserverTest(unittest.TestCase):
 
     def test_basic(self) -> None:
         """Basic submission up to slot limit along with callbacks firing?"""
-        for method in get_all_start_methods():
-            for check_done in (True, False):
-                with self.subTest(method=method, check_done=check_done):
-                    # Prepare how callbacks will be observed
-                    mutable = [0, 0, 0]
+        for method, check_done in itertools.product(
+            get_all_start_methods(), (True, False)
+        ):
+            with self.subTest(method=method, check_done=check_done):
+                # Prepare how callbacks will be observed
+                mutable = [0, 0, 0]
 
-                    # Prepare work filling all slots
-                    context = get_context(method)
-                    js = Jobserver(context=context, slots=3)
-                    f = js.submit(
+                # Prepare work filling all slots
+                context = get_context(method)
+                js = Jobserver(context=context, slots=3)
+                f = js.submit(
+                    fn=len,
+                    args=((1, 2, 3),),
+                    callbacks=False,
+                    consume=1,
+                    timeout=None,
+                )
+                f.when_done(self.helper_callback, mutable, 0, 1)
+                g = js.submit(
+                    fn=str,
+                    kwargs=dict(object=2),
+                    callbacks=False,
+                    consume=1,
+                    timeout=None,
+                )
+                g.when_done(self.helper_callback, mutable, 1, 2)
+                g.when_done(self.helper_callback, mutable, 1, 3)
+                h = js.submit(
+                    fn=len,
+                    args=((1,),),
+                    callbacks=False,
+                    consume=1,
+                    timeout=None,
+                )
+                h.when_done(
+                    self.helper_callback, lizt=mutable, index=2, increment=7
+                )
+
+                # Try too much work given fixed slot count
+                with self.assertRaises(Blocked):
+                    js.submit(
                         fn=len,
-                        args=((1, 2, 3),),
+                        args=((),),
                         callbacks=False,
                         consume=1,
-                        timeout=None,
-                    )
-                    f.when_done(self.helper_callback, mutable, 0, 1)
-                    g = js.submit(
-                        fn=str,
-                        kwargs=dict(object=2),
-                        callbacks=False,
-                        consume=1,
-                        timeout=None,
-                    )
-                    g.when_done(self.helper_callback, mutable, 1, 2)
-                    g.when_done(self.helper_callback, mutable, 1, 3)
-                    h = js.submit(
-                        fn=len,
-                        args=((1,),),
-                        callbacks=False,
-                        consume=1,
-                        timeout=None,
-                    )
-                    h.when_done(
-                        self.helper_callback,
-                        lizt=mutable,
-                        index=2,
-                        increment=7,
-                    )
-
-                    # Try too much work given fixed slot count
-                    with self.assertRaises(Blocked):
-                        js.submit(
-                            fn=len,
-                            args=((),),
-                            callbacks=False,
-                            consume=1,
-                            timeout=0,
-                        )
-
-                    # Confirm zero-consumption requests accepted immediately
-                    i = js.submit(
-                        fn=len,
-                        args=((1, 2, 3, 4),),
-                        callbacks=False,
-                        consume=0,
                         timeout=0,
                     )
 
-                    # Again, try too much work given fixed slot count
-                    with self.assertRaises(Blocked):
-                        js.submit(
-                            fn=len,
-                            args=((),),
-                            callbacks=False,
-                            consume=1,
-                            timeout=0,
-                        )
+                # Confirm zero-consumption requests accepted immediately
+                i = js.submit(
+                    fn=len,
+                    args=((1, 2, 3, 4),),
+                    callbacks=False,
+                    consume=0,
+                    timeout=0,
+                )
 
-                    # Confirm results in something other than submission order
-                    self.assertEqual("2", g.result())
-                    self.assertEqual(mutable[1], 5, "Two callbacks observed")
-                    if check_done:
-                        self.assertTrue(f.done())
-                    self.assertTrue(h.done())  # No check_done guard!
-                    self.assertEqual(mutable[2], 7)
-                    self.assertEqual(1, h.result())
-                    self.assertEqual(1, h.result(), "Multiple calls OK")
-                    h.when_done(
-                        self.helper_callback,
-                        lizt=mutable,
-                        index=2,
-                        increment=11,
+                # Again, try too much work given fixed slot count
+                with self.assertRaises(Blocked):
+                    js.submit(
+                        fn=len,
+                        args=((),),
+                        callbacks=False,
+                        consume=1,
+                        timeout=0,
                     )
-                    self.assertEqual(mutable[2], 18, "Callback after done")
-                    self.assertEqual(1, h.result())
-                    self.assertTrue(h.done())
-                    self.assertEqual(mutable[2], 18, "Callbacks idempotent")
-                    self.assertEqual(4, i.result(), "Zero-consumption request")
-                    if check_done:
-                        self.assertTrue(g.done())
-                        self.assertTrue(g.done(), "Multiple calls OK")
-                    self.assertEqual(3, f.result())
-                    self.assertEqual(mutable[0], 1, "One callback observed")
-                    self.assertEqual(4, i.result(), "Zero-consumption repeat")
+
+                # Confirm results in something other than submission order
+                self.assertEqual("2", g.result())
+                self.assertEqual(mutable[1], 5, "Two callbacks observed")
+                if check_done:
+                    self.assertTrue(f.done())
+                self.assertTrue(h.done())  # No check_done guard!
+                self.assertEqual(mutable[2], 7)
+                self.assertEqual(1, h.result())
+                self.assertEqual(1, h.result(), "Multiple calls OK")
+                h.when_done(
+                    self.helper_callback, lizt=mutable, index=2, increment=11
+                )
+                self.assertEqual(mutable[2], 18, "Callback after done")
+                self.assertEqual(1, h.result())
+                self.assertTrue(h.done())
+                self.assertEqual(mutable[2], 18, "Callbacks idempotent")
+                self.assertEqual(4, i.result(), "Zero-consumption request")
+                if check_done:
+                    self.assertTrue(g.done())
+                    self.assertTrue(g.done(), "Multiple calls OK")
+                self.assertEqual(3, f.result())
+                self.assertEqual(mutable[0], 1, "One callback observed")
+                self.assertEqual(4, i.result(), "Zero-consumption repeat")
 
     def helper_check_semantics(self, f: Future[None]) -> None:
         """Helper checking Future semantics *inside* a callback as expected."""
@@ -690,39 +685,36 @@ class JobserverTest(unittest.TestCase):
 
     def test_nonblocking(self) -> None:
         """Ensure non-blocking done() and submit() semantics clean."""
-        for method in get_all_start_methods():
-            for check_done in (True, False):
-                with self.subTest(method=method, check_done=check_done):
-                    js = Jobserver(context=method, slots=1)
-                    timeout = 0.1
+        for method, check_done in itertools.product(
+            get_all_start_methods(), (True, False)
+        ):
+            with self.subTest(method=method, check_done=check_done):
+                js = Jobserver(context=method, slots=1)
+                timeout = 0.1
+                with tempfile.NamedTemporaryFile() as t:
                     # Future f cannot complete until file t is removed
-                    with tempfile.NamedTemporaryFile() as t:
-                        f = js.submit(
-                            fn=self.helper_block, args=(t.name, timeout)
-                        )
-                        # Because Future f is stalled, new work not accepted
-                        with self.assertRaises(Blocked):
-                            js.submit(fn=len, args=("abc",), timeout=0)
-                        with self.assertRaises(Blocked):
-                            js.submit(
-                                fn=len, args=("abc",), timeout=1.5 * timeout
-                            )
-                        # Future f reports not done() blocking or otherwise
-                        if check_done:
-                            self.assertFalse(f.done(timeout=0))
-                            self.assertFalse(f.done(timeout=1.5 * timeout))
-                        # Future f reports no result() blocking or otherwise
-                        with self.assertRaises(Blocked):
-                            f.result(timeout=0)
-                        with self.assertRaises(Blocked):
-                            f.result(timeout=1.5 * timeout)
-                    # With file t removed, done() will report True
+                    f = js.submit(fn=self.helper_block, args=(t.name, timeout))
+                    # Because Future f is stalled, new work not accepted
+                    with self.assertRaises(Blocked):
+                        js.submit(fn=len, args=("abc",), timeout=0)
+                    with self.assertRaises(Blocked):
+                        js.submit(fn=len, args=("abc",), timeout=1.5 * timeout)
+                    # Future f reports not done() blocking or otherwise
                     if check_done:
-                        self.assertTrue(f.done(timeout=None))
-                    # With file t removed, result() now gives a result,
-                    # which is compared with the minimum stalled time.
-                    self.assertGreater(f.result(timeout=None), timeout)
-                    self.assertGreater(f.result(timeout=0), timeout)
+                        self.assertFalse(f.done(timeout=0))
+                        self.assertFalse(f.done(timeout=1.5 * timeout))
+                    # Future f reports no result() blocking or otherwise
+                    with self.assertRaises(Blocked):
+                        f.result(timeout=0)
+                    with self.assertRaises(Blocked):
+                        f.result(timeout=1.5 * timeout)
+                # With file t removed, done() will report True
+                if check_done:
+                    self.assertTrue(f.done(timeout=None))
+                # With file t removed, result() now gives a result,
+                # which is compared with the minimum stalled time.
+                self.assertGreater(f.result(timeout=None), timeout)
+                self.assertGreater(f.result(timeout=0), timeout)
 
     # Uses "SENTINEL", not None, because None handling is tested elsewhere
     @staticmethod
@@ -748,8 +740,8 @@ class JobserverTest(unittest.TestCase):
 
         # Test observability of changes to the environment
         for method in get_all_start_methods():
-            js = Jobserver(context=method, slots=1)
             with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
                 # Notice f sets, g confirms unset, and h re-sets they key.
                 # Notice that i then uses preexec_fn, not env, to set the key.
                 # Then j uses both to confirm env updated before preexec_fn.
