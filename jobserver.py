@@ -127,7 +127,7 @@ class ExceptionWrapper(Wrapper[T]):
 
     def __init__(self, raised: Exception) -> None:
         """Wrap the provided Exception for use during unwrap()."""
-        assert isinstance(raised, Exception)
+        assert isinstance(raised, Exception), type(raised)
         self._raised = raised
 
     def unwrap(self) -> typing.NoReturn:
@@ -319,16 +319,17 @@ class Jobserver:
         which reports the number of usable CPUs for the current process.
         """
         # Obtain some multiprocessing Context
-        if context is None or isinstance(context, str):
-            context = get_context(context)
-        assert isinstance(context, BaseContext)
-        self._context = context
+        self._context = (
+            get_context(context)
+            if context is None or isinstance(context, str)
+            else context
+        )
+        self._slots = MinimalQueue(self._context)  # type: MinimalQueue[int]
 
         # Issue one token for each requested slot
         if slots is None:
             slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
-        assert isinstance(slots, int) and slots >= 1
-        self._slots = MinimalQueue(self._context)  # type: MinimalQueue[int]
+        assert isinstance(slots, int) and slots >= 1, type(slots)
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures (and wait-able sentinels)
@@ -376,9 +377,9 @@ class Jobserver:
         """
         # First, check any arguments not for to _obtain_tokens(...) just below.
         assert fn is not None
-        assert isinstance(args, collections.abc.Iterable)
-        assert isinstance(kwargs, collections.abc.Mapping)
-        assert isinstance(env, collections.abc.Iterable)
+        assert isinstance(args, collections.abc.Iterable), type(args)
+        assert isinstance(kwargs, collections.abc.Mapping), type(kwargs)
+        assert isinstance(env, collections.abc.Iterable), type(env)
         assert preexec_fn is not None
 
         # Next, either obtain requested tokens or else raise Blocked
@@ -465,7 +466,7 @@ class Jobserver:
     ) -> typing.List[int]:
         """Either retrieve requested tokens or raise Blocked while trying."""
         # Defensively check arguments
-        assert isinstance(callbacks, bool)
+        assert isinstance(callbacks, bool), type(callbacks)
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         assert sleep_fn is not None
         assert deadline > 0.0
