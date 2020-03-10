@@ -293,9 +293,9 @@ class MinimalQueue(typing.Generic[T]):
                     self._writer.send_bytes(send.pop(0))
 
 
-# Appears as a default argument in Jobserver thus simplifying some logic.
+# Appears as a default argument in Jobserver to simplify some logic therein.
 def noop(*args, **kwargs) -> None:
-    """A "do nothing" function conformant to PEP-559."""
+    """A "do nothing" function conformant to (the rejected) PEP-559."""
     return None
 
 
@@ -374,68 +374,24 @@ class Jobserver:
         should either return None when work is acceptable or return the
         non-negative number of seconds for which this process should sleep.
         """
-        # Argument check, especially args/kwargs as misuse is easy and deadly
+        # First, check any arguments not for to _obtain_tokens(...) just below.
         assert fn is not None
         assert isinstance(args, collections.abc.Iterable)
         assert isinstance(kwargs, collections.abc.Mapping)
-        assert isinstance(callbacks, bool)
-        assert isinstance(consume, int)
-        assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         assert isinstance(env, collections.abc.Iterable)
         assert preexec_fn is not None
-        assert sleep_fn is not None
 
-        # Convert timeout into concrete deadline then defensively del timeout
-        if timeout is None:
-            # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
-            # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
-            deadline = time.monotonic() + (60 * 60 * 24 * 7)  # One week
-        else:
-            deadline = time.monotonic() + float(timeout)
-        del timeout
+        # Next, either obtain requested tokens or else raise Blocked
+        tokens = self._obtain_tokens(
+            callbacks=callbacks,
+            consume=consume,
+            deadline=self._absolute_deadline(relative_timeout=timeout),
+            future_sentinels=self._future_sentinels,
+            sleep_fn=sleep_fn,
+            slots=self._slots,
+        )
 
-        # Acquire the requested tokens or raise Blocked when impossible
-        tokens = []  # type: typing.List[int]
-        while True:
-            # (1) Eagerly clean up any completed work (including callbacks)
-            if callbacks:
-                for future in tuple(self._future_sentinels.keys()):
-                    future.done(timeout=0)
-
-            # (2) Exit loop if all requested resources have been acquired
-            if len(tokens) >= consume:
-                break
-
-            # (2) When sleep_fn() vetoes new work proceed to sleep.
-            # Sleep curtailed by deadline and a 10 millisecond resolution.
-            sleep = sleep_fn()
-            monotonic = time.monotonic()
-            if sleep is not None:
-                assert sleep >= 0.0
-                time.sleep(max(1.0e-2, min(sleep, deadline - monotonic)))
-                if monotonic >= deadline:
-                    raise Blocked()
-                continue
-
-            try:
-                # (4) Grab any immediately available token.
-                tokens.append(self._slots.get(timeout=0))
-            except queue.Empty:
-                # (5) Otherwise, possibly throw in the towel...
-                monotonic = time.monotonic()
-                if monotonic >= deadline:
-                    raise Blocked()
-
-                # (6) ...then block until some interesting event.
-                wait(
-                    tuple(self._future_sentinels.values())  # "Child" result
-                    + (self._slots.waitable(),),  # "Grandchild" restores token
-                    timeout=deadline - monotonic,
-                )
-        del deadline
-
-        # Now, with required slots consumed, begin consuming resources:
-        assert len(tokens) >= consume, "Sanity check slot acquisition"
+        # Then, with required slots consumed, begin consuming resources:
         try:
             # Temporarily mutate members to clear known Futures for new worker
             registered, self._future_sentinels = self._future_sentinels, {}
@@ -449,7 +405,7 @@ class Jobserver:
                 kwargs=kwargs,
                 daemon=False,
             )
-            future = Future(process, recv)
+            future = Future(process, recv)  # type: Future[T]
             process.start()
 
             # Prepare to track the Future and the wait(...)-able sentinel
@@ -462,26 +418,21 @@ class Jobserver:
         finally:
             # Re-mutate members to restore known-Future tracking
             self._future_sentinels = registered
-        del registered
 
-        # As the above process.start() succeeded, now Future restores tokens.
-        # This choice causes token release only after future.process.join()
-        # from within Future.done().  It keeps _worker_entrypoint() simple.
-        # Restoring tokens MUST occur before Future unregistered (just below).
+        # As above process.start() succeeded, now Future must restore tokens.
+        # After any restoration, no longer track this Future within Jobserver.
         if tokens:
             future.when_done(self._slots.put, *tokens, _Future__internal=True)
-        del tokens
-
-        # When a Future has completed, no longer track it within Jobserver.
-        # Remove, versus discard, chosen to confirm removals previously known.
         future.when_done(
             self._future_sentinels.pop, future, _Future__internal=True
         )
 
+        # Finally, return a viable Future to the caller.
         return future
 
     @staticmethod
     def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
+        """Entry point for workers to fun fn(...) due to some  submit(...)."""
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception.
         result = None  # type: typing.Optional[Wrapper[typing.Any]]
@@ -499,6 +450,78 @@ class Jobserver:
             except BrokenPipeError:
                 pass
             send.close()
+
+    # Static because who can worry about one's self at a time like this?!
+    @staticmethod
+    def _obtain_tokens(
+        callbacks: bool,
+        consume: int,
+        deadline: float,
+        future_sentinels: typing.Dict[Future, int],
+        sleep_fn: typing.Callable[[], typing.Optional[float]],
+        slots: MinimalQueue[int],
+        *,
+        resolution: float = 1.0e-2
+    ) -> typing.List[int]:
+        """Either retrieve requested tokens or raise Blocked while trying."""
+        # Defensively check arguments
+        assert isinstance(callbacks, bool)
+        assert consume == 0 or consume == 1, "Invalid or deadlock possible"
+        assert sleep_fn is not None
+        assert deadline > 0.0
+
+        # Acquire the requested retval or raise Blocked when impossible
+        retval = []  # type: typing.List[int]
+        while True:
+
+            # (1) Eagerly clean up any completed work (including callbacks)
+            if callbacks:
+                for future in tuple(future_sentinels.keys()):
+                    future.done(timeout=0)
+
+            # (2) Exit loop if all requested resources have been acquired
+            if len(retval) >= consume:
+                break
+
+            # (2) When sleep_fn() vetoes new work proceed to sleep.
+            sleep = sleep_fn()
+            monotonic = time.monotonic()
+            if sleep is not None:
+                assert sleep >= 0.0
+                time.sleep(max(resolution, min(sleep, deadline - monotonic)))
+                if monotonic >= deadline:
+                    raise Blocked()
+                continue
+
+            try:
+                # (4) Grab any immediately available token.
+                retval.append(slots.get(timeout=0))
+            except queue.Empty:
+                # (5) Otherwise, possibly throw in the towel...
+                monotonic = time.monotonic()
+                if monotonic >= deadline:
+                    raise Blocked()
+
+                # (6) ...then block until some interesting event.
+                wait(
+                    tuple(future_sentinels.values())  # "Child" result
+                    + (slots.waitable(),),  # "Grandchild" restores token
+                    timeout=deadline - monotonic,
+                )
+
+        assert len(retval) == consume, "Postcondition"
+        return retval
+
+    @staticmethod
+    def _absolute_deadline(relative_timeout: typing.Optional[float],) -> float:
+        """Convert relative timeout in seconds into an absolute deadline."""
+        # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
+        # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
+        return time.monotonic() + (
+            (60 * 60 * 24 * 7)  # 604.8k seconds ought to be enough for anyone
+            if relative_timeout is None
+            else float(relative_timeout)
+        )
 
 
 ###########################################################################
