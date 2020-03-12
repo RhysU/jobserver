@@ -485,7 +485,7 @@ class Jobserver:
             if len(retval) >= consume:
                 break
 
-            # (2) When sleep_fn() vetoes new work proceed to sleep.
+            # (3) When sleep_fn() vetoes new work proceed to sleep.
             sleep = sleep_fn()
             monotonic = time.monotonic()
             if sleep is not None:
