@@ -42,9 +42,10 @@ import typing
 import unittest
 
 # Implementation depends upon an explicit subset of multiprocessing.
-from multiprocessing import Process, get_all_start_methods, get_context
+from multiprocessing import get_all_start_methods, get_context
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
+from multiprocessing.process import BaseProcess
 from multiprocessing.reduction import ForkingPickler  # type: ignore
 
 __all__ = [
@@ -146,12 +147,12 @@ class Future(typing.Generic[T]):
 
     __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
 
-    def __init__(self, process: Process, connection: Connection) -> None:
+    def __init__(self, process: BaseProcess, connection: Connection) -> None:
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
-        assert process is not None  # Becomes None after Process.join()
-        self._process = process  # type: typing.Optional[Process]
+        assert process is not None  # Becomes None after BaseProcess.join()
+        self._process = process  # type: typing.Optional[BaseProcess]
 
         assert connection is not None  # Becomes None after Connection.close()
         self._connection = connection  # type: typing.Optional[Connection]
