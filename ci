@@ -7,13 +7,13 @@
 echo "$(command -v python): $(python -V)"
 set -x
 
+# Unit testing runs the tests inside jobserver.py
+python -m unittest -v jobserver
+
 # Black is not available on Python 3.5
 if pip install black; then
     black --check --line-length 79 jobserver.py
 fi
-
-# Unit testing runs the tests inside jobserver.py
-python -m unittest -v jobserver
 
 # PEP8 linting
 pip install flake8
