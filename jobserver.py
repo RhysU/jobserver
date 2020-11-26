@@ -516,7 +516,7 @@ class Jobserver:
         return retval
 
     @staticmethod
-    def _absolute_deadline(relative_timeout: typing.Optional[float],) -> float:
+    def _absolute_deadline(relative_timeout: typing.Optional[float]) -> float:
         """Convert relative timeout in seconds into an absolute deadline."""
         # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
         # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
