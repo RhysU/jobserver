@@ -1,0 +1,24 @@
+#!/bin/bash -eu
+# Run continuous integration tests for jobserver.py
+# Installs any necessary prerequisites using pip.
+# Intended for use with Travis-CI or Conda or VirtualEnv
+
+# Informational and helpful when developing against multiple Python versions
+echo "$(command -v python): $(python -V)"
+set -x
+
+# Black is not available on Python 3.5
+if pip install black; then
+    black --check --line-length 79 jobserver.py
+fi
+
+# Unit testing runs the tests inside jobserver.py
+python -m unittest -v jobserver
+
+# PEP8 linting
+pip install flake8
+flake8 jobserver.py
+
+# Typehint linting requires a new-enough mypy
+pip install "mypy>0.770"
+mypy jobserver.py
