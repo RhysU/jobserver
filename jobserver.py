@@ -667,18 +667,18 @@ class JobserverTest(unittest.TestCase):
                 f.when_done(self.helper_check_semantics, f)
                 self.assertEqual(3, f.result())
 
-    def test_duplication(self) -> None:
+    def test_duplication_futures(self) -> None:
         """Copying and pickling of Futures is explicitly disallowed."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
-                # Cannot copy
+                # Cannot copy a Future
                 with self.assertRaises(NotImplementedError):
                     copy.copy(f)
                 with self.assertRaises(NotImplementedError):
                     copy.deepcopy(f)
-                # Cannot pickle a Future directly
+                # Cannot pickle a Future
                 with self.assertRaises(NotImplementedError):
                     pickle.dumps(f)
                 # Cannot submit a Future as part of additional work
