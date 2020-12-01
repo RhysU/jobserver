@@ -163,6 +163,16 @@ class Future(typing.Generic[T]):
         # Populated by calls to when_done(...)
         self._callbacks = []  # type: typing.List[typing.Tuple]
 
+    def __copy__(self) -> typing.NoReturn:
+        """Disallow copying as duplicates cannot sensibly share resources."""
+        # In particular, which copy would call self._process.join()?
+        raise NotImplementedError("Futures cannot be copied.")
+
+    def __reduce__(self) -> typing.NoReturn:
+        """Disallow pickling as duplicates cannot sensibly share resources."""
+        # In particular, because pickles create copies.
+        raise NotImplementedError("Futures cannot be pickled.")
+
     def when_done(
         self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
     ) -> None:
@@ -240,14 +250,6 @@ class Future(typing.Generic[T]):
 
         assert self._wrapper is not None
         return self._wrapper.unwrap()
-
-    def __copy__(self) -> typing.NoReturn:
-        """Disallow copying as duplicates cannot sensibly share resources."""
-        raise NotImplementedError("Futures cannot be copied.")
-
-    def __reduce__(self) -> typing.NoReturn:
-        """Disallow pickling as duplicates cannot sensibly share resources."""
-        raise NotImplementedError("Futures cannot be pickled.")
 
 
 class MinimalQueue(typing.Generic[T]):
@@ -397,6 +399,7 @@ class Jobserver:
         # Then, with required slots consumed, begin consuming resources:
         try:
             # Temporarily mutate members to clear known Futures for new worker
+            # to accommodate the possibility of an os.fork() under the covers
             registered, self._future_sentinels = self._future_sentinels, {}
 
             # Grab resources for processing the submitted work
