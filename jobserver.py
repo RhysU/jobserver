@@ -339,6 +339,24 @@ class Jobserver:
         # Tracks outstanding Futures (and wait-able sentinels)
         self._future_sentinels = {}  # type: typing.Dict[Future, int]
 
+    def __getstate__(self) -> typing.Tuple:
+        """Get instance state without exposing in-flight Futures."""
+        return self._context, self._slots, {}
+
+    def __setstate__(self, state: typing.Tuple) -> None:
+        """Set instance state."""
+        self._context, self._slots, self._future_sentinels = state
+
+    def __copy__(self) -> "Jobserver":
+        """Shallow copies return the original Jobserver unchanged."""
+        # Because any "copy" should and can only mutate same slots/sentinels
+        return self
+
+    def __deepcopy__(self, _: typing.Any) -> "Jobserver":
+        """Deep copies return the original Jobserver unchanged."""
+        # Because any "copy" should and can only mutate same slots/sentinels
+        return self
+
     def __call__(
         self, fn: typing.Callable[..., T], *args, **kwargs
     ) -> Future[T]:
@@ -689,6 +707,25 @@ class JobserverTest(unittest.TestCase):
                 if method != "fork":
                     with self.assertRaises(NotImplementedError):
                         js.submit(fn=type, args=(f,))
+
+    # No behavioral assertions made around pickling, however.
+    def test_duplication_jobserver(self) -> None:
+        """Copying of Jobservers is explicitly allowed."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js1 = Jobserver(context=method, slots=3)
+                js2 = copy.copy(js1)
+                js3 = copy.deepcopy(js1)
+                f = js1.submit(fn=len, args=((1, 2, 3),))
+                g = js2.submit(fn=len, args=((1, 2, 3, 4),))
+                h = js3.submit(fn=len, args=((1, 2, 3, 4, 5),))
+                self.assertEqual(5, h.result())
+                self.assertEqual(4, g.result())
+                self.assertEqual(3, f.result())
+                # Though copying is allowed, it is degenerate in that
+                # copy.copy(...) and copy.deepcopy(...) return the original.
+                self.assertIs(js1, js2)
+                self.assertIs(js1, js3)
 
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
