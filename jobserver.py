@@ -857,18 +857,13 @@ class JobserverTest(unittest.TestCase):
                 for i, f in enumerate(fs):
                     self.assertEqual(i, f.result(timeout=None))
 
-    @staticmethod
-    def helper_none() -> None:
-        """Nullary helper returning None."""
-        return None
-
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self) -> None:
         """None can be returned from a Future?"""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
-                f = js.submit(fn=self.helper_none, args=(), timeout=None)
+                f = js.submit(fn=noop, args=(), timeout=None)
                 self.assertIsNone(f.result())
 
     @staticmethod
