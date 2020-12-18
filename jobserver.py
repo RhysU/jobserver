@@ -688,6 +688,7 @@ class JobserverTest(unittest.TestCase):
                 f.when_done(self.helper_check_semantics, f)
                 self.assertEqual(3, f.result())
 
+    # TODO Can the "method != fork" clause be relaxed?
     def test_duplication_futures(self) -> None:
         """Copying and pickling of Futures is explicitly disallowed."""
         for method in get_all_start_methods():
@@ -780,6 +781,20 @@ class JobserverTest(unittest.TestCase):
                 # which is compared with the minimum stalled time.
                 self.assertGreater(f.result(timeout=None), timeout)
                 self.assertGreater(f.result(timeout=0), timeout)
+
+    def test_jobserver_as_submit_argument(self) -> None:
+        """Ensure instances with in-flight Futures passable as arguments."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=2)
+                # Submit work so an in-flight Future is being tracked.
+                f = js.submit(fn=len, args=((1, 2),))
+                # Submit work using the Jobserver with a live Future.
+                # Importantly, disable callbacks so f cannot be cleaned up.
+                g = js.submit(fn=len, args=((1, js, js),), callbacks=False)
+                # Confirm both results as expected
+                self.assertEqual(g.result(timeout=None), 3)
+                self.assertEqual(f.result(timeout=None), 2)
 
     # Uses "SENTINEL", not None, because None handling is tested elsewhere
     @staticmethod
