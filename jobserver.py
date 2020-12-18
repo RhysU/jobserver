@@ -786,13 +786,13 @@ class JobserverTest(unittest.TestCase):
         """Ensure instances with in-flight Futures passable as arguments."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
-                js = Jobserver(context=method, slots=2)
-                # Submit work so an in-flight Future is being tracked.
+                # Submit work so an in-flight Future is being tracked
+                js = Jobserver(context=method, slots=1)
                 f = js.submit(fn=len, args=((1, 2),))
-                # Submit work using the Jobserver with a live Future.
-                # Importantly, disable callbacks so f cannot be cleaned up.
-                g = js.submit(fn=len, args=((1, js, js),), callbacks=False)
-                # Confirm both results as expected
+                # Submit work passing the Jobserver with a live Future
+                ks = Jobserver(context=method, slots=1)
+                g = ks.submit(fn=len, args=((1, js, js),))
+                # Confirm results as expected from each Jobserver
                 self.assertEqual(g.result(timeout=None), 3)
                 self.assertEqual(f.result(timeout=None), 2)
 
