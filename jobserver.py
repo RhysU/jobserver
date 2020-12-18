@@ -341,10 +341,14 @@ class Jobserver:
 
     def __getstate__(self) -> typing.Tuple:
         """Get instance state without exposing in-flight Futures."""
+        # Required because Futures can be neither copied nor pickled.
+        # Without custom handling of Futures, submit(...) would fail
+        # whenever an instance is part of an argument to a sub-Process.
         return self._context, self._slots, {}
 
     def __setstate__(self, state: typing.Tuple) -> None:
         """Set instance state."""
+        assert isinstance(state, tuple) and len(state) == 3
         self._context, self._slots, self._future_sentinels = state
 
     def __copy__(self) -> "Jobserver":
@@ -416,10 +420,6 @@ class Jobserver:
 
         # Then, with required slots consumed, begin consuming resources:
         try:
-            # Temporarily mutate members to clear known Futures for new worker
-            # to accommodate the possibility of an os.fork() under the covers
-            registered, self._future_sentinels = self._future_sentinels, {}
-
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
@@ -433,15 +433,12 @@ class Jobserver:
             process.start()
 
             # Prepare to track the Future and the wait(...)-able sentinel
-            registered[future] = process.sentinel
+            self._future_sentinels[future] = process.sentinel
         except Exception:
             # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self._slots.put(tokens.pop(0))
             raise
-        finally:
-            # Re-mutate members to restore known-Future tracking
-            self._future_sentinels = registered
 
         # As above process.start() succeeded, now Future must restore tokens.
         # After any restoration, no longer track this Future within Jobserver.
