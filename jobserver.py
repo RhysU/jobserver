@@ -401,19 +401,22 @@ class Jobserver:
         should either return None when work is acceptable or return the
         non-negative number of seconds for which this process should sleep.
         """
-        # First, check any arguments not for to _obtain_tokens(...) just below.
+        # First, check any arguments not for _obtain_tokens(...) just below.
         assert fn is not None
         assert isinstance(args, collections.abc.Iterable), type(args)
         assert isinstance(kwargs, collections.abc.Mapping), type(kwargs)
+        assert isinstance(callbacks, bool), type(callbacks)
         assert isinstance(env, collections.abc.Iterable), type(env)
         assert preexec_fn is not None
 
         # Next, either obtain requested tokens or else raise Blocked
+        # Work submission only reclaims tokens when callbacks are enabled
+        reclaim_tokens_fn = self.reclaim_resources if callbacks else noop
         tokens = self._obtain_tokens(
-            callbacks=callbacks,
             consume=consume,
             deadline=self._absolute_deadline(relative_timeout=timeout),
-            future_sentinels=self._future_sentinels,
+            reclaim_tokens_fn=reclaim_tokens_fn,  # type: ignore
+            sentinels_fn=self._future_sentinels.values,
             sleep_fn=sleep_fn,
             slots=self._slots,
         )
@@ -451,6 +454,18 @@ class Jobserver:
         # Finally, return a viable Future to the caller.
         return future
 
+    def reclaim_resources(self) -> None:
+        """
+        Reclaim resources for any completed submissions and issue callbacks.
+
+        Method exposed for when explicit resource reclamation is desired.
+        For example, when work requires locking more than just a slot and
+        the paired unlock is accomplished via Future-registered callbacks.
+        """
+        # Copy of keys() required to prevent concurrent modification
+        for future in tuple(self._future_sentinels.keys()):
+            future.done(timeout=0)
+
     @staticmethod
     def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
         """Entry point for workers to fun fn(...) due to some  submit(...)."""
@@ -475,10 +490,10 @@ class Jobserver:
     # Static because who can worry about one's self at a time like this?!
     @staticmethod
     def _obtain_tokens(
-        callbacks: bool,
         consume: int,
         deadline: float,
-        future_sentinels: typing.Dict[Future, int],
+        reclaim_tokens_fn: typing.Callable[[], typing.Any],
+        sentinels_fn: typing.Callable[[], typing.Iterable[int]],
         sleep_fn: typing.Callable[[], typing.Optional[float]],
         slots: MinimalQueue[int],
         *,
@@ -486,19 +501,15 @@ class Jobserver:
     ) -> typing.List[int]:
         """Either retrieve requested tokens or raise Blocked while trying."""
         # Defensively check arguments
-        assert isinstance(callbacks, bool), type(callbacks)
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
-        assert sleep_fn is not None
         assert deadline > 0.0
 
         # Acquire the requested retval or raise Blocked when impossible
         retval = []  # type: typing.List[int]
         while True:
 
-            # (1) Eagerly clean up any completed work (including callbacks)
-            if callbacks:
-                for future in tuple(future_sentinels.keys()):
-                    future.done(timeout=0)
+            # (1) Eagerly clean up any completed work to avoid deadlocks
+            reclaim_tokens_fn()
 
             # (2) Exit loop if all requested resources have been acquired
             if len(retval) >= consume:
@@ -525,7 +536,7 @@ class Jobserver:
 
                 # (6) ...then block until some interesting event.
                 wait(
-                    tuple(future_sentinels.values())  # "Child" result
+                    tuple(sentinels_fn())  # "Child" result
                     + (slots.waitable(),),  # "Grandchild" restores token
                     timeout=deadline - monotonic,
                 )
