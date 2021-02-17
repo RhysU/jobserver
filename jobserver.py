@@ -23,7 +23,7 @@ or concurrent.futures.Executor with a few differences:
     * Lastly, the API communicates when Exceptions occur within a callback.
 
 For usage, see JobserverTest located within the same file as Jobserver.
-Implementation is intended to work on CPython 3.5, 3.6, 3.7, and 3.8.
+Implementation is intended to work on CPython 3.5, 3.6, 3.7, 3.8, and 3.9.
 Implementation is both PEP 8 (per flake8) and type-hinting clean (per mypy).
 Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
