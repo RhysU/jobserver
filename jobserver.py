@@ -53,6 +53,7 @@ __all__ = [
     "CallbackRaised",
     "Future",
     "Jobserver",
+    "MinimalQueue",
     "SubmissionDied",
 ]
 
@@ -254,10 +255,11 @@ class Future(typing.Generic[T]):
 
 class MinimalQueue(typing.Generic[T]):
     """
-    An unbounded SimpleQueue-variant providing minimal semantics for Jobserver.
+    An unbounded SimpleQueue-variant with minimal function needed by Jobserver.
 
     Vanilla multiprocessing.SimpleQueue lacks timeout on get(...).
     Vanilla multiprocessing.Queue has wildly undesired threading machinery.
+    Both get(...) and put(...) detect and report when one end hangs up.
     """
 
     __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
