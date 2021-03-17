@@ -35,7 +35,6 @@ import os
 import pickle
 import queue
 import signal
-import tempfile
 import time
 import types
 import typing
@@ -751,13 +750,14 @@ class JobserverTest(unittest.TestCase):
                         self.assertEqual(len(x), size)
 
     @staticmethod
-    def helper_block(path: str, timeout: float) -> float:
-        """Helper blocking until given path no longer exists."""
-        slept = 0.0
-        while os.path.exists(path):
-            time.sleep(timeout)
-            slept += timeout
-        return slept
+    def helper_nonblocking(mq: MinimalQueue[str], patience: float) -> float:
+        """Helper for test_nonblocking that sends/receives handshakes."""
+        mq.put("handshake 1")
+        time.sleep(0.0)  # Yield to OS scheduler because no progress possible
+        start = time.monotonic()
+        if mq.get(timeout=patience) != "handshake 2":
+            raise RuntimeError("Unknown handshake")
+        return time.monotonic() - start
 
     def test_nonblocking(self) -> None:
         """Ensure non-blocking done() and submit() semantics clean."""
@@ -765,30 +765,36 @@ class JobserverTest(unittest.TestCase):
             get_all_start_methods(), (True, False)
         ):
             with self.subTest(method=method, check_done=check_done):
-                js = Jobserver(context=method, slots=1)
-                timeout = 0.1
-                with tempfile.NamedTemporaryFile() as t:
-                    # Future f cannot complete until file t is removed
-                    f = js.submit(fn=self.helper_block, args=(t.name, timeout))
-                    # Because Future f is stalled, new work not accepted
-                    with self.assertRaises(Blocked):
-                        js.submit(fn=len, args=("abc",), timeout=0)
-                    with self.assertRaises(Blocked):
-                        js.submit(fn=len, args=("abc",), timeout=1.5 * timeout)
-                    # Future f reports not done() blocking or otherwise
-                    if check_done:
-                        self.assertFalse(f.done(timeout=0))
-                        self.assertFalse(f.done(timeout=1.5 * timeout))
-                    # Future f reports no result() blocking or otherwise
-                    with self.assertRaises(Blocked):
-                        f.result(timeout=0)
-                    with self.assertRaises(Blocked):
-                        f.result(timeout=1.5 * timeout)
-                # With file t removed, done() will report True
+                context = get_context(method)
+                mq = MinimalQueue(context=context)  # type: MinimalQueue[str]
+                js = Jobserver(context=context, slots=1)
+                timeout = 0.1  # Timescale in seconds for successful operation
+                patience = 60.0  # Timescale in seconds for detecting breakage
+
+                # Future f confirms that it is running by sending handshake
+                # which mitigates races possible when spawning is very slow
+                f = js.submit(fn=self.helper_nonblocking, args=(mq, patience))
+                self.assertEqual(mq.get(timeout=patience), "handshake 1")
+                # Because Future f is stalled, new work not accepted
+                with self.assertRaises(Blocked):
+                    js.submit(fn=len, args=("abc",), timeout=0)
+                with self.assertRaises(Blocked):
+                    js.submit(fn=len, args=("abc",), timeout=1.5 * timeout)
+                # Future f reports not done() blocking or otherwise
+                if check_done:
+                    self.assertFalse(f.done(timeout=0))
+                    self.assertFalse(f.done(timeout=1.5 * timeout))
+                # Future f reports no result() blocking or otherwise
+                with self.assertRaises(Blocked):
+                    f.result(timeout=0)
+                with self.assertRaises(Blocked):
+                    f.result(timeout=1.5 * timeout)
+
+                # Future f can give a result() once it receives this handshake
+                # which is compared with the minimal blocked time from above.
+                mq.put("handshake 2")
                 if check_done:
                     self.assertTrue(f.done(timeout=None))
-                # With file t removed, result() now gives a result,
-                # which is compared with the minimum stalled time.
                 self.assertGreater(f.result(timeout=None), timeout)
                 self.assertGreater(f.result(timeout=0), timeout)
 
