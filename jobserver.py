@@ -29,6 +29,7 @@ Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
 import abc
 import collections.abc
+import contextlib
 import copy
 import itertools
 import os
@@ -749,18 +750,22 @@ class JobserverTest(unittest.TestCase):
                         x = f.result()
                         self.assertEqual(len(x), size)
 
-    @staticmethod
-    def helper_nonblocking(mq: MinimalQueue[str], patience: float) -> float:
-        """Helper for test_nonblocking that sends/receives handshakes."""
-        mq.put("handshake 1")
-        time.sleep(0.0)  # Yield to OS scheduler because no progress possible
+    @contextlib.contextmanager
+    def assert_elapsed(self, minimum: float):  # type: ignore
+        """Asserts a 'with' block required at least minimum seconds to run."""
         start = time.monotonic()
-        if mq.get(timeout=patience) != "handshake 2":
-            raise RuntimeError("Unknown handshake")
-        return time.monotonic() - start
+        yield
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, minimum, "Not enough seconds elapsed")
+
+    @staticmethod
+    def helper_nonblocking(mq: MinimalQueue[str]) -> str:
+        """Helper for test_nonblocking receiving and returning a handshake."""
+        # Timeout allows heavy OS load while also detecting complete breakage
+        return mq.get(timeout=60.0)
 
     def test_nonblocking(self) -> None:
-        """Ensure non-blocking done() and submit() semantics clean."""
+        """Ensure non-blocking done() and submit() logic honors timeouts."""
         for method, check_done in itertools.product(
             get_all_start_methods(), (True, False)
         ):
@@ -768,35 +773,36 @@ class JobserverTest(unittest.TestCase):
                 context = get_context(method)
                 mq = MinimalQueue(context=context)  # type: MinimalQueue[str]
                 js = Jobserver(context=context, slots=1)
-                timeout = 0.1  # Timescale in seconds for successful operation
-                patience = 60.0  # Timescale in seconds for detecting breakage
+                delay = 0.1  # Impacts test runtime on the success path
 
-                # Future f confirms that it is running by sending handshake
-                # which mitigates races possible when spawning is very slow
-                f = js.submit(fn=self.helper_nonblocking, args=(mq, patience))
-                self.assertEqual(mq.get(timeout=patience), "handshake 1")
+                # Future f stalls until it receives the handshake below
+                f = js.submit(fn=self.helper_nonblocking, args=(mq,))
+
                 # Because Future f is stalled, new work not accepted
-                with self.assertRaises(Blocked):
+                with self.assert_elapsed(0), self.assertRaises(Blocked):
                     js.submit(fn=len, args=("abc",), timeout=0)
-                with self.assertRaises(Blocked):
-                    js.submit(fn=len, args=("abc",), timeout=1.5 * timeout)
-                # Future f reports not done() blocking or otherwise
-                if check_done:
-                    self.assertFalse(f.done(timeout=0))
-                    self.assertFalse(f.done(timeout=1.5 * timeout))
-                # Future f reports no result() blocking or otherwise
-                with self.assertRaises(Blocked):
-                    f.result(timeout=0)
-                with self.assertRaises(Blocked):
-                    f.result(timeout=1.5 * timeout)
+                with self.assert_elapsed(delay), self.assertRaises(Blocked):
+                    js.submit(fn=len, args=("abc",), timeout=delay)
 
-                # Future f can give a result() once it receives this handshake
-                # which is compared with the minimal blocked time from above.
-                mq.put("handshake 2")
+                # Future f reports not done() and adheres to timeouts
+                if check_done:
+                    with self.assert_elapsed(0):
+                        self.assertFalse(f.done(timeout=0))
+                    with self.assert_elapsed(delay):
+                        self.assertFalse(f.done(timeout=delay))
+
+                # Future f reports no result() and adheres to timeouts
+                with self.assert_elapsed(0), self.assertRaises(Blocked):
+                    f.result(timeout=0)
+                with self.assert_elapsed(delay), self.assertRaises(Blocked):
+                    f.result(timeout=delay)
+
+                # Future f has a result() after it receives this handshake
+                mq.put("handshake")
                 if check_done:
                     self.assertTrue(f.done(timeout=None))
-                self.assertGreater(f.result(timeout=None), timeout)
-                self.assertGreater(f.result(timeout=0), timeout)
+                self.assertEqual(f.result(timeout=None), "handshake")
+                self.assertEqual(f.result(timeout=0), "handshake")
 
     def test_jobserver_as_submit_argument(self) -> None:
         """Ensure instances with in-flight Futures passable as arguments."""
