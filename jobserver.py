@@ -264,7 +264,12 @@ class MinimalQueue(typing.Generic[T]):
 
     __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
 
-    def __init__(self, context: BaseContext) -> None:
+    def __init__(
+        self, context: typing.Union[None, str, BaseContext] = None
+    ) -> None:
+        """Use given context with default of multiprocessing.get_context()."""
+        if context is None or isinstance(context, str):
+            context = get_context(context)
         self._reader, self._writer = context.Pipe(duplex=False)
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()
@@ -319,12 +324,10 @@ class Jobserver:
         Wrap some multiprocessing context and allow some number of slots.
 
         When not provided, context defaults to multiprocessing.get_context().
-        As shorthand, multiprocessing.get_context(string) is used for a string.
-
         When not provided, slots defaults to len(os.sched_getaffinity(0))
         which reports the number of usable CPUs for the current process.
         """
-        # Obtain some multiprocessing Context
+        # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = (
             get_context(context)
             if context is None or isinstance(context, str)
