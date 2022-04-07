@@ -567,7 +567,7 @@ class Jobserver:
 
 
 ###########################################################################
-# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS 3
+# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS #
 ###########################################################################
 
 
