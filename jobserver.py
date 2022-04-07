@@ -23,7 +23,7 @@ or concurrent.futures.Executor with a few differences:
     * Lastly, the API communicates when Exceptions occur within a callback.
 
 For usage, see JobserverTest located within the same file as Jobserver.
-Implementation is intended to work on CPython 3.5, 3.6, 3.7, 3.8, and 3.9.
+Implementation is intended to work on CPython 3.6, 3.7, 3.8, 3.9, and 3.10.
 Implementation is both PEP 8 (per flake8) and type-hinting clean (per mypy).
 Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
@@ -747,7 +747,7 @@ class JobserverTest(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
-                for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
+                for size in (2**i for i in range(22, 28)):  # 2**27 is 128 MB
                     with self.subTest(size=size):
                         f = js.submit(fn=bytearray, args=(size,))
                         x = f.result()

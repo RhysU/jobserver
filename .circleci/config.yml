@@ -1,0 +1,39 @@
+# See https://circleci.com/docs/2.0/reusing-config/
+version: 2.1
+
+executors:
+  python-docker:
+    parameters:
+      version:
+        description: "Python version"
+        default: "3.6"
+        type: string
+    docker:
+      - image: cimg/python:<<parameters.version>>
+
+jobs:
+  test:
+    parameters:
+      version:
+        description: "Python version"
+        default: "3.6"
+        type: string
+    executor:
+      name: python-docker
+      version: <<parameters.version>>
+    steps:
+      - checkout
+      - run: ./ci
+
+workflows:
+  matrix-tests:
+    jobs:
+      - test:
+          matrix:
+            parameters:
+              version:
+                - "3.6"
+                - "3.7"
+                - "3.8"
+                - "3.9"
+                - "3.10"
