@@ -12,6 +12,6 @@ jobs:
 
 # Orchestrate our job run sequence
 workflows:
-    build_and_test:
+    test:
         jobs:
             - test
