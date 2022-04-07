@@ -747,7 +747,7 @@ class JobserverTest(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
-                for size in (2 ** i for i in range(22, 28)):  # 2**27 is 128 MB
+                for size in (2**i for i in range(22, 28)):  # 2**27 is 128 MB
                     with self.subTest(size=size):
                         f = js.submit(fn=bytearray, args=(size,))
                         x = f.result()
