@@ -397,8 +397,8 @@ class Jobserver:
 
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
-        When provided, child first calls os.environ.update(env) just before fn.
-        When provided, child next calls preexec_fn() just before fn(...).
+        When env provided, child updates os.environ unsetting None-valued keys.
+        When preexec_fn provided, child calls it just before fn(...).
 
         Optional sleep_fn() permits injecting additional logic as
         to when a slot may be consumed.  For example, one can accept work
@@ -433,7 +433,7 @@ class Jobserver:
             recv, send = self._context.Pipe(duplex=False)
             process = self._context.Process(  # type: ignore
                 target=self._worker_entrypoint,
-                args=((send, env, preexec_fn, fn) + tuple(args)),
+                args=((send, dict(env), preexec_fn, fn) + tuple(args)),
                 kwargs=kwargs,
                 daemon=False,
             )
@@ -478,7 +478,12 @@ class Jobserver:
         # in degenerate case where client code returns an Exception.
         result = None  # type: typing.Optional[Wrapper[typing.Any]]
         try:
-            os.environ.update(env)
+            # None invalid in os.environ so interpret as sentinel for popping
+            for key, value in env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
             preexec_fn()
             result = ResultWrapper(fn(*args, **kwargs))
         except Exception as exception:
@@ -828,11 +833,6 @@ class JobserverTest(unittest.TestCase):
         return os.environ.get(key, "SENTINEL")
 
     @staticmethod
-    def helper_envset(key: str, value: str) -> None:
-        """Sets os.environ[key] = value."""
-        os.environ[key] = value
-
-    @staticmethod
     def helper_preexec_fn() -> None:
         """Mutates os.environ so that the change can be observed."""
         os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
@@ -848,8 +848,6 @@ class JobserverTest(unittest.TestCase):
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 # Notice f sets, g confirms unset, and h re-sets they key.
-                # Notice that i then uses preexec_fn, not env, to set the key.
-                # Then j uses both to confirm env updated before preexec_fn.
                 f = js.submit(
                     fn=self.helper_envget, args=(key,), env={key: "5678"}
                 )
@@ -857,22 +855,40 @@ class JobserverTest(unittest.TestCase):
                 h = js.submit(
                     fn=self.helper_envget, args=(key,), env={key: "1234"}
                 )
+                # Notice that i then uses preexec_fn, not env, to set the key.
                 i = js.submit(
                     fn=self.helper_envget,
                     args=(key,),
                     preexec_fn=self.helper_preexec_fn,
                 )
+                # Then j uses both to confirm env updated before preexec_fn.
                 j = js.submit(
                     fn=self.helper_envget,
                     args=(key,),
                     preexec_fn=self.helper_preexec_fn,
                     env={key: "OVERWRITTEN"},
                 )
+                # Next, k sets then unsets to check unsetting and Iterables.
+                k = js.submit(
+                    fn=self.helper_envget,
+                    args=(key,),
+                    env=((key, "OVERWRITTEN"), (key, None)),
+                )
+                # Variable l is skipped because flake8 complains otherwise
+                # Lastly, m confirms removal of a possibly pre-existing key
+                m = js.submit(
+                    fn=self.helper_envget,
+                    args=(key,),
+                    env=((key, None),),
+                )
+                # Checking the various results in an arbitrary order
                 self.assertEqual("PREEXEC_FN", j.result())
+                self.assertEqual("SENTINEL", m.result())
                 self.assertEqual("PREEXEC_FN", i.result())
                 self.assertEqual("1234", h.result())
                 self.assertEqual("SENTINEL", g.result())
                 self.assertEqual("5678", f.result())
+                self.assertEqual("SENTINEL", k.result())
 
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
