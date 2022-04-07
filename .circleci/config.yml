@@ -1,42 +1,39 @@
-# See https://circleci.com/docs/2.0/sample-config/
+# See https://circleci.com/docs/2.0/reusing-config/
 version: 2.1
 
-# Define an executor parametrized by the Python version
 executors:
-    python-docker:
-        parameters:
-            version:
-                description: "Python version"
-                default: "3.6"
-                type: "string"
-        docker:
-          - image: cimg/python:<<parameters.version>>
+  python-docker:
+    parameters:
+      version:
+        description: "Python version"
+        default: "3.6"
+        type: string
+    docker:
+      - image: cimg/python:<<parameters.version>>
 
-# Define the jobs we want to run for this project
 jobs:
-    test:
-        parameters:
-            version:
-                description: "Python version"
-                default: "3.6"
-                type: "string"
-        executor:
-            name: python-docker
-            version: <<parameters.version>>
+  test:
+    parameters:
+      version:
+        description: "Python version"
+        default: "3.6"
+        type: string
+    executor:
+      name: python-docker
+      version: <<parameters.version>>
     steps:
       - checkout
       - run: ./ci
 
-# Orchestrate our job run sequence
 workflows:
-    matrix-tests:
-        jobs:
-            - test:
-                matrix:
-                    parameters:
-                        version:
-                            - 3.6
-                            - 3.7
-                            - 3.8
-                            - 3.9
-                            - 3.10
+  matrix-tests:
+    jobs:
+      - test:
+          matrix:
+            parameters:
+              version:
+                - "3.6"
+                - "3.7"
+                - "3.8"
+                - "3.9"
+                - "3.10"
