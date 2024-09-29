@@ -1,13 +1,11 @@
 Jobserver
 =========
 
-A nestable, single-file Jobserver for CPython 3.6+ with complete type-hinting!
+A nestable Jobserver with Futures, callbacks, and complete type-hinting!
 
 Read [jobserver.py](jobserver.py) for the API and note usage examples inside
-JobserverTest.
-
-This Jobserver is similar in spirit to multiprocessing.Pool
-or concurrent.futures.Executor with a few differences:
+JobserverTest.  This Jobserver is similar in spirit to multiprocessing.Pool or
+concurrent.futures.Executor with a few differences:
 
  * First, the implementation choices are based upon the [GNU Make
    Jobserver](https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html).
@@ -22,6 +20,6 @@ or concurrent.futures.Executor with a few differences:
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
 
-Implementation works on CPython 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, and 3.12.
+Implementation tested with CPython 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, and 3.12.
 Implementation passes both PEP 8 (per flake8) and type-hinting (per mypy).
 [![Build Status](https://circleci.com/gh/RhysU/jobserver.svg?style=shield)](https://app.circleci.com/pipelines/github/RhysU/jobserver)
