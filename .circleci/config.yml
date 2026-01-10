@@ -10,6 +10,7 @@ executors:
         type: string
     docker:
       - image: cimg/python:<<parameters.version>>
+    resource_class: small
 
 jobs:
   test:
