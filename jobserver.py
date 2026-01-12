@@ -262,7 +262,7 @@ class MinimalQueue(typing.Generic[T]):
     Both get(...) and put(...) detect and report when one end hangs up.
     """
 
-    __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
+    __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock", "_context")
 
     def __init__(
         self, context: typing.Union[None, str, BaseContext] = None
@@ -270,9 +270,41 @@ class MinimalQueue(typing.Generic[T]):
         """Use given context with default of multiprocessing.get_context()."""
         if context is None or isinstance(context, str):
             context = get_context(context)
+        self._context = context
         self._reader, self._writer = context.Pipe(duplex=False)
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()
+
+    def __getstate__(self) -> typing.Dict[str, typing.Any]:
+        """Get instance state for pickling, excluding unpickleable locks."""
+        # Drain all data from the queue while holding the read lock
+        # to ensure no other thread is reading concurrently
+        data = []  # type: typing.List[bytes]
+        with self._read_lock:
+            while self._reader.poll(0):
+                data.append(self._reader.recv_bytes())
+        # Store everything except locks, which will be recreated
+        # Connection objects will be handled by ForkingPickler's custom reducers
+        return {
+            "context": self._context._name,
+            "reader": self._reader,
+            "writer": self._writer,
+            "data": data,
+        }
+
+    def __setstate__(self, state: typing.Dict[str, typing.Any]) -> None:
+        """Set instance state from unpickling, recreating locks."""
+        # Restore context and connections
+        context = get_context(state["context"])
+        self._context = context
+        self._reader = state["reader"]
+        self._writer = state["writer"]
+        # Recreate locks (not pickleable outside of ForkingPickler)
+        self._read_lock = context.Lock()
+        self._write_lock = context.Lock()
+        # Restore any data that was in the queue
+        for item in state["data"]:
+            self._writer.send_bytes(item)
 
     def waitable(self) -> int:
         """The object on which to wait(...) to get(...) new data."""
@@ -1121,3 +1153,26 @@ class JobserverTest(unittest.TestCase):
                     ),
                     msg="Recursion is limited by number of available slots",
                 )
+
+    def test_minimalqueue_pickling(self) -> None:
+        """MinimalQueue instances can be pickled and unpickled."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                context = get_context(method)
+                mq = MinimalQueue(context=context)  # type: MinimalQueue[str]
+
+                # Put some data into the queue before pickling
+                mq.put("hello", "world")
+
+                # Pickle and unpickle the queue with ForkingPickler
+                pickled = ForkingPickler.dumps(mq)
+                mq2 = ForkingPickler.loads(pickled)  # type: MinimalQueue[str]
+
+                # Verify data was preserved during pickling
+                self.assertEqual("hello", mq2.get(timeout=1.0))
+                self.assertEqual("world", mq2.get(timeout=1.0))
+
+                # Verify the unpickled queue still works correctly
+                mq2.put("test")
+                result = mq2.get(timeout=1.0)
+                self.assertEqual("test", result)
