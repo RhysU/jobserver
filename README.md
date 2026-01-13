@@ -21,6 +21,6 @@ concurrent.futures.Executor with a few differences:
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
 
-Implementation tested with CPython 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, and 3.13.<br>
+Tested with CPython 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, and 3.13.<br>
 Implementation passes both PEP 8 (per flake8) and type-hinting (per mypy).<br>
 [![Build Status](https://circleci.com/gh/RhysU/jobserver.svg?style=shield)](https://app.circleci.com/pipelines/github/RhysU/jobserver)<br>
