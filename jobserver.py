@@ -253,6 +253,21 @@ class Future(typing.Generic[T]):
         return self._wrapper.unwrap()
 
 
+def absolute_deadline(relative_timeout: typing.Optional[float]) -> float:
+    """
+    Convert relative_timeout in seconds into a monotonic, absolute deadline.
+
+    A large, absolute timeout is returned whenever relative_timeout is None.
+    """
+    # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
+    # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
+    return time.monotonic() + (
+        (60 * 60 * 24 * 7)  # 604.8k seconds ought to be enough for anyone
+        if relative_timeout is None
+        else relative_timeout
+    )
+
+
 class MinimalQueue(typing.Generic[T]):
     """
     An unbounded SimpleQueue-variant with minimal function needed by Jobserver.
@@ -284,11 +299,20 @@ class MinimalQueue(typing.Generic[T]):
 
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
-        with self._read_lock:
-            if self._reader.poll(timeout):
-                recv = self._reader.recv_bytes()
-            else:
+        # Accounting for lock acquisition time is easiest with a deadline
+        # and conditionals repeatedly checking for negative situations.
+        # Otherwise, this turns into an unpleasantly messy stretch of code.
+        deadline = absolute_deadline(relative_timeout=timeout)
+        if not self._read_lock.acquire(block=True, timeout=timeout):
+            raise queue.Empty
+        try:
+            if not self._reader.poll(deadline - time.monotonic()):
                 raise queue.Empty
+            recv = self._reader.recv_bytes()
+        finally:
+            self._read_lock.release()
+
+        # Deserialize outside the critical section
         return ForkingPickler.loads(recv)
 
     def put(self, *args: T) -> None:
@@ -298,6 +322,7 @@ class MinimalQueue(typing.Generic[T]):
         Raises BrokenPipeError if the receiving half has hung up.
         """
         if args:
+            # Serialize outside the critical section
             send = [ForkingPickler.dumps(arg) for arg in args]
             with self._write_lock:
                 while send:
@@ -419,7 +444,7 @@ class Jobserver:
         reclaim_tokens_fn = self.reclaim_resources if callbacks else noop
         tokens = self._obtain_tokens(
             consume=consume,
-            deadline=self._absolute_deadline(relative_timeout=timeout),
+            deadline=absolute_deadline(relative_timeout=timeout),
             reclaim_tokens_fn=reclaim_tokens_fn,  # type: ignore
             sentinels_fn=self._future_sentinels.values,
             sleep_fn=sleep_fn,
@@ -553,17 +578,6 @@ class Jobserver:
 
         assert len(retval) == consume, "Postcondition"
         return retval
-
-    @staticmethod
-    def _absolute_deadline(relative_timeout: typing.Optional[float]) -> float:
-        """Convert relative timeout in seconds into an absolute deadline."""
-        # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
-        # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
-        return time.monotonic() + (
-            (60 * 60 * 24 * 7)  # 604.8k seconds ought to be enough for anyone
-            if relative_timeout is None
-            else relative_timeout
-        )
 
 
 ###########################################################################
