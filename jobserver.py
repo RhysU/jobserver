@@ -289,6 +289,16 @@ class MinimalQueue(typing.Generic[T]):
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()
 
+    def __copy__(self) -> "MinimalQueue":
+        """Shallow copies return the original MinimalQueue unchanged."""
+        # Because any "copy" should and can only mutate same pipe/locks
+        return self
+
+    def __deepcopy__(self, _: typing.Any) -> "MinimalQueue":
+        """Deep copies return the original MinimalQueue unchanged."""
+        # Because any "copy" should and can only mutate same pipe/locks
+        return self
+
     def waitable(self) -> int:
         """The object on which to wait(...) to get(...) new data."""
         return self._reader.fileno()
@@ -759,6 +769,26 @@ class JobserverTest(unittest.TestCase):
                 # copy.copy(...) and copy.deepcopy(...) return the original.
                 self.assertIs(js1, js2)
                 self.assertIs(js1, js3)
+
+    # No behavioral assertions made around pickling, however.
+    # Indeed, disabling pickling MinimalQueues empirically breaks many tests.
+    def test_duplication_minimalqueue(self) -> None:
+        """Copying of MinimalQueue is explicitly allowed."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                mq1 = MinimalQueue(context=method)  # type: MinimalQueue[int]
+                mq2 = copy.copy(mq1)
+                mq3 = copy.deepcopy(mq1)
+                mq1.put(1)
+                mq2.put(2)
+                mq3.put(3)
+                self.assertEqual(1, mq3.get())
+                self.assertEqual(2, mq2.get())
+                self.assertEqual(3, mq1.get())
+                # Though copying is allowed, it is degenerate in that
+                # copy.copy(...) and copy.deepcopy(...) return the original.
+                self.assertIs(mq1, mq2)
+                self.assertIs(mq1, mq3)
 
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
