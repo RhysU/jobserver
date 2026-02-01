@@ -21,7 +21,7 @@ python -m mypy jobserver.py
 
 # Finally, check for formatting issues sidestepping a Black-on-Python-3.7 nit
 set -o pipefail
-uv pip install --system black
+uv pip install --system "black<25"
 if python --version | grep --invert-match '^Python 3.7.'; then
     python -m black --check --line-length 79 jobserver.py
 fi
