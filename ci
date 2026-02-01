@@ -16,8 +16,5 @@ uvx --from flake8 flake8 jobserver.py
 # Typehint linting requires a new-enough mypy
 uvx --from "mypy>0.770" mypy jobserver.py
 
-# Finally, check for formatting issues sidestepping a Black-on-Python-3.7 nit
-set -o pipefail
-if python --version | grep --invert-match '^Python 3.7.'; then
-    uvx --from "black<25" black --check --line-length 79 jobserver.py
-fi
+# Finally, check for formatting issues
+uvx --from "black<25" black --check --line-length 79 jobserver.py
