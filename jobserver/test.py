@@ -23,7 +23,6 @@ from .impl import (
     Jobserver,
     MinimalQueue,
     SubmissionDied,
-    noop,
 )
 
 T = typing.TypeVar("T")
@@ -397,7 +396,9 @@ class JobserverTest(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
-                f = js.submit(fn=noop, args=(), timeout=None)
+                f = js.submit(
+                    fn=min, args=((),), kwargs=dict(default=None), timeout=None
+                )
                 self.assertIsNone(f.result())
 
     @staticmethod
