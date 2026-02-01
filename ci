@@ -7,14 +7,14 @@
 echo "$(command -v python): $(python -V)"
 set -x
 
-# Unit testing runs the tests inside jobserver.py
-python -m unittest -v jobserver
+# Unit testing runs the tests inside jobserver/test.py
+python -m unittest -v jobserver.test
 
 # PEP8 linting
-uvx --from flake8 flake8 jobserver.py
+uvx --from flake8 flake8 jobserver/
 
 # Typehint linting requires a new-enough mypy
-uvx --from "mypy>0.770" mypy jobserver.py
+uvx --from "mypy>0.770" mypy jobserver/
 
 # Finally, check for formatting issues
-uvx --from "black<25" black --check --line-length 79 jobserver.py
+uvx --from "black<25" black --check --line-length 79 jobserver/
