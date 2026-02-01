@@ -1,7 +1,6 @@
 #!/bin/bash -eu
 # Run continuous integration tests for jobserver.py
-# Installs any necessary prerequisites using uv.
-# Tools like flake8, black, etc all invoked via python -m.
+# Uses uv to run linting and formatting tools.
 # Intended for use with CircleCI or Conda or VirtualEnv
 
 # Informational and helpful when developing against multiple Python versions
@@ -12,16 +11,13 @@ set -x
 python -m unittest -v jobserver
 
 # PEP8 linting
-uv pip install --system flake8
-python -m flake8 jobserver.py
+uvx --from flake8 flake8 jobserver.py
 
 # Typehint linting requires a new-enough mypy
-uv pip install --system "mypy>0.770"
-python -m mypy jobserver.py
+uvx --from "mypy>0.770" mypy jobserver.py
 
 # Finally, check for formatting issues sidestepping a Black-on-Python-3.7 nit
 set -o pipefail
-uv pip install --system "black<25"
 if python --version | grep --invert-match '^Python 3.7.'; then
-    python -m black --check --line-length 79 jobserver.py
+    uvx --from "black<25" black --check --line-length 79 jobserver.py
 fi
