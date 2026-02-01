@@ -1,14 +1,8 @@
 #!/bin/bash -eu
-# Run continuous integration tests for jobserver.py
-# Uses uv to run linting and formatting tools.
-# Intended for use with CircleCI or Conda or VirtualEnv
-
-# Informational and helpful when developing against multiple Python versions
-echo "$(command -v python): $(python -V)"
-set -x
+# Run uv-based continuous integration tests for jobserver/
 
 # Unit testing runs the tests inside jobserver/test.py
-python -m unittest -v jobserver.test
+uv run -m unittest -v jobserver.test
 
 # PEP8 linting
 uvx --from flake8 flake8 jobserver/
