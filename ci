@@ -4,6 +4,15 @@
 # Unit testing runs the tests inside jobserver/test.py
 uv run -m unittest -v jobserver.test
 
+# Run examples to verify they work
+uv run -m jobserver.example.basic
+uv run -m jobserver.example.callbacks
+uv run -m jobserver.example.nested
+uv run -m jobserver.example.gating
+uv run -m jobserver.example.nonblocking
+uv run -m jobserver.example.errors
+uv run -m jobserver.example.environ
+
 # PEP8 linting
 uvx --from flake8 flake8 jobserver/
 
