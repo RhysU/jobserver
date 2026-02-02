@@ -12,7 +12,7 @@ import time
 import types
 import typing
 
-# Implementation depends upon an explicit subset of multiprocessing.
+# Implementation depends upon an explicit subset of multiprocessing
 from multiprocessing import get_context
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
@@ -70,8 +70,8 @@ class Wrapper(abc.ABC, typing.Generic[T]):
 
 
 # Down the road, ResultWrapper might be extended with "big object"
-# support that chooses to place data in shared memory or on disk.
-# Likely only necessary if/when sending results via pipe breaks down.
+# support that chooses to place data in shared memory or on disk
+# Likely only necessary if/when sending results via pipe breaks down
 class ResultWrapper(Wrapper[T]):
     """Specialization of Wrapper for when a result is available."""
 
@@ -133,7 +133,7 @@ class Future(typing.Generic[T]):
 
     def __reduce__(self) -> typing.NoReturn:
         """Disallow pickling as duplicates cannot sensibly share resources."""
-        # In particular, because pickles create copies.
+        # In particular, because pickles create copies
         raise NotImplementedError("Futures cannot be pickled.")
 
     def when_done(
@@ -158,17 +158,17 @@ class Future(typing.Generic[T]):
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Multiple calls to done() may be required to issue all callbacks.
+        # Multiple calls to done() may be required to issue all callbacks
         if self._connection is None:
             self._issue_callbacks()
             return True
 
-        # Possibly wait until a result is available for reading.
+        # Possibly wait until a result is available for reading
         if not self._connection.poll(timeout):
             return False
 
         # Attempt to read the result Wrapper from the underlying Connection
-        # Any EOFError is treated as an unexpected hang up from the other end.
+        # Any EOFError is treated as an unexpected hang up from the other end
         try:
             self._wrapper = self._connection.recv()
             assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
@@ -180,15 +180,15 @@ class Future(typing.Generic[T]):
         self._process.join()
         self._process = None
 
-        # Should close() throw just below notice it will never be retried.
+        # Should close() throw just below notice it will never be retried
         connection, self._connection = self._connection, None
         connection.close()
         self._issue_callbacks()
         return True
 
     def _issue_callbacks(self):
-        # Only a non-internal callback may cause CallbackRaised.
-        # Otherwise, we might obfuscate bugs within this module's logic.
+        # Only a non-internal callback may cause CallbackRaised
+        # Otherwise, we might obfuscate bugs within this module's logic
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
             internal, fn, args, kwargs = self._callbacks.pop(0)
@@ -272,8 +272,8 @@ class MinimalQueue(typing.Generic[T]):
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
         # Accounting for lock acquisition time is easiest with a deadline
-        # and conditionals repeatedly checking for negative situations.
-        # Otherwise, this turns into an unpleasantly messy stretch of code.
+        # and conditionals repeatedly checking for negative situations
+        # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = absolute_deadline(relative_timeout=timeout)
         if not self._read_lock.acquire(block=True, timeout=timeout):
             raise queue.Empty
@@ -301,7 +301,7 @@ class MinimalQueue(typing.Generic[T]):
                     self._writer.send_bytes(send.pop(0))
 
 
-# Appears as a default argument in Jobserver to simplify some logic therein.
+# Appears as a default argument in Jobserver to simplify some logic therein
 def noop(*args, **kwargs) -> None:
     """A "do nothing" function conforming to (the rejected) PEP-559."""
     return None
@@ -343,9 +343,9 @@ class Jobserver:
 
     def __getstate__(self) -> typing.Tuple:
         """Get instance state without exposing in-flight Futures."""
-        # Required because Futures can be neither copied nor pickled.
+        # Required because Futures can be neither copied nor pickled
         # Without custom handling of Futures, submit(...) would fail
-        # whenever an instance is part of an argument to a sub-Process.
+        # whenever an instance is part of an argument to a sub-Process
         return self._context, self._slots, {}
 
     def __setstate__(self, state: typing.Tuple) -> None:
@@ -445,15 +445,15 @@ class Jobserver:
                 self._slots.put(tokens.pop(0))
             raise
 
-        # As above process.start() succeeded, now Future must restore tokens.
-        # After any restoration, no longer track this Future within Jobserver.
+        # As above process.start() succeeded, now Future must restore tokens
+        # After any restoration, no longer track this Future within Jobserver
         if tokens:
             future.when_done(self._slots.put, *tokens, _Future__internal=True)
         future.when_done(
             self._future_sentinels.pop, future, _Future__internal=True
         )
 
-        # Finally, return a viable Future to the caller.
+        # Finally, return a viable Future to the caller
         return future
 
     def reclaim_resources(self) -> None:
@@ -472,7 +472,7 @@ class Jobserver:
     def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
         """Entry point for workers to fun fn(...) due to some  submit(...)."""
         # Wrapper usage tracks whether a value was returned or raised
-        # in degenerate case where client code returns an Exception.
+        # in degenerate case where client code returns an Exception
         result = None  # type: typing.Optional[Wrapper[typing.Any]]
         try:
             # None invalid in os.environ so interpret as sentinel for popping
@@ -487,7 +487,7 @@ class Jobserver:
             result = ExceptionWrapper(exception)
         finally:
             # Ignore broken pipes which naturally occur when the destination
-            # terminates (or otherwise hangs up) before the result is ready.
+            # terminates (or otherwise hangs up) before the result is ready
             try:
                 send.send(result)  # On ValueError suspect object too large!
             except BrokenPipeError:
@@ -522,7 +522,7 @@ class Jobserver:
             if len(retval) >= consume:
                 break
 
-            # (3) When sleep_fn() vetoes new work proceed to sleep.
+            # (3) When sleep_fn() vetoes new work proceed to sleep
             sleep = sleep_fn()
             monotonic = time.monotonic()
             if sleep is not None:
@@ -533,7 +533,7 @@ class Jobserver:
                 continue
 
             try:
-                # (4) Grab any immediately available token.
+                # (4) Grab any immediately available token
                 retval.append(slots.get(timeout=0))
             except queue.Empty:
                 # (5) Otherwise, possibly throw in the towel...
