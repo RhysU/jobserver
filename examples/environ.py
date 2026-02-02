@@ -6,7 +6,7 @@
 """Demo: Environment variables and preexec_fn in workers."""
 import os
 
-from ..impl import Jobserver
+from jobserver import Jobserver
 
 KEY = "JOBSERVER_EXAMPLE_VAR"
 

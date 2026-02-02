@@ -5,13 +5,13 @@
 uv run -m unittest -v jobserver.test
 
 # Run examples to verify they work
-uv run -m jobserver.example.basic
-uv run -m jobserver.example.callbacks
-uv run -m jobserver.example.nested
-uv run -m jobserver.example.gating
-uv run -m jobserver.example.nonblocking
-uv run -m jobserver.example.errors
-uv run -m jobserver.example.environ
+PYTHONPATH=. uv run examples/basic.py
+PYTHONPATH=. uv run examples/callbacks.py
+PYTHONPATH=. uv run examples/nested.py
+PYTHONPATH=. uv run examples/gating.py
+PYTHONPATH=. uv run examples/nonblocking.py
+PYTHONPATH=. uv run examples/errors.py
+PYTHONPATH=. uv run examples/environ.py
 
 # PEP8 linting
 uvx --from flake8 flake8 jobserver/

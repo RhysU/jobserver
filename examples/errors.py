@@ -7,7 +7,7 @@
 import os
 import signal
 
-from ..impl import CallbackRaised, Jobserver, SubmissionDied
+from jobserver import CallbackRaised, Jobserver, SubmissionDied
 
 
 def raise_error(message: str) -> None:

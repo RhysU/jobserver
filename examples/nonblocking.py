@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Demo: Non-blocking operations with timeouts."""
-from ..impl import Blocked, Jobserver, MinimalQueue
+from jobserver import Blocked, Jobserver, MinimalQueue
 
 if __name__ == "__main__":
     jobserver = Jobserver(slots=1)

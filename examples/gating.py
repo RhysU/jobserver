@@ -6,7 +6,7 @@
 """Demo: Custom work acceptance via sleep_fn (e.g., RAM gating)."""
 from typing import Optional
 
-from ..impl import Blocked, Jobserver
+from jobserver import Blocked, Jobserver
 
 
 class ReadyAfterRetries:
