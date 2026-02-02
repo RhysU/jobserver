@@ -55,4 +55,4 @@ if __name__ == "__main__":
     log.debug("After callback error is reported, result is still available")
     assert future.result() == 5
 
-    log.info("errors: OK")
+    log.info("ex5_errors: OK")

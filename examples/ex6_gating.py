@@ -50,4 +50,4 @@ if __name__ == "__main__":
     except Blocked:
         log.debug("Blocked as expected: timed out waiting for sleep_fn")
 
-    log.info("gating: OK")
+    log.info("ex6_gating: OK")

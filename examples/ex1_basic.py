@@ -35,4 +35,4 @@ if __name__ == "__main__":
     log.debug("Results can be retrieved multiple times")
     assert future_a.result() == 25
 
-    log.info("basic: OK")
+    log.info("ex1_basic: OK")

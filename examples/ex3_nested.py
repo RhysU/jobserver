@@ -39,4 +39,4 @@ if __name__ == "__main__":
     achieved_depth_big = child_work(jobserver_big, depth=10)
     assert achieved_depth_big == 5
 
-    log.info("nested: OK")
+    log.info("ex3_nested: OK")

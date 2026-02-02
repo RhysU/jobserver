@@ -45,4 +45,4 @@ if __name__ == "__main__":
     )
     assert future.result() == "from_preexec"
 
-    log.info("environ: OK")
+    log.info("ex7_environ: OK")

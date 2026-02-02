@@ -34,4 +34,4 @@ if __name__ == "__main__":
     future.when_done(record_completion, results, 2, 300)
     assert results[2] == 300
 
-    log.info("callbacks: OK")
+    log.info("ex2_callbacks: OK")

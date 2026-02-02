@@ -42,4 +42,4 @@ if __name__ == "__main__":
     assert future.result() == "go"
     assert future.done() is True
 
-    log.info("nonblocking: OK")
+    log.info("ex4_nonblocking: OK")
