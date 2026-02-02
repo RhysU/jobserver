@@ -3,10 +3,13 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Demo: Custom work acceptance via sleep_fn (e.g., RAM gating)."""
+"""Gate work acceptance with sleep_fn (e.g., wait for available RAM)."""
+import logging
 from typing import Optional
 
 from jobserver import Blocked, Jobserver
+
+log = logging.getLogger(__name__)
 
 
 class ReadyAfterRetries:
@@ -23,27 +26,28 @@ class ReadyAfterRetries:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     jobserver = Jobserver(slots=2)
 
-    # sleep_fn returning None means "proceed immediately"
+    log.debug("sleep_fn returning None means proceed immediately")
     future = jobserver.submit(
         fn=len, args=("abc",), sleep_fn=ReadyAfterRetries(0)
     )
     assert future.result() == 3
 
-    # sleep_fn can delay, then allow (retries twice, then proceeds)
+    log.debug("sleep_fn can delay then allow (retries twice, then proceeds)")
     future = jobserver.submit(
         fn=len, args=("abcd",), sleep_fn=ReadyAfterRetries(2)
     )
     assert future.result() == 4
 
-    # sleep_fn that never returns None causes Blocked on timeout
+    log.debug("sleep_fn that never returns None causes Blocked on timeout")
     try:
         jobserver.submit(
             fn=len, args=("x",), sleep_fn=lambda: 0.05, timeout=0.2
         )
         assert False, "Should have raised Blocked"
     except Blocked:
-        pass  # Expected: timed out waiting for sleep_fn to return None
+        log.debug("Blocked as expected: timed out waiting for sleep_fn")
 
-    print("gating: OK")
+    log.info("gating: OK")

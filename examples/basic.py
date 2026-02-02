@@ -3,8 +3,12 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Demo: Basic Jobserver usage."""
+"""Submit work and retrieve results."""
+import logging
+
 from jobserver import Jobserver
+
+log = logging.getLogger(__name__)
 
 
 def square(x: int) -> int:
@@ -12,22 +16,23 @@ def square(x: int) -> int:
 
 
 if __name__ == "__main__":
-    # Create a jobserver with 2 slots
+    logging.basicConfig(level=logging.DEBUG)
+    log.debug("Creating jobserver with 2 slots")
     jobserver = Jobserver(slots=2)
 
-    # Submit work using the __call__ shorthand
+    log.debug("Submitting work using __call__ shorthand")
     future_a = jobserver(square, 5)
     future_b = jobserver(square, 7)
 
-    # Submit work using the explicit submit() method
+    log.debug("Submitting work using explicit submit() method")
     future_c = jobserver.submit(fn=len, args=("hello",))
 
-    # Retrieve results (blocks until complete)
+    log.debug("Retrieving results (blocks until complete)")
     assert future_a.result() == 25
     assert future_b.result() == 49
     assert future_c.result() == 5
 
-    # Results can be retrieved multiple times
+    log.debug("Results can be retrieved multiple times")
     assert future_a.result() == 25
 
-    print("basic: OK")
+    log.info("basic: OK")

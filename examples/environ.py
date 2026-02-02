@@ -3,10 +3,13 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Demo: Environment variables and preexec_fn in workers."""
+"""Configure worker environment variables and run pre-exec setup."""
+import logging
 import os
 
 from jobserver import Jobserver
+
+log = logging.getLogger(__name__)
 
 KEY = "JOBSERVER_EXAMPLE_VAR"
 
@@ -16,23 +19,24 @@ def set_env_via_preexec() -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     jobserver = Jobserver(slots=1)
 
-    # Set environment variable via env parameter
+    log.debug("Setting environment variable via env parameter")
     future = jobserver.submit(fn=os.environ.get, args=(KEY,), env={KEY: "hi"})
     assert future.result() == "hi"
 
-    # Without env, variable is not set
+    log.debug("Without env, variable is not set")
     future = jobserver.submit(fn=os.environ.get, args=(KEY,))
     assert future.result() is None
 
-    # Use preexec_fn to run setup code before the function
+    log.debug("Using preexec_fn to run setup code before the function")
     future = jobserver.submit(
         fn=os.environ.get, args=(KEY,), preexec_fn=set_env_via_preexec
     )
     assert future.result() == "from_preexec"
 
-    # preexec_fn runs after env is applied (preexec_fn wins)
+    log.debug("preexec_fn runs after env is applied (preexec_fn wins)")
     future = jobserver.submit(
         fn=os.environ.get,
         args=(KEY,),
@@ -41,4 +45,4 @@ if __name__ == "__main__":
     )
     assert future.result() == "from_preexec"
 
-    print("environ: OK")
+    log.info("environ: OK")

@@ -3,11 +3,14 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Demo: Exception handling from workers and callbacks."""
+"""Handle exceptions from workers and callbacks."""
+import logging
 import os
 import signal
 
 from jobserver import CallbackRaised, Jobserver, SubmissionDied
+
+log = logging.getLogger(__name__)
 
 
 def raise_error(message: str) -> None:
@@ -23,23 +26,24 @@ def bad_callback() -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     jobserver = Jobserver(slots=2)
 
-    # Exceptions in workers propagate to the caller
+    log.debug("Exceptions in workers propagate to the caller")
     try:
         jobserver(raise_error, "oops").result()
         assert False, "Should have raised ValueError"
     except ValueError as e:
         assert "oops" in str(e)
 
-    # Worker death is detected via SubmissionDied
+    log.debug("Worker death is detected via SubmissionDied")
     try:
         jobserver(kill_self).result()
         assert False, "Should have raised SubmissionDied"
     except SubmissionDied:
         pass
 
-    # Callback exceptions are reported via CallbackRaised
+    log.debug("Callback exceptions are reported via CallbackRaised")
     future = jobserver.submit(fn=len, args=("hello",))
     future.when_done(bad_callback)
     try:
@@ -48,7 +52,7 @@ if __name__ == "__main__":
     except CallbackRaised as e:
         assert isinstance(e.__cause__, RuntimeError)
 
-    # After callback error is reported, result is still available
+    log.debug("After callback error is reported, result is still available")
     assert future.result() == 5
 
-    print("errors: OK")
+    log.info("errors: OK")
