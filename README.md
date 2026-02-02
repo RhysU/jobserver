@@ -2,8 +2,6 @@ Jobserver
 =========
 
 A nestable Jobserver with futures, callbacks, and complete type-hinting!<br>
-Read [jobserver.py](jobserver.py) for the API and note usage examples inside
-JobserverTest.
 
 This Jobserver is similar in spirit to multiprocessing.Pool or
 concurrent.futures.Executor with a few differences:
