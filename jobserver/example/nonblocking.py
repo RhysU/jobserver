@@ -6,17 +6,12 @@
 """Demo: Non-blocking operations with timeouts."""
 from ..impl import Blocked, Jobserver, MinimalQueue
 
-
-def wait_for_signal(queue: MinimalQueue) -> str:
-    return queue.get(timeout=60.0)
-
-
 if __name__ == "__main__":
     jobserver = Jobserver(slots=1)
     queue: MinimalQueue[str] = MinimalQueue()
 
     # Submit work that blocks until we send a signal
-    future = jobserver.submit(fn=wait_for_signal, args=(queue,))
+    future = jobserver.submit(fn=queue.get, kwargs={"timeout": 60.0})
 
     # Poll without blocking: done() returns False
     assert future.done(timeout=0) is False

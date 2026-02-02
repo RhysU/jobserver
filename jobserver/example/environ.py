@@ -8,11 +8,7 @@ import os
 
 from ..impl import Jobserver
 
-KEY = "JOBSERVER_DEMO_VAR"
-
-
-def get_env(key: str) -> str:
-    return os.environ.get(key, "MISSING")
+KEY = "JOBSERVER_EXAMPLE_VAR"
 
 
 def set_env_via_preexec() -> None:
@@ -23,22 +19,22 @@ if __name__ == "__main__":
     jobserver = Jobserver(slots=1)
 
     # Set environment variable via env parameter
-    future = jobserver.submit(fn=get_env, args=(KEY,), env={KEY: "hello"})
-    assert future.result() == "hello"
+    future = jobserver.submit(fn=os.environ.get, args=(KEY,), env={KEY: "hi"})
+    assert future.result() == "hi"
 
     # Without env, variable is not set
-    future = jobserver.submit(fn=get_env, args=(KEY,))
-    assert future.result() == "MISSING"
+    future = jobserver.submit(fn=os.environ.get, args=(KEY,))
+    assert future.result() is None
 
     # Use preexec_fn to run setup code before the function
     future = jobserver.submit(
-        fn=get_env, args=(KEY,), preexec_fn=set_env_via_preexec
+        fn=os.environ.get, args=(KEY,), preexec_fn=set_env_via_preexec
     )
     assert future.result() == "from_preexec"
 
     # preexec_fn runs after env is applied (preexec_fn wins)
     future = jobserver.submit(
-        fn=get_env,
+        fn=os.environ.get,
         args=(KEY,),
         env={KEY: "from_env"},
         preexec_fn=set_env_via_preexec,

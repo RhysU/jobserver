@@ -27,7 +27,4 @@ if __name__ == "__main__":
     assert future_b.result() == 49
     assert future_c.result() == 5
 
-    # Results can be retrieved multiple times
-    assert future_a.result() == 25
-
     print("basic: OK")
