@@ -12,6 +12,7 @@ from jobserver import Blocked, Jobserver
 
 
 def main() -> None:
+    """Shows gating work acceptance on external conditions."""
     jobserver = Jobserver(context="spawn", slots=2)
 
     with tempfile.NamedTemporaryFile() as tmp:

@@ -10,6 +10,7 @@ from jobserver import CallbackRaised, Jobserver
 
 
 def main() -> None:
+    """Shows callbacks, exception handling, and CallbackRaised."""
     jobserver = Jobserver(context="fork", slots=2)
 
     # Register callbacks that fire when the future completes

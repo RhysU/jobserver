@@ -12,6 +12,7 @@ from jobserver import Jobserver, SubmissionDied
 
 
 def main() -> None:
+    """Shows detecting when a worker process dies unexpectedly."""
     jobserver = Jobserver(context="forkserver", slots=2)
 
     # Submit work that will be killed

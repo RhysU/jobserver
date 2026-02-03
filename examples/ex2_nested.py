@@ -10,6 +10,7 @@ from jobserver import Blocked, Jobserver
 
 
 def main() -> None:
+    """Shows nested submissions sharing slot constraints."""
     # Using slots=2 here; slots=None would use os.sched_getaffinity(0)
     # to match the number of usable CPUs for the current process.
     jobserver = Jobserver(context="fork", slots=2)

@@ -10,6 +10,7 @@ from jobserver import Jobserver
 
 
 def main() -> None:
+    """Shows submitting jobs and collecting results."""
     jobserver = Jobserver(context="spawn", slots=2)
 
     # Shorthand with positional args

@@ -11,6 +11,7 @@ from jobserver import Jobserver
 
 
 def main() -> None:
+    """Shows environment variable injection for child processes."""
     jobserver = Jobserver(context="forkserver", slots=2)
 
     # Set an environment variable in the child process

@@ -11,6 +11,7 @@ from jobserver import Blocked, Jobserver
 
 
 def main() -> None:
+    """Shows non-blocking polling, finite deadlines, and Blocked."""
     jobserver = Jobserver(context="spawn", slots=1)
 
     # Submit a slow task that occupies the only slot
