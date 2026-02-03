@@ -1,10 +1,10 @@
-# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+# Copyright (C) 2026 Rhys Ulerich <rhys.ulerich@gmail.com>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 5 shows callbacks, exception handling, and CallbackRaised."""
-from logging import basicConfig, info, DEBUG
+from logging import INFO, basicConfig, info
 
 from jobserver import CallbackRaised, Jobserver
 
@@ -60,7 +60,7 @@ def callback_raise(klass: type, *args) -> None:
 
 if __name__ == "__main__":
     basicConfig(
-        level=DEBUG,
+        level=INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()

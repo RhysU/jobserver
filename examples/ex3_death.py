@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+# Copyright (C) 2026 Rhys Ulerich <rhys.ulerich@gmail.com>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -6,7 +6,7 @@
 """Example 3 shows detecting when a worker process dies unexpectedly."""
 import os
 import signal
-from logging import basicConfig, info, DEBUG
+from logging import INFO, basicConfig, info
 
 from jobserver import Jobserver, SubmissionDied
 
@@ -42,7 +42,7 @@ def task_self_signal(sig: signal.Signals) -> None:
 
 if __name__ == "__main__":
     basicConfig(
-        level=DEBUG,
+        level=INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()
