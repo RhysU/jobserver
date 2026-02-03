@@ -5,7 +5,7 @@
 uv run -m unittest -v jobserver.test
 
 # Run all examples to confirm they complete successfully
-for ex in examples/ex[1-7]_*.py; do
+for ex in examples/*.py; do
     PYTHONPATH=. uv run "$ex"
 done
 

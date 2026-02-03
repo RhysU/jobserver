@@ -1,72 +1,73 @@
-"""Ex 7: Non-blocking Timeouts - polling, deadlines, and Blocked."""
-
-import logging
+# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+"""Example 7 shows non-blocking polling, finite deadlines, and Blocked."""
 import time
+from logging import basicConfig, info, DEBUG
 
-from jobserver import Blocked, Jobserver, MinimalQueue
+from jobserver import Blocked, Jobserver
 
 
 def main() -> None:
-    jobserver = Jobserver(context="spawn", slots=2)
+    jobserver = Jobserver(context="spawn", slots=1)
 
-    # Use a MinimalQueue to create a stalled worker we can unblock later
-    mq = MinimalQueue(context="spawn")  # type: MinimalQueue[str]
-    future_stalled = jobserver.submit(fn=task_wait, args=(mq,))
+    # Submit a slow task that occupies the only slot
+    future = jobserver.submit(fn=task_slow, args=(0.75,))
 
     # Zero timeout: done() returns False, result() raises Blocked
-    logging.info("done(timeout=0): %s", future_stalled.done(timeout=0))
+    info("done(timeout=0): %s", future.done(timeout=0))
     try:
-        future_stalled.result(timeout=0)
+        future.result(timeout=0)
+        raise RuntimeError("Expected Blocked was not raised")
     except Blocked:
-        logging.info("Caught expected Blocked from result(timeout=0)")
+        info("Caught expected Blocked from result(timeout=0)")
 
-    # Finite timeout: waits up to the deadline then gives up
+    # Finite timeout on result: waits then gives up
     start = time.monotonic()
     try:
-        future_stalled.result(timeout=0.25)
+        future.result(timeout=0.25)
+        raise RuntimeError("Expected Blocked was not raised")
     except Blocked:
         elapsed = time.monotonic() - start
-        logging.info(
-            "Caught expected Blocked from result(timeout=0.25) " "after %.2fs",
+        info(
+            "Caught expected Blocked from result(timeout=0.25)" " after %.2fs",
             elapsed,
         )
 
-    # Fill the second slot with another stalled worker
-    mq_fill = MinimalQueue(context="spawn")  # type: MinimalQueue[str]
-    future_fill = jobserver.submit(fn=task_wait, args=(mq_fill,))
-
-    # submit() with timeout=0 raises Blocked when all slots are occupied
+    # submit() with timeout=0 raises Blocked when the slot is occupied
     try:
         jobserver.submit(fn=len, args=("rejected",), timeout=0)
+        raise RuntimeError("Expected Blocked was not raised")
     except Blocked:
-        logging.info("Caught expected Blocked: no slots for new work")
+        info("Caught expected Blocked: no slots for new work")
 
     # submit() with a finite timeout waits then raises Blocked
     start = time.monotonic()
     try:
         jobserver.submit(fn=len, args=("rejected",), timeout=0.25)
+        raise RuntimeError("Expected Blocked was not raised")
     except Blocked:
         elapsed = time.monotonic() - start
-        logging.info(
-            "Caught expected Blocked from submit(timeout=0.25) " "after %.2fs",
+        info(
+            "Caught expected Blocked from submit(timeout=0.25)" " after %.2fs",
             elapsed,
         )
 
-    # Unblock both stalled workers and confirm their results
-    mq_fill.put("filler")
-    mq.put("released")
-    logging.info("Filler result: %s", future_fill.result())
-    logging.info("Stalled result after unblock: %s", future_stalled.result())
+    # After the slow task finishes, its result is available
+    info("Slow task result: %s", future.result())
 
 
-def task_wait(mq: MinimalQueue) -> str:
-    """Block until a message arrives on the queue."""
-    return mq.get(timeout=60.0)
+def task_slow(seconds: float) -> str:
+    """Sleep then return a confirmation."""
+    time.sleep(seconds)
+    return "done after %.2fs" % seconds
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
+    basicConfig(
+        level=DEBUG,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()

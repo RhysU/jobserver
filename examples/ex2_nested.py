@@ -1,6 +1,10 @@
-"""Ex 2: Nested Submissions - work submits more work sharing slots."""
-
-import logging
+# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+"""Example 2 shows nested submissions sharing slot constraints."""
+from logging import basicConfig, info, DEBUG
 
 from jobserver import Blocked, Jobserver
 
@@ -14,7 +18,7 @@ def main() -> None:
     # Recursion depth is bounded by the number of available slots.
     future = jobserver.submit(fn=task_recurse, args=(jobserver, 10), timeout=5)
     depth = future.result()
-    logging.info("Reached recursion depth %d with 2 slots", depth)
+    info("Reached recursion depth %d with 2 slots", depth)
 
     # With more slots, deeper recursion is possible
     jobserver_wide = Jobserver(context="fork", slots=4)
@@ -22,7 +26,7 @@ def main() -> None:
         fn=task_recurse, args=(jobserver_wide, 10), timeout=5
     )
     depth_wide = future_wide.result()
-    logging.info("Reached recursion depth %d with 4 slots", depth_wide)
+    info("Reached recursion depth %d with 4 slots", depth_wide)
 
 
 def task_recurse(jobserver: Jobserver, max_depth: int) -> int:
@@ -39,8 +43,8 @@ def task_recurse(jobserver: Jobserver, max_depth: int) -> int:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
+    basicConfig(
+        level=DEBUG,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()

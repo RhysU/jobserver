@@ -1,6 +1,10 @@
-"""Ex 5: Callbacks and Exception Handling - when_done and CallbackRaised."""
-
-import logging
+# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+"""Example 5 shows callbacks, exception handling, and CallbackRaised."""
+from logging import basicConfig, info, DEBUG
 
 from jobserver import CallbackRaised, Jobserver
 
@@ -13,13 +17,13 @@ def main() -> None:
     future = jobserver.submit(fn=len, args=("hello",))
     future.when_done(callback_record, results, "first")
     future.when_done(callback_record, results, "second")
-    logging.info("Result: %s", future.result())
-    logging.info("Callbacks fired: %s", results)
+    info("Result: %s", future.result())
+    info("Callbacks fired: %s", results)
 
     # Register a callback after the future already has a result.
     # It fires immediately.
     future.when_done(callback_record, results, "after-done")
-    logging.info("Callbacks after done: %s", results)
+    info("Callbacks after done: %s", results)
 
     # When a callback raises, CallbackRaised wraps the original exception.
     # Re-calling done() drains the remaining callbacks one by one.
@@ -31,17 +35,17 @@ def main() -> None:
     for i in range(3):
         try:
             future_err.done()
-            logging.info("done() call %d: no more errors", i)
+            info("done() call %d: no more errors", i)
             break
         except CallbackRaised as e:
-            logging.info(
+            info(
                 "done() call %d: caught %s",
                 i,
                 type(e.__cause__).__name__,
             )
 
     # The result is still available after all callbacks drain
-    logging.info("Result after errors: %s", future_err.result())
+    info("Result after errors: %s", future_err.result())
 
 
 def callback_record(results: list, tag: str) -> None:
@@ -55,8 +59,8 @@ def callback_raise(klass: type, *args) -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
+    basicConfig(
+        level=DEBUG,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()

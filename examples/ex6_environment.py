@@ -1,10 +1,14 @@
-"""Ex 6: Environment Injection - env and preexec_fn for child processes."""
-
+# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+"""Example 6 shows environment injection and preexec_fn for children."""
 import ctypes
 import ctypes.util
-import logging
 import os
 import signal
+from logging import basicConfig, info, DEBUG
 
 from jobserver import Jobserver
 
@@ -18,7 +22,7 @@ def main() -> None:
         args=("DEMO_KEY",),
         env={"DEMO_KEY": "hello"},
     )
-    logging.info("env set: %s", future_set.result())
+    info("env set: %s", future_set.result())
 
     # Unset an environment variable by passing None
     future_unset = jobserver.submit(
@@ -26,7 +30,7 @@ def main() -> None:
         args=("DEMO_KEY",),
         env={"DEMO_KEY": None},
     )
-    logging.info("env unset: %s", future_unset.result())
+    info("env unset: %s", future_unset.result())
 
     # preexec_fn runs before the task function, here establishing
     # PR_SET_PDEATHSIG so the child receives SIGTERM if the parent dies
@@ -34,7 +38,7 @@ def main() -> None:
         fn=task_check_pdeathsig,
         preexec_fn=preexec_set_pdeathsig,
     )
-    logging.info("pdeathsig active: %s", future_pdeathsig.result())
+    info("pdeathsig active: %s", future_pdeathsig.result())
 
 
 def task_getenv(key: str) -> str:
@@ -64,8 +68,8 @@ def preexec_set_pdeathsig() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
+    basicConfig(
+        level=DEBUG,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()
