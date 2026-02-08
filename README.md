@@ -1,7 +1,7 @@
 Jobserver
 =========
 
-A nestable Jobserver with futures, callbacks, and complete type-hinting!
+A nestable Jobserver with futures, callbacks, and complete type-hinting
 
 Purpose
 -------
