@@ -11,7 +11,7 @@ import threading
 import time
 import unittest
 
-from multiprocessing import get_all_start_methods, get_context
+from multiprocessing import get_all_start_methods
 
 from .executor import JobserverExecutor
 from .impl import Jobserver
@@ -90,6 +90,7 @@ class JobserverExecutorTest(unittest.TestCase):
                     f = exe.submit(self._raise, ValueError, "oops")
                     exc = f.exception(timeout=10)
                     self.assertIsInstance(exc, ValueError)
+                    assert exc is not None
                     self.assertEqual(("oops",), exc.args)
 
     def test_exception_none_on_success(self) -> None:
@@ -120,8 +121,8 @@ class JobserverExecutorTest(unittest.TestCase):
                 exe = JobserverExecutor(js)
                 try:
                     # Fill the single slot so the next submit stays PENDING
-                    blocker = exe.submit(time.sleep, 10)
-                    time.sleep(0.1)  # Let the dispatcher dispatch blocker
+                    exe.submit(time.sleep, 10)
+                    time.sleep(0.1)  # Let the dispatcher dispatch it
                     f = exe.submit(len, (1, 2, 3))
                     # f should be PENDING because the slot is occupied
                     time.sleep(0.05)
@@ -143,7 +144,7 @@ class JobserverExecutorTest(unittest.TestCase):
                 exe = JobserverExecutor(js)
                 try:
                     # Fill the single slot
-                    blocker = exe.submit(time.sleep, 10)
+                    exe.submit(time.sleep, 10)
                     time.sleep(0.1)
                     f = exe.submit(len, (1, 2, 3))
                     time.sleep(0.05)
@@ -215,7 +216,7 @@ class JobserverExecutorTest(unittest.TestCase):
                 js = Jobserver(context=method, slots=1)
                 exe = JobserverExecutor(js)
                 # Fill the slot
-                blocker = exe.submit(time.sleep, 5)
+                exe.submit(time.sleep, 5)
                 time.sleep(0.15)
                 # These should be pending
                 futures = [exe.submit(len, (i,)) for i in range(5)]

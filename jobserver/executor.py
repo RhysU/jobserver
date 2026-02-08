@@ -74,9 +74,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         # pending: work items dequeued but not yet dispatched (Blocked)
         pending: typing.List[_WorkItem] = []
         # in_flight: mapping from jobserver Future to c.f.Future
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ] = {}
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future] = {}
 
         while True:
             # ---- Phase 1: Drain the submission queue ----
@@ -111,9 +109,14 @@ class JobserverExecutor(concurrent.futures.Executor):
             # reclaims its slot via internal callbacks) but we simply
             # discard the mapping -- nobody will read the result.
             still_pending: typing.List[_WorkItem] = []
+            blocked = False
             for work in pending:
                 # Skip work whose Future was cancelled while in the queue
                 if work.future.cancelled():
+                    continue
+                # Once one item blocks, remaining will too
+                if blocked:
+                    still_pending.append(work)
                     continue
                 try:
                     js_future = self._jobserver.submit(
@@ -125,12 +128,8 @@ class JobserverExecutor(concurrent.futures.Executor):
                     )
                 except Blocked:
                     still_pending.append(work)
-                    # Once one item blocks, remaining will too
-                    still_pending.extend(
-                        w for w in pending[pending.index(work) + 1:]
-                        if not w.future.cancelled()
-                    )
-                    break
+                    blocked = True
+                    continue
                 except Exception as exc:
                     # Dispatch itself failed (e.g. pickling error).
                     # Transition PENDING -> RUNNING -> FINISHED(exc).
