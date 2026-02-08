@@ -16,4 +16,4 @@ uvx --from flake8 flake8 jobserver/ examples/
 uvx --from "mypy>0.770" mypy jobserver/
 
 # Finally, check for formatting issues
-uvx --from "black<25" black --check --line-length 79 jobserver/ examples/
+uvx --from "black<25" black --check --line-length 79 --verbose jobserver/ examples/
