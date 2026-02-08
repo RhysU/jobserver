@@ -10,8 +10,8 @@ import queue
 import threading
 import typing
 
-from .impl import Blocked, CallbackRaised, Jobserver
-from .impl import Future as JobserverFuture
+from jobserver.impl import Blocked, CallbackRaised, Jobserver
+from jobserver.impl import Future as JobserverFuture
 
 T = typing.TypeVar("T")
 

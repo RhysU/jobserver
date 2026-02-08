@@ -13,8 +13,8 @@ import unittest
 
 from multiprocessing import get_all_start_methods
 
-from .executor import JobserverExecutor
-from .impl import Jobserver
+from draft.executor import JobserverExecutor
+from jobserver.impl import Jobserver
 
 
 class JobserverExecutorTest(unittest.TestCase):
