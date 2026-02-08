@@ -45,7 +45,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
         self._dispatcher.start()
 
-    def submit(
+    def submit(  # type: ignore[override]
         self,
         fn: typing.Callable[..., T],
         /,
