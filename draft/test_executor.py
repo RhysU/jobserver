@@ -305,7 +305,7 @@ class JobserverExecutorTest(unittest.TestCase):
                 js = Jobserver(context=method, slots=1)
                 with JobserverExecutor(js) as exe:
                     it = exe.map(time.sleep, [10], timeout=0.1)
-                    with self.assertRaises(TimeoutError):
+                    with self.assertRaises(concurrent.futures.TimeoutError):
                         next(it)
 
     # ------------------------------------------------------------------

@@ -1,15 +1,23 @@
 #!/bin/bash -eu
 # Run uv-based continuous integration tests for jobserver/
+#
+# Usage: ./ci [--python VERSION]
+# Example: ./ci --python 3.8
+
+PYTHON_FLAG=""
+if [ "${1:-}" = "--python" ] && [ -n "${2:-}" ]; then
+    PYTHON_FLAG="--python $2"
+fi
 
 # Unit testing runs the tests inside jobserver/test.py
-uv run -m unittest -v jobserver.test
+uv run $PYTHON_FLAG -m unittest -v jobserver.test
 
 # Unit testing runs the draft executor tests
-uv run -m unittest -v draft.test_executor
+uv run $PYTHON_FLAG -m unittest -v draft.test_executor
 
 # Run all examples to confirm they complete successfully
 for ex in examples/*.py; do
-    PYTHONPATH=. uv run "$ex"
+    PYTHONPATH=. uv run $PYTHON_FLAG "$ex"
 done
 
 # PEP8 linting
