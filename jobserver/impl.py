@@ -516,6 +516,43 @@ class Jobserver:
                 pass
             send.close()
 
+    @staticmethod
+    def _check_sleep_veto(
+        sleep_fn: typing.Callable[[], typing.Optional[float]],
+        deadline: float,
+        resolution: float,
+    ) -> bool:
+        """If sleep_fn vetoes work, sleep appropriately and return True."""
+        sleep = sleep_fn()
+        if sleep is None:
+            return False
+        assert sleep >= 0.0
+        monotonic = time.monotonic()
+        time.sleep(max(resolution, min(sleep, deadline - monotonic)))
+        if monotonic >= deadline:
+            raise Blocked()
+        return True
+
+    @staticmethod
+    def _await_token(
+        slots: MinimalQueue[int],
+        sentinels_fn: typing.Callable[[], typing.Iterable[int]],
+        deadline: float,
+    ) -> int:
+        """Get one token, waiting for an event if none is available."""
+        try:
+            return slots.get(timeout=0)
+        except queue.Empty:
+            monotonic = time.monotonic()
+            if monotonic >= deadline:
+                raise Blocked()
+            wait(
+                tuple(sentinels_fn())
+                + (slots.waitable(),),
+                timeout=deadline - monotonic,
+            )
+            raise  # re-raise queue.Empty to retry
+
     # Static because who can worry about one's self at a time like this?!
     @staticmethod
     def _obtain_tokens(
@@ -529,46 +566,20 @@ class Jobserver:
         resolution: float = 1.0e-2
     ) -> typing.List[int]:
         """Either retrieve requested tokens or raise Blocked while trying."""
-        # Defensively check arguments
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         assert deadline > 0.0
 
-        # Acquire the requested retval or raise Blocked when impossible
         retval = []  # type: typing.List[int]
-        while True:
-
-            # (1) Eagerly clean up any completed work to avoid deadlocks
+        while len(retval) < consume:
             reclaim_tokens_fn()
-
-            # (2) Exit loop if all requested resources have been acquired
-            if len(retval) >= consume:
-                break
-
-            # (3) When sleep_fn() vetoes new work proceed to sleep
-            sleep = sleep_fn()
-            monotonic = time.monotonic()
-            if sleep is not None:
-                assert sleep >= 0.0
-                time.sleep(max(resolution, min(sleep, deadline - monotonic)))
-                if monotonic >= deadline:
-                    raise Blocked()
+            if Jobserver._check_sleep_veto(sleep_fn, deadline, resolution):
                 continue
-
             try:
-                # (4) Grab any immediately available token
-                retval.append(slots.get(timeout=0))
-            except queue.Empty:
-                # (5) Otherwise, possibly throw in the towel...
-                monotonic = time.monotonic()
-                if monotonic >= deadline:
-                    raise Blocked()
-
-                # (6) ...then block until some interesting event.
-                wait(
-                    tuple(sentinels_fn())  # "Child" result
-                    + (slots.waitable(),),  # "Grandchild" restores token
-                    timeout=deadline - monotonic,
+                retval.append(
+                    Jobserver._await_token(slots, sentinels_fn, deadline)
                 )
+            except queue.Empty:
+                pass
 
         assert len(retval) == consume, "Postcondition"
         return retval
