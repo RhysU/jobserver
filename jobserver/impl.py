@@ -427,10 +427,27 @@ class Jobserver:
             slots=self._slots,
         )
 
-        # Then, with required slots consumed, begin consuming resources:
+        # Spawn the worker process, unwinding tokens on failure
+        future = self._spawn_worker(tokens, env, preexec_fn, fn, args, kwargs)
+
+        # Register callbacks to restore tokens and untrack the Future
+        self._register_future(future, tokens)
+        return future
+
+    def _spawn_worker(
+        self,
+        tokens: typing.List[int],
+        env: typing.Iterable,
+        preexec_fn: typing.Callable[[], None],
+        fn: typing.Callable[..., T],
+        args: typing.Iterable,
+        kwargs: typing.Mapping[str, typing.Any],
+    ) -> Future[T]:
+        """Start a worker process, returning its Future.
+
+        Restores consumed tokens on failure so the caller need not.
+        """
         try:
-            # Grab resources for processing the submitted work
-            # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
             process = self._context.Process(  # type: ignore
                 target=self._worker_entrypoint,
@@ -440,25 +457,22 @@ class Jobserver:
             )
             future = Future(process, recv)  # type: Future[T]
             process.start()
-
-            # Prepare to track the Future and the wait(...)-able sentinel
             self._future_sentinels[future] = process.sentinel
         except Exception:
-            # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self._slots.put(tokens.pop(0))
             raise
+        return future
 
-        # As above process.start() succeeded, now Future must restore tokens
-        # After any restoration, no longer track this Future within Jobserver
+    def _register_future(
+        self, future: Future, tokens: typing.List[int]
+    ) -> None:
+        """Register callbacks to restore tokens and untrack the Future."""
         if tokens:
             future.when_done(self._slots.put, *tokens, _Future__internal=True)
         future.when_done(
             self._future_sentinels.pop, future, _Future__internal=True
         )
-
-        # Finally, return a viable Future to the caller
-        return future
 
     def reclaim_resources(self) -> None:
         """
