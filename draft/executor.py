@@ -71,124 +71,148 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._dispatcher.join()
 
     def _dispatch_loop(self) -> None:
-        # pending: work items dequeued but not yet dispatched (Blocked)
         pending: typing.List[_WorkItem] = []
-        # in_flight: mapping from jobserver Future to c.f.Future
-        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future] = {}
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ] = {}
 
         while True:
-            # ---- Phase 1: Drain the submission queue ----
-            shutdown_requested = False
-            while True:
-                # Block only when there is nothing else to do
-                block = (not pending) and (not in_flight)
-                try:
-                    item = self._queue.get(block=block, timeout=None)
-                except queue.Empty:
-                    break
-                if item is _SHUTDOWN:
-                    shutdown_requested = True
-                    break
-                if isinstance(item, _CancelPending):
-                    for work in pending:
-                        work.future.cancel()
-                    pending.clear()
-                    continue
-                pending.append(item)
-
-            # ---- Phase 2: Attempt to dispatch pending work ----
-            #
-            # Order: try Jobserver.submit(timeout=0) first.  Only on
-            # success do we call set_running_or_notify_cancel().  This
-            # keeps the c.f.Future in PENDING (and thus cancellable)
-            # until we are certain a process has been spawned for it.
-            #
-            # If set_running_or_notify_cancel() returns False the
-            # Future was cancelled after we dispatched the process.
-            # The process will run to completion anyway (Jobserver
-            # reclaims its slot via internal callbacks) but we simply
-            # discard the mapping -- nobody will read the result.
-            still_pending: typing.List[_WorkItem] = []
-            blocked = False
-            for work in pending:
-                # Skip work whose Future was cancelled while in the queue
-                if work.future.cancelled():
-                    continue
-                # Once one item blocks, remaining will too
-                if blocked:
-                    still_pending.append(work)
-                    continue
-                try:
-                    js_future = self._jobserver.submit(
-                        fn=work.fn,
-                        args=work.args,
-                        kwargs=dict(work.kwargs),
-                        callbacks=True,
-                        timeout=0,
-                    )
-                except Blocked:
-                    still_pending.append(work)
-                    blocked = True
-                    continue
-                except Exception as exc:
-                    # Dispatch itself failed (e.g. pickling error).
-                    # Transition PENDING -> RUNNING -> FINISHED(exc).
-                    if work.future.set_running_or_notify_cancel():
-                        work.future.set_exception(exc)
-                    continue
-
-                # Dispatch succeeded -- transition the c.f.Future
-                if work.future.set_running_or_notify_cancel():
-                    in_flight[js_future] = work.future
-                # else: cancelled between submit() and here; process
-                # runs but result is discarded (slot reclaimed by
-                # Jobserver internal callbacks on the js_future)
-
-            pending = still_pending
-
-            # ---- Phase 3: Poll in-flight jobserver Futures ----
-            completed: typing.List[JobserverFuture] = []
-            for js_future in in_flight:
-                try:
-                    if js_future.done(timeout=0):
-                        completed.append(js_future)
-                except CallbackRaised:
-                    # Internal callbacks should not raise, but recover
-                    completed.append(js_future)
-
-            for js_future in completed:
-                cf_future = in_flight.pop(js_future)
-                _bridge_result(js_future, cf_future)
-
-            # ---- Phase 4: Check for shutdown ----
-            if shutdown_requested:
-                for work in pending:
-                    work.future.cancel()
-                # Wait for all in-flight work to finish
-                for js_future, cf_future in in_flight.items():
-                    _drain_and_bridge(js_future, cf_future)
+            shutdown = self._drain_queue(pending, in_flight)
+            pending = self._dispatch_pending(pending, in_flight)
+            self._poll_in_flight(in_flight)
+            if shutdown:
+                self._handle_shutdown(pending, in_flight)
                 return
+            self._poll_queue_briefly(pending, in_flight)
 
-            # ---- Phase 5: Brief sleep / queue drain ----
-            # When there is in-flight or pending work, block on the
-            # submission queue with a short timeout.  This serves as
-            # both a poll interval and a way to pick up new work or
-            # shutdown signals without busy-spinning.
-            if in_flight or pending:
-                try:
-                    item = self._queue.get(block=True, timeout=0.005)
-                    if item is _SHUTDOWN:
-                        self._queue.put(_SHUTDOWN)
-                    elif isinstance(item, _CancelPending):
-                        for work in pending:
-                            work.future.cancel()
-                        pending = [
-                            w for w in pending if not w.future.cancelled()
-                        ]
-                    else:
-                        pending.append(item)
-                except queue.Empty:
-                    pass
+    def _drain_queue(
+        self,
+        pending: typing.List["_WorkItem"],
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ],
+    ) -> bool:
+        """Drain submission queue.  Return True when shutdown requested."""
+        while True:
+            block = (not pending) and (not in_flight)
+            try:
+                item = self._queue.get(block=block, timeout=None)
+            except queue.Empty:
+                return False
+            if item is _SHUTDOWN:
+                return True
+            if isinstance(item, _CancelPending):
+                _cancel_all(pending)
+                pending.clear()
+                continue
+            pending.append(item)
+
+    def _dispatch_pending(
+        self,
+        pending: typing.List["_WorkItem"],
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ],
+    ) -> typing.List["_WorkItem"]:
+        """Try to dispatch pending work; return items still pending.
+
+        Keeps c.f.Future in PENDING (cancellable) until a process is
+        spawned.  Once one item is Blocked, remaining will be too.
+        """
+        still_pending: typing.List[_WorkItem] = []
+        blocked = False
+        for work in pending:
+            if work.future.cancelled():
+                continue
+            if blocked:
+                still_pending.append(work)
+                continue
+            blocked = self._try_dispatch_one(work, in_flight, still_pending)
+        return still_pending
+
+    def _try_dispatch_one(
+        self,
+        work: "_WorkItem",
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ],
+        still_pending: typing.List["_WorkItem"],
+    ) -> bool:
+        """Attempt to dispatch a single work item.  Return True if blocked."""
+        try:
+            js_future = self._jobserver.submit(
+                fn=work.fn,
+                args=work.args,
+                kwargs=dict(work.kwargs),
+                callbacks=True,
+                timeout=0,
+            )
+        except Blocked:
+            still_pending.append(work)
+            return True
+        except Exception as exc:
+            if work.future.set_running_or_notify_cancel():
+                work.future.set_exception(exc)
+            return False
+
+        if work.future.set_running_or_notify_cancel():
+            in_flight[js_future] = work.future
+        return False
+
+    @staticmethod
+    def _poll_in_flight(
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ],
+    ) -> None:
+        """Poll in-flight Futures and bridge completed results."""
+        completed: typing.List[JobserverFuture] = []
+        for js_future in in_flight:
+            try:
+                if js_future.done(timeout=0):
+                    completed.append(js_future)
+            except CallbackRaised:
+                completed.append(js_future)
+
+        for js_future in completed:
+            cf_future = in_flight.pop(js_future)
+            _bridge_result(js_future, cf_future)
+
+    @staticmethod
+    def _handle_shutdown(
+        pending: typing.List["_WorkItem"],
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ],
+    ) -> None:
+        """Cancel pending work and drain all in-flight futures."""
+        _cancel_all(pending)
+        for js_future, cf_future in in_flight.items():
+            _drain_and_bridge(js_future, cf_future)
+
+    def _poll_queue_briefly(
+        self,
+        pending: typing.List["_WorkItem"],
+        in_flight: typing.Dict[
+            JobserverFuture, concurrent.futures.Future
+        ],
+    ) -> None:
+        """Brief blocking poll to pick up new work without busy-spinning."""
+        if not (in_flight or pending):
+            return
+        try:
+            item = self._queue.get(block=True, timeout=0.005)
+        except queue.Empty:
+            return
+        if item is _SHUTDOWN:
+            self._queue.put(_SHUTDOWN)
+        elif isinstance(item, _CancelPending):
+            _cancel_all(pending)
+            pending[:] = [
+                w for w in pending if not w.future.cancelled()
+            ]
+        else:
+            pending.append(item)
 
 
 class _WorkItem:
@@ -213,6 +237,12 @@ class _CancelPending:
     """Sentinel instructing the dispatcher to cancel all pending work."""
 
     pass
+
+
+def _cancel_all(pending: typing.List["_WorkItem"]) -> None:
+    """Cancel every work item's c.f.Future."""
+    for work in pending:
+        work.future.cancel()
 
 
 def _bridge_result(
