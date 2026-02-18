@@ -427,27 +427,10 @@ class Jobserver:
             slots=self._slots,
         )
 
-        # Spawn the worker process, unwinding tokens on failure
-        future = self._spawn_worker(tokens, env, preexec_fn, fn, args, kwargs)
-
-        # Register callbacks to restore tokens and untrack the Future
-        self._register_future(future, tokens)
-        return future
-
-    def _spawn_worker(
-        self,
-        tokens: typing.List[int],
-        env: typing.Iterable,
-        preexec_fn: typing.Callable[[], None],
-        fn: typing.Callable[..., T],
-        args: typing.Iterable,
-        kwargs: typing.Mapping[str, typing.Any],
-    ) -> Future[T]:
-        """Start a worker process, returning its Future.
-
-        Restores consumed tokens on failure so the caller need not.
-        """
+        # Then, with required slots consumed, begin consuming resources:
         try:
+            # Grab resources for processing the submitted work
+            # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
             process = self._context.Process(  # type: ignore
                 target=self._worker_entrypoint,
@@ -457,22 +440,25 @@ class Jobserver:
             )
             future = Future(process, recv)  # type: Future[T]
             process.start()
+
+            # Prepare to track the Future and the wait(...)-able sentinel
             self._future_sentinels[future] = process.sentinel
         except Exception:
+            # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self._slots.put(tokens.pop(0))
             raise
-        return future
 
-    def _register_future(
-        self, future: Future, tokens: typing.List[int]
-    ) -> None:
-        """Register callbacks to restore tokens and untrack the Future."""
+        # As above process.start() succeeded, now Future must restore tokens
+        # After any restoration, no longer track this Future within Jobserver
         if tokens:
             future.when_done(self._slots.put, *tokens, _Future__internal=True)
         future.when_done(
             self._future_sentinels.pop, future, _Future__internal=True
         )
+
+        # Finally, return a viable Future to the caller
+        return future
 
     def reclaim_resources(self) -> None:
         """
@@ -487,22 +473,18 @@ class Jobserver:
             future.done(timeout=0)
 
     @staticmethod
-    def _apply_env(env: dict) -> None:
-        """Update os.environ; None-valued keys are removed."""
-        for key, value in env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-    @staticmethod
     def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
-        """Entry point for workers to run fn(...) due to some submit(...)."""
+        """Entry point for workers to fun fn(...) due to some  submit(...)."""
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception
         result = None  # type: typing.Optional[Wrapper[typing.Any]]
         try:
-            Jobserver._apply_env(env)
+            # None invalid in os.environ so interpret as sentinel for popping
+            for key, value in env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
             preexec_fn()
             result = ResultWrapper(fn(*args, **kwargs))
         except Exception as exception:
@@ -515,43 +497,6 @@ class Jobserver:
             except BrokenPipeError:
                 pass
             send.close()
-
-    @staticmethod
-    def _check_sleep_veto(
-        sleep_fn: typing.Callable[[], typing.Optional[float]],
-        deadline: float,
-        resolution: float,
-    ) -> bool:
-        """If sleep_fn vetoes work, sleep appropriately and return True."""
-        sleep = sleep_fn()
-        if sleep is None:
-            return False
-        assert sleep >= 0.0
-        monotonic = time.monotonic()
-        time.sleep(max(resolution, min(sleep, deadline - monotonic)))
-        if monotonic >= deadline:
-            raise Blocked()
-        return True
-
-    @staticmethod
-    def _await_token(
-        slots: MinimalQueue[int],
-        sentinels_fn: typing.Callable[[], typing.Iterable[int]],
-        deadline: float,
-    ) -> int:
-        """Get one token, waiting for an event if none is available."""
-        try:
-            return slots.get(timeout=0)
-        except queue.Empty:
-            monotonic = time.monotonic()
-            if monotonic >= deadline:
-                raise Blocked()
-            wait(
-                tuple(sentinels_fn())
-                + (slots.waitable(),),
-                timeout=deadline - monotonic,
-            )
-            raise  # re-raise queue.Empty to retry
 
     # Static because who can worry about one's self at a time like this?!
     @staticmethod
@@ -566,20 +511,46 @@ class Jobserver:
         resolution: float = 1.0e-2
     ) -> typing.List[int]:
         """Either retrieve requested tokens or raise Blocked while trying."""
+        # Defensively check arguments
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         assert deadline > 0.0
 
+        # Acquire the requested retval or raise Blocked when impossible
         retval = []  # type: typing.List[int]
-        while len(retval) < consume:
+        while True:
+
+            # (1) Eagerly clean up any completed work to avoid deadlocks
             reclaim_tokens_fn()
-            if Jobserver._check_sleep_veto(sleep_fn, deadline, resolution):
+
+            # (2) Exit loop if all requested resources have been acquired
+            if len(retval) >= consume:
+                break
+
+            # (3) When sleep_fn() vetoes new work proceed to sleep
+            sleep = sleep_fn()
+            monotonic = time.monotonic()
+            if sleep is not None:
+                assert sleep >= 0.0
+                time.sleep(max(resolution, min(sleep, deadline - monotonic)))
+                if monotonic >= deadline:
+                    raise Blocked()
                 continue
+
             try:
-                retval.append(
-                    Jobserver._await_token(slots, sentinels_fn, deadline)
-                )
+                # (4) Grab any immediately available token
+                retval.append(slots.get(timeout=0))
             except queue.Empty:
-                pass
+                # (5) Otherwise, possibly throw in the towel...
+                monotonic = time.monotonic()
+                if monotonic >= deadline:
+                    raise Blocked()
+
+                # (6) ...then block until some interesting event.
+                wait(
+                    tuple(sentinels_fn())  # "Child" result
+                    + (slots.waitable(),),  # "Grandchild" restores token
+                    timeout=deadline - monotonic,
+                )
 
         assert len(retval) == consume, "Postcondition"
         return retval
