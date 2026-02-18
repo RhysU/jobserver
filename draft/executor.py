@@ -72,9 +72,7 @@ class JobserverExecutor(concurrent.futures.Executor):
 
     def _dispatch_loop(self) -> None:
         pending: typing.List[_WorkItem] = []
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ] = {}
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future] = {}
 
         while True:
             shutdown = self._drain_queue(pending, in_flight)
@@ -88,9 +86,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def _drain_queue(
         self,
         pending: typing.List["_WorkItem"],
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ],
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future],
     ) -> bool:
         """Drain submission queue.  Return True when shutdown requested."""
         while True:
@@ -110,9 +106,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def _dispatch_pending(
         self,
         pending: typing.List["_WorkItem"],
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ],
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future],
     ) -> typing.List["_WorkItem"]:
         """Try to dispatch pending work; return items still pending.
 
@@ -133,9 +127,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def _try_dispatch_one(
         self,
         work: "_WorkItem",
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ],
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future],
         still_pending: typing.List["_WorkItem"],
     ) -> bool:
         """Attempt to dispatch a single work item.  Return True if blocked."""
@@ -161,9 +153,7 @@ class JobserverExecutor(concurrent.futures.Executor):
 
     @staticmethod
     def _poll_in_flight(
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ],
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future],
     ) -> None:
         """Poll in-flight Futures and bridge completed results."""
         completed: typing.List[JobserverFuture] = []
@@ -181,9 +171,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     @staticmethod
     def _handle_shutdown(
         pending: typing.List["_WorkItem"],
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ],
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future],
     ) -> None:
         """Cancel pending work and drain all in-flight futures."""
         _cancel_all(pending)
@@ -193,9 +181,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def _poll_queue_briefly(
         self,
         pending: typing.List["_WorkItem"],
-        in_flight: typing.Dict[
-            JobserverFuture, concurrent.futures.Future
-        ],
+        in_flight: typing.Dict[JobserverFuture, concurrent.futures.Future],
     ) -> None:
         """Brief blocking poll to pick up new work without busy-spinning."""
         if not (in_flight or pending):
@@ -208,9 +194,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._queue.put(_SHUTDOWN)
         elif isinstance(item, _CancelPending):
             _cancel_all(pending)
-            pending[:] = [
-                w for w in pending if not w.future.cancelled()
-            ]
+            pending[:] = [w for w in pending if not w.future.cancelled()]
         else:
             pending.append(item)
 
