@@ -5,7 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 import concurrent.futures
-import logging
 import queue
 import threading
 import typing
@@ -14,8 +13,6 @@ from jobserver.impl import Blocked, CallbackRaised, Jobserver, MinimalQueue
 from jobserver.impl import Future as JobserverFuture
 
 T = typing.TypeVar("T")
-
-_LOGGER = logging.getLogger(__name__)
 
 # ---- Message tags for inter-process communication ----
 
@@ -130,42 +127,27 @@ class JobserverExecutor(concurrent.futures.Executor):
             if tag == _RESP_SHUTDOWN:
                 break
             elif tag == _RUNNING:
-                self._on_running(msg[1])
+                with self._futures_lock:
+                    future = self._futures.get(msg[1])
+                if future is not None:
+                    future.set_running_or_notify_cancel()
             elif tag == _RESULT:
-                self._on_result(msg[1], msg[2])
+                with self._futures_lock:
+                    future = self._futures.pop(msg[1], None)
+                if future is not None and not future.cancelled():
+                    future.set_result(msg[2])
             elif tag == _EXCEPTION:
-                self._on_exception(msg[1], msg[2])
+                with self._futures_lock:
+                    future = self._futures.pop(msg[1], None)
+                if future is not None and not future.cancelled():
+                    future.set_exception(msg[2])
             elif tag == _CANCELLED:
-                self._on_cancelled(msg[1])
+                with self._futures_lock:
+                    future = self._futures.pop(msg[1], None)
+                if future is not None:
+                    future.cancel()
 
-        self._fail_remaining()
-
-    def _on_running(self, work_id: int) -> None:
-        with self._futures_lock:
-            future = self._futures.get(work_id)
-        if future is not None:
-            future.set_running_or_notify_cancel()
-
-    def _on_result(self, work_id: int, value: typing.Any) -> None:
-        with self._futures_lock:
-            future = self._futures.pop(work_id, None)
-        if future is not None and not future.cancelled():
-            future.set_result(value)
-
-    def _on_exception(self, work_id: int, exc: Exception) -> None:
-        with self._futures_lock:
-            future = self._futures.pop(work_id, None)
-        if future is not None and not future.cancelled():
-            future.set_exception(exc)
-
-    def _on_cancelled(self, work_id: int) -> None:
-        with self._futures_lock:
-            future = self._futures.pop(work_id, None)
-        if future is not None:
-            future.cancel()
-
-    def _fail_remaining(self) -> None:
-        """Transition any leftover futures to a failed state."""
+        # Fail any futures still outstanding (dispatcher crash)
         with self._futures_lock:
             remaining = list(self._futures.values())
             self._futures.clear()
@@ -210,13 +192,13 @@ def _dispatch_loop(
         )
         _poll_in_flight(in_flight, response_queue)
         if shutdown:
-            _handle_shutdown(pending, in_flight, response_queue)
-            return
+            break
         if _poll_requests_briefly(
             request_queue, pending, in_flight, response_queue
         ):
-            _handle_shutdown(pending, in_flight, response_queue)
-            return
+            break
+
+    _handle_shutdown(pending, in_flight, response_queue)
 
 
 def _drain_requests(
@@ -332,23 +314,14 @@ def _handle_shutdown(
     for item in pending:
         response_queue.put((_CANCELLED, item[0]))
     for js_future, work_id in in_flight.items():
-        _drain_and_bridge(js_future, work_id, response_queue)
+        while True:
+            try:
+                js_future.done(timeout=None)
+                break
+            except CallbackRaised:
+                continue
+        _bridge_result(js_future, work_id, response_queue)
     response_queue.put((_RESP_SHUTDOWN,))
-
-
-def _drain_and_bridge(
-    js_future: JobserverFuture,
-    work_id: int,
-    response_queue: MinimalQueue,
-) -> None:
-    """Block until a jobserver Future completes, then bridge its result."""
-    while True:
-        try:
-            js_future.done(timeout=None)
-            break
-        except CallbackRaised:
-            continue
-    _bridge_result(js_future, work_id, response_queue)
 
 
 def _poll_requests_briefly(
