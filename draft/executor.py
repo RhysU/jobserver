@@ -51,7 +51,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         self._request_queue: MinimalQueue = MinimalQueue(context)
         self._response_queue: MinimalQueue = MinimalQueue(context)
 
-        self._dispatcher = context.Process(
+        self._dispatcher = context.Process(  # type: ignore
             target=_dispatch_loop,
             args=(jobserver, self._request_queue, self._response_queue),
             daemon=False,
@@ -87,9 +87,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             with self._futures_lock:
                 self._futures[work_id] = future
             try:
-                self._request_queue.put(
-                    (_SUBMIT, work_id, fn, args, kwargs)
-                )
+                self._request_queue.put((_SUBMIT, work_id, fn, args, kwargs))
             except Exception:
                 with self._futures_lock:
                     self._futures.pop(work_id, None)
@@ -116,7 +114,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     # ---- Receiver thread (bridges responses to c.f.Futures) ----
 
     def _receive_loop(self) -> None:
-        """Drain the response queue, completing c.f.Futures as results arrive."""
+        """Drain response queue, completing c.f.Futures as results arrive."""
         while True:
             try:
                 msg = self._response_queue.get(timeout=None)
@@ -297,7 +295,7 @@ def _bridge_result(
     work_id: int,
     response_queue: MinimalQueue,
 ) -> None:
-    """Transfer a completed jobserver Future's outcome to the response queue."""
+    """Transfer a completed jobserver Future's outcome to response queue."""
     try:
         result = js_future.result(timeout=0)
         response_queue.put((_RESULT, work_id, result))
