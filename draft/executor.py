@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 import concurrent.futures
+import itertools
 import queue
 import threading
 import typing
@@ -41,11 +42,13 @@ class JobserverExecutor(concurrent.futures.Executor):
     """
 
     def __init__(self, jobserver: Jobserver) -> None:
-        self._shutdown_lock = threading.Lock()
+        # One lock guards _shutdown, _work_ids, and _futures together,
+        # eliminating the nested _shutdown_lock -> _futures_lock acquisition
+        # that the original two-lock design required in submit().
+        self._state_lock = threading.Lock()
         self._shutdown = False
-        self._next_work_id = 0
+        self._work_ids: typing.Iterator[int] = itertools.count()
         self._futures: typing.Dict[int, concurrent.futures.Future] = {}
-        self._futures_lock = threading.Lock()
 
         context = jobserver._context
         self._request_queue: MinimalQueue = MinimalQueue(context)
@@ -78,26 +81,33 @@ class JobserverExecutor(concurrent.futures.Executor):
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> "concurrent.futures.Future[T]":
-        with self._shutdown_lock:
+        with self._state_lock:
             if self._shutdown:
                 raise RuntimeError("cannot submit after shutdown")
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
-            work_id = self._next_work_id
-            self._next_work_id += 1
-            with self._futures_lock:
-                self._futures[work_id] = future
-            try:
-                self._request_queue.put((_SUBMIT, work_id, fn, args, kwargs))
-            except Exception:
-                with self._futures_lock:
-                    self._futures.pop(work_id, None)
-                raise
-            return future
+            work_id = next(self._work_ids)
+            self._futures[work_id] = future
+        # Lock is released before put() so that a concurrent shutdown() call
+        # is not forced to wait for potentially-slow pickling and IPC.
+        try:
+            self._request_queue.put((_SUBMIT, work_id, fn, args, kwargs))
+        except BrokenPipeError:
+            # Dispatcher exited due to a concurrent shutdown(); clean up and
+            # raise the same error a caller would see from a post-shutdown
+            # submit() that observed the flag in time.
+            with self._state_lock:
+                self._futures.pop(work_id, None)
+            raise RuntimeError("cannot submit after shutdown")
+        except Exception:
+            with self._state_lock:
+                self._futures.pop(work_id, None)
+            raise
+        return future
 
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
-        with self._shutdown_lock:
+        with self._state_lock:
             already = self._shutdown
             self._shutdown = True
         if not already:
@@ -125,28 +135,33 @@ class JobserverExecutor(concurrent.futures.Executor):
             if tag == _RESP_SHUTDOWN:
                 break
             elif tag == _RUNNING:
-                with self._futures_lock:
+                with self._state_lock:
                     future = self._futures.get(msg[1])
                 if future is not None:
+                    # Returns False when the future was cancelled before this
+                    # RUNNING message arrived.  The work is already in flight
+                    # in the dispatcher; the eventual _RESULT or _EXCEPTION
+                    # will be silently discarded by the cancelled() check
+                    # below, so no further action is needed here.
                     future.set_running_or_notify_cancel()
             elif tag == _RESULT:
-                with self._futures_lock:
+                with self._state_lock:
                     future = self._futures.pop(msg[1], None)
                 if future is not None and not future.cancelled():
                     future.set_result(msg[2])
             elif tag == _EXCEPTION:
-                with self._futures_lock:
+                with self._state_lock:
                     future = self._futures.pop(msg[1], None)
                 if future is not None and not future.cancelled():
                     future.set_exception(msg[2])
             elif tag == _CANCELLED:
-                with self._futures_lock:
+                with self._state_lock:
                     future = self._futures.pop(msg[1], None)
                 if future is not None:
                     future.cancel()
 
         # Fail any futures still outstanding (dispatcher crash)
-        with self._futures_lock:
+        with self._state_lock:
             remaining = list(self._futures.values())
             self._futures.clear()
         for future in remaining:
