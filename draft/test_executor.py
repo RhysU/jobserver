@@ -396,8 +396,8 @@ class JobserverExecutorTest(unittest.TestCase):
     # Locking improvements
     # ------------------------------------------------------------------
 
-    def test_state_lock_released_before_put(self) -> None:
-        """_state_lock must be free when _request_queue.put() is called.
+    def test_lock_released_before_put(self) -> None:
+        """_lock must be free when _request_queue.put() is called.
 
         Holding the lock across put() would force a concurrent shutdown()
         to wait for potentially-slow pickling and IPC.  Verify the lock
@@ -413,7 +413,7 @@ class JobserverExecutorTest(unittest.TestCase):
 
         def spy_put(self_q: MinimalQueue, *args: typing.Any) -> None:
             if self_q is exe._request_queue:
-                lock_held.append(exe._state_lock.locked())
+                lock_held.append(exe._lock.locked())
             return original_put(self_q, *args)
 
         with unittest.mock.patch.object(MinimalQueue, "put", spy_put):
@@ -454,7 +454,7 @@ class JobserverExecutorTest(unittest.TestCase):
             with self.assertRaises(OSError):
                 exe.submit(len, (1,))
 
-        with exe._state_lock:
+        with exe._lock:
             remaining = len(exe._futures)
 
         self.assertEqual(0, remaining)
