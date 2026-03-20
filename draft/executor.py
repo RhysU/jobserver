@@ -42,9 +42,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     """
 
     def __init__(self, jobserver: Jobserver) -> None:
-        # One lock guards _shutdown, _work_ids, and _futures together,
-        # eliminating the nested _shutdown_lock -> _futures_lock acquisition
-        # that the original two-lock design required in submit().
+        # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
         self._shutdown = False
         self._work_ids: typing.Iterator[int] = itertools.count()
@@ -87,8 +85,8 @@ class JobserverExecutor(concurrent.futures.Executor):
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
-        # Lock is released before put() so that a concurrent shutdown() call
-        # is not forced to wait for potentially-slow pickling and IPC.
+        # Lock is released before put() to avoid holding it across
+        # potentially-slow pickling and IPC.
         try:
             self._request_queue.put((_SUBMIT, work_id, fn, args, kwargs))
         except BrokenPipeError:
