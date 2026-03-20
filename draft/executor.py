@@ -41,6 +41,17 @@ class JobserverExecutor(concurrent.futures.Executor):
     concurrent.futures.Future instances.
     """
 
+    __slots__ = (
+        "_lock",
+        "_shutdown",
+        "_work_ids",
+        "_futures",
+        "_request_queue",
+        "_response_queue",
+        "_dispatcher",
+        "_receiver",
+    )
+
     def __init__(self, jobserver: Jobserver) -> None:
         # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
