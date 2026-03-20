@@ -45,7 +45,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         # One lock guards _shutdown, _work_ids, and _futures together,
         # eliminating the nested _shutdown_lock -> _futures_lock acquisition
         # that the original two-lock design required in submit().
-        self._state_lock = threading.Lock()
+        self._lock = threading.Lock()
         self._shutdown = False
         self._work_ids: typing.Iterator[int] = itertools.count()
         self._futures: typing.Dict[int, concurrent.futures.Future] = {}
@@ -81,7 +81,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> "concurrent.futures.Future[T]":
-        with self._state_lock:
+        with self._lock:
             if self._shutdown:
                 raise RuntimeError("cannot submit after shutdown")
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
@@ -95,11 +95,11 @@ class JobserverExecutor(concurrent.futures.Executor):
             # Dispatcher exited due to a concurrent shutdown(); clean up and
             # raise the same error a caller would see from a post-shutdown
             # submit() that observed the flag in time.
-            with self._state_lock:
+            with self._lock:
                 self._futures.pop(work_id, None)
             raise RuntimeError("cannot submit after shutdown")
         except Exception:
-            with self._state_lock:
+            with self._lock:
                 self._futures.pop(work_id, None)
             raise
         return future
@@ -107,7 +107,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
-        with self._state_lock:
+        with self._lock:
             already = self._shutdown
             self._shutdown = True
         if not already:
@@ -135,7 +135,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             if tag == _RESP_SHUTDOWN:
                 break
             elif tag == _RUNNING:
-                with self._state_lock:
+                with self._lock:
                     future = self._futures.get(msg[1])
                 if future is not None:
                     # Returns False when the future was cancelled before this
@@ -145,23 +145,23 @@ class JobserverExecutor(concurrent.futures.Executor):
                     # below, so no further action is needed here.
                     future.set_running_or_notify_cancel()
             elif tag == _RESULT:
-                with self._state_lock:
+                with self._lock:
                     future = self._futures.pop(msg[1], None)
                 if future is not None and not future.cancelled():
                     future.set_result(msg[2])
             elif tag == _EXCEPTION:
-                with self._state_lock:
+                with self._lock:
                     future = self._futures.pop(msg[1], None)
                 if future is not None and not future.cancelled():
                     future.set_exception(msg[2])
             elif tag == _CANCELLED:
-                with self._state_lock:
+                with self._lock:
                     future = self._futures.pop(msg[1], None)
                 if future is not None:
                     future.cancel()
 
         # Fail any futures still outstanding (dispatcher crash)
-        with self._state_lock:
+        with self._lock:
             remaining = list(self._futures.values())
             self._futures.clear()
         for future in remaining:
