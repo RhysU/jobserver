@@ -393,15 +393,13 @@ class JobserverExecutorTest(unittest.TestCase):
                 exe.shutdown(wait=True)  # Should not raise
 
     # ------------------------------------------------------------------
-    # Locking improvements
+    # Locking
     # ------------------------------------------------------------------
 
     def test_lock_released_before_put(self) -> None:
         """_lock must be free when _request_queue.put() is called.
 
-        Holding the lock across put() would force a concurrent shutdown()
-        to wait for potentially-slow pickling and IPC.  Verify the lock
-        is released before each put() by spying on the call.
+        Verify the lock is released before each put() by spying on the call.
 
         MinimalQueue uses __slots__ so instance-level patching is impossible;
         patch the class method and filter by queue object identity instead.
