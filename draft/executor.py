@@ -13,8 +13,8 @@ import typing
 from jobserver.impl import Blocked, CallbackRaised, Jobserver, MinimalQueue
 from jobserver.impl import Future as JobserverFuture
 
-from . import _request as Request
-from . import _response as Response
+from . import _request
+from . import _response
 
 T = typing.TypeVar("T")
 
@@ -78,7 +78,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         # potentially-slow pickling and IPC.
         try:
             self._request_queue.put(
-                Request.Submit(
+                _request.Submit(
                     work_id=work_id, fn=fn, args=args, kwargs=kwargs
                 )
             )
@@ -104,8 +104,8 @@ class JobserverExecutor(concurrent.futures.Executor):
         if not already:
             try:
                 if cancel_futures:
-                    self._request_queue.put(Request.Cancel())
-                self._request_queue.put(Request.Shutdown())
+                    self._request_queue.put(_request.Cancel())
+                self._request_queue.put(_request.Shutdown())
             except BrokenPipeError:
                 pass  # Dispatcher already exited
         if wait:
@@ -122,9 +122,9 @@ class JobserverExecutor(concurrent.futures.Executor):
             except EOFError:
                 break
 
-            if isinstance(msg, Response.Shutdown):
+            if isinstance(msg, _response.Shutdown):
                 break
-            elif isinstance(msg, Response.Started):
+            elif isinstance(msg, _response.Started):
                 with self._lock:
                     future = self._futures.get(msg.work_id)
                 if future is not None:
@@ -134,17 +134,17 @@ class JobserverExecutor(concurrent.futures.Executor):
                     # will be silently discarded by the cancelled() check
                     # below, so no further action is needed here.
                     future.set_running_or_notify_cancel()
-            elif isinstance(msg, Response.Completed):
+            elif isinstance(msg, _response.Completed):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
                 if future is not None and not future.cancelled():
                     future.set_result(msg.value)
-            elif isinstance(msg, Response.Failed):
+            elif isinstance(msg, _response.Failed):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
                 if future is not None and not future.cancelled():
                     future.set_exception(msg.exc)
-            elif isinstance(msg, Response.Cancelled):
+            elif isinstance(msg, _response.Cancelled):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
                 if future is not None:
@@ -183,7 +183,7 @@ def _dispatch_loop(
     request_queue._writer.close()
     response_queue._reader.close()
 
-    pending: typing.List[Request.Submit] = []
+    pending: typing.List[_request.Submit] = []
     in_flight: typing.Dict[JobserverFuture, int] = {}
 
     while True:
@@ -206,7 +206,7 @@ def _dispatch_loop(
 
 def _drain_requests(
     request_queue: MinimalQueue,
-    pending: typing.List[Request.Submit],
+    pending: typing.List[_request.Submit],
     in_flight: typing.Dict[JobserverFuture, int],
     response_queue: MinimalQueue,
 ) -> bool:
@@ -221,29 +221,29 @@ def _drain_requests(
         except EOFError:
             return True  # Parent died, treat as shutdown
 
-        if isinstance(msg, Request.Shutdown):
+        if isinstance(msg, _request.Shutdown):
             return True
-        if isinstance(msg, Request.Cancel):
+        if isinstance(msg, _request.Cancel):
             for item in pending:
-                response_queue.put(Response.Cancelled(work_id=item.work_id))
+                response_queue.put(_response.Cancelled(work_id=item.work_id))
             pending.clear()
             continue
-        if isinstance(msg, Request.Submit):
+        if isinstance(msg, _request.Submit):
             pending.append(msg)
 
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: typing.List[Request.Submit],
+    pending: typing.List[_request.Submit],
     in_flight: typing.Dict[JobserverFuture, int],
     response_queue: MinimalQueue,
-) -> typing.List[Request.Submit]:
+) -> typing.List[_request.Submit]:
     """Try to dispatch pending work; return items still pending.
 
     Keeps c.f.Future in PENDING (cancellable) until a process is
     spawned.  Once one item is Blocked, remaining will be too.
     """
-    still_pending: typing.List[Request.Submit] = []
+    still_pending: typing.List[_request.Submit] = []
     blocked = False
     for item in pending:
         if blocked:
@@ -264,12 +264,12 @@ def _dispatch_pending(
         except Exception as exc:
             # Dispatch itself failed (e.g. pickling error).
             # Transition PENDING -> RUNNING -> FINISHED(exc).
-            response_queue.put(Response.Started(work_id=item.work_id))
-            response_queue.put(Response.Failed(work_id=item.work_id, exc=exc))
+            response_queue.put(_response.Started(work_id=item.work_id))
+            response_queue.put(_response.Failed(work_id=item.work_id, exc=exc))
             continue
 
         # Dispatch succeeded -- inform receiver and track
-        response_queue.put(Response.Started(work_id=item.work_id))
+        response_queue.put(_response.Started(work_id=item.work_id))
         in_flight[js_future] = item.work_id
     return still_pending
 
@@ -301,19 +301,19 @@ def _bridge_result(
     """Transfer a completed jobserver Future's outcome to response queue."""
     try:
         value = js_future.result(timeout=0)
-        response_queue.put(Response.Completed(work_id=work_id, value=value))
+        response_queue.put(_response.Completed(work_id=work_id, value=value))
     except Exception as exc:
-        response_queue.put(Response.Failed(work_id=work_id, exc=exc))
+        response_queue.put(_response.Failed(work_id=work_id, exc=exc))
 
 
 def _handle_shutdown(
-    pending: typing.List[Request.Submit],
+    pending: typing.List[_request.Submit],
     in_flight: typing.Dict[JobserverFuture, int],
     response_queue: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain in-flight futures, signal completion."""
     for item in pending:
-        response_queue.put(Response.Cancelled(work_id=item.work_id))
+        response_queue.put(_response.Cancelled(work_id=item.work_id))
     for js_future, work_id in in_flight.items():
         while True:
             try:
@@ -322,12 +322,12 @@ def _handle_shutdown(
             except CallbackRaised:
                 continue
         _bridge_result(js_future, work_id, response_queue)
-    response_queue.put(Response.Shutdown())
+    response_queue.put(_response.Shutdown())
 
 
 def _poll_requests_briefly(
     request_queue: MinimalQueue,
-    pending: typing.List[Request.Submit],
+    pending: typing.List[_request.Submit],
     in_flight: typing.Dict[JobserverFuture, int],
     response_queue: MinimalQueue,
 ) -> bool:
@@ -342,12 +342,12 @@ def _poll_requests_briefly(
     except (queue.Empty, EOFError):
         return False
 
-    if isinstance(msg, Request.Shutdown):
+    if isinstance(msg, _request.Shutdown):
         return True
-    if isinstance(msg, Request.Cancel):
+    if isinstance(msg, _request.Cancel):
         for item in pending:
-            response_queue.put(Response.Cancelled(work_id=item.work_id))
+            response_queue.put(_response.Cancelled(work_id=item.work_id))
         pending.clear()
-    elif isinstance(msg, Request.Submit):
+    elif isinstance(msg, _request.Submit):
         pending.append(msg)
     return False
