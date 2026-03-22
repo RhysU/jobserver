@@ -22,15 +22,6 @@ from multiprocessing.reduction import ForkingPickler  # type: ignore
 T = typing.TypeVar("T")
 
 
-def _resolve_context(
-    context: typing.Union[None, str, BaseContext]
-) -> BaseContext:
-    """Return a multiprocessing BaseContext, resolving None/str as needed."""
-    if context is None or isinstance(context, str):
-        return get_context(context)
-    return context
-
-
 class Blocked(Exception):
     """Reports that Jobserver.submit(...) or Future.result(...) is blocked."""
 
@@ -239,6 +230,15 @@ def absolute_deadline(relative_timeout: typing.Optional[float]) -> float:
     )
 
 
+def resolve_context(
+    context: typing.Union[None, str, BaseContext]
+) -> BaseContext:
+    """Return a multiprocessing BaseContext, resolving None/str as needed."""
+    if context is None or isinstance(context, str):
+        return get_context(context)
+    return context
+
+
 class MinimalQueue(typing.Generic[T]):
     """
     An unbounded SimpleQueue-variant with minimal function needed by Jobserver.
@@ -254,7 +254,7 @@ class MinimalQueue(typing.Generic[T]):
         self, context: typing.Union[None, str, BaseContext] = None
     ) -> None:
         """Use given context with default of multiprocessing.get_context()."""
-        context = _resolve_context(context)
+        context = resolve_context(context)
         self._reader, self._writer = context.Pipe(duplex=False)
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()
@@ -333,7 +333,7 @@ class Jobserver:
         which reports the number of usable CPUs for the current process.
         """
         # Obtain some multiprocessing Context and the slot-tracking queue
-        self._context = _resolve_context(context)
+        self._context = resolve_context(context)
         self._slots = MinimalQueue(self._context)  # type: MinimalQueue[int]
 
         # Issue one token for each requested slot
