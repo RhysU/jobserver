@@ -15,7 +15,7 @@ import unittest.mock
 
 from multiprocessing import get_all_start_methods
 
-from draft.executor import _SUBMIT, JobserverExecutor
+from draft.executor import Submit, JobserverExecutor
 from jobserver.impl import Jobserver, MinimalQueue
 
 # Most tests use "fork" only -- it is the fastest start method and the
@@ -354,7 +354,7 @@ class JobserverExecutorTest(unittest.TestCase):
                 fail_once[0]
                 and self_q is exe._request_queue
                 and args
-                and args[0][0] == _SUBMIT
+                and isinstance(args[0], Submit)
             ):
                 fail_once[0] = False
                 raise OSError("simulated put failure")
