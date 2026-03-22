@@ -13,48 +13,10 @@ import typing
 from jobserver.impl import Blocked, CallbackRaised, Jobserver, MinimalQueue
 from jobserver.impl import Future as JobserverFuture
 
+from . import _request as Request
+from . import _response as Response
+
 T = typing.TypeVar("T")
-
-# ---- Request messages (main process -> dispatcher process) ----
-# Imperative verbs: commands sent to the dispatcher.
-# Using NamedTuple for pre-3.10 compatibility (dataclass slots require 3.10+).
-
-
-class Request:
-    class Submit(typing.NamedTuple):
-        work_id: int
-        fn: typing.Callable
-        args: tuple
-        kwargs: dict
-
-    class Cancel(typing.NamedTuple):
-        pass
-
-    class Shutdown(typing.NamedTuple):
-        pass
-
-
-# ---- Response messages (dispatcher process -> main process) ----
-# Past participles: events reporting what happened.
-
-
-class Response:
-    class Started(typing.NamedTuple):
-        work_id: int
-
-    class Completed(typing.NamedTuple):
-        work_id: int
-        value: typing.Any
-
-    class Failed(typing.NamedTuple):
-        work_id: int
-        exc: BaseException
-
-    class Cancelled(typing.NamedTuple):
-        work_id: int
-
-    class Shutdown(typing.NamedTuple):
-        pass
 
 
 class JobserverExecutor(concurrent.futures.Executor):
