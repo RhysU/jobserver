@@ -28,10 +28,6 @@ _FAST = "fork"
 class JobserverExecutorTest(unittest.TestCase):
     """Tests verifying the concurrent.futures.Executor contract."""
 
-    # ------------------------------------------------------------------
-    # Cross-method smoke test
-    # ------------------------------------------------------------------
-
     def test_all_start_methods(self) -> None:
         """Core submit/result/exception path works for every start method."""
         for method in get_all_start_methods():
@@ -43,10 +39,6 @@ class JobserverExecutorTest(unittest.TestCase):
                     self.assertEqual(3, f.result(timeout=10))
                     g = exe.submit(int, "ff", base=16)
                     self.assertEqual(255, g.result(timeout=10))
-
-    # ------------------------------------------------------------------
-    # Basic submit / result
-    # ------------------------------------------------------------------
 
     def test_submit_returns_cf_future(self) -> None:
         """submit() must return a concurrent.futures.Future."""
@@ -79,10 +71,6 @@ class JobserverExecutorTest(unittest.TestCase):
             f = exe.submit(min, (), default=None)
             self.assertIsNone(f.result(timeout=10))
 
-    # ------------------------------------------------------------------
-    # Exception propagation
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _raise(klass, *args):
         raise klass(*args)
@@ -112,10 +100,6 @@ class JobserverExecutorTest(unittest.TestCase):
             f = exe.submit(len, (1, 2))
             self.assertIsNone(f.exception(timeout=10))
 
-    # ------------------------------------------------------------------
-    # PENDING state is observable
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _wait_on_event(event_path):
         """Block until a file appears, to stall a worker."""
@@ -139,10 +123,6 @@ class JobserverExecutorTest(unittest.TestCase):
             self.assertFalse(f.cancelled())
         finally:
             exe.shutdown(wait=False, cancel_futures=True)
-
-    # ------------------------------------------------------------------
-    # Cancel
-    # ------------------------------------------------------------------
 
     def test_cancel_pending_future(self) -> None:
         """A PENDING future can be cancelled."""
@@ -173,10 +153,6 @@ class JobserverExecutorTest(unittest.TestCase):
                 time.sleep(0.01)
             self.assertFalse(f.cancel())
             self.assertFalse(f.cancelled())
-
-    # ------------------------------------------------------------------
-    # Shutdown
-    # ------------------------------------------------------------------
 
     def test_shutdown_rejects_new_work(self) -> None:
         """submit() raises RuntimeError after shutdown()."""
@@ -221,10 +197,6 @@ class JobserverExecutorTest(unittest.TestCase):
         cancelled = [f for f in futures if f.cancelled()]
         self.assertGreater(len(cancelled), 0)
 
-    # ------------------------------------------------------------------
-    # Context manager
-    # ------------------------------------------------------------------
-
     def test_context_manager(self) -> None:
         """The with-statement calls shutdown(wait=True)."""
         js = Jobserver(context=_FAST, slots=2)
@@ -234,10 +206,6 @@ class JobserverExecutorTest(unittest.TestCase):
         self.assertEqual(5, f.result(timeout=0))
         with self.assertRaises(RuntimeError):
             exe.submit(len, "x")
-
-    # ------------------------------------------------------------------
-    # Callbacks
-    # ------------------------------------------------------------------
 
     def test_add_done_callback(self) -> None:
         """add_done_callback fires when the future completes."""
@@ -265,10 +233,6 @@ class JobserverExecutorTest(unittest.TestCase):
             f.add_done_callback(lambda fut: results.append(42))
             self.assertEqual([42], results)
 
-    # ------------------------------------------------------------------
-    # map()
-    # ------------------------------------------------------------------
-
     def test_map_basic(self) -> None:
         """Executor.map() produces correct results."""
         js = Jobserver(context=_FAST, slots=2)
@@ -292,10 +256,6 @@ class JobserverExecutorTest(unittest.TestCase):
             with self.assertRaises(concurrent.futures.TimeoutError):
                 next(it)
 
-    # ------------------------------------------------------------------
-    # wait() and as_completed()
-    # ------------------------------------------------------------------
-
     def test_wait_all_completed(self) -> None:
         """concurrent.futures.wait() works with our futures."""
         js = Jobserver(context=_FAST, slots=2)
@@ -317,10 +277,6 @@ class JobserverExecutorTest(unittest.TestCase):
                 results.add(f.result())
         self.assertEqual({0, 1, 2, 3, 4}, results)
 
-    # ------------------------------------------------------------------
-    # Heavy usage / saturation
-    # ------------------------------------------------------------------
-
     def test_heavy_usage(self) -> None:
         """Many submissions exceeding slot count complete correctly."""
         js = Jobserver(context=_FAST, slots=2)
@@ -329,10 +285,6 @@ class JobserverExecutorTest(unittest.TestCase):
             futures = [exe.submit(len, "x" * i) for i in range(n)]
             results = [f.result(timeout=30) for f in futures]
         self.assertEqual(list(range(n)), results)
-
-    # ------------------------------------------------------------------
-    # Worker death detection
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _self_signal(sig):
@@ -349,20 +301,12 @@ class JobserverExecutorTest(unittest.TestCase):
             g = exe.submit(len, (1, 2))
             self.assertEqual(2, g.result(timeout=10))
 
-    # ------------------------------------------------------------------
-    # Multiple shutdown calls are safe
-    # ------------------------------------------------------------------
-
     def test_double_shutdown(self) -> None:
         """Calling shutdown() twice does not raise."""
         js = Jobserver(context=_FAST, slots=2)
         exe = JobserverExecutor(js)
         exe.shutdown(wait=True)
         exe.shutdown(wait=True)  # Should not raise
-
-    # ------------------------------------------------------------------
-    # Locking
-    # ------------------------------------------------------------------
 
     def test_lock_released_before_put(self) -> None:
         """_lock must be free when _request_queue.put() is called.
