@@ -10,8 +10,12 @@ Using NamedTuple for pre-3.10 compatibility (dataclass slots require 3.10+).
 """
 import typing
 
+__all__ = ["Submit", "Cancel", "Shutdown"]
+
 
 class Submit(typing.NamedTuple):
+    """Submit work for execution."""
+
     work_id: int
     fn: typing.Callable
     args: tuple
@@ -19,8 +23,8 @@ class Submit(typing.NamedTuple):
 
 
 class Cancel(typing.NamedTuple):
-    pass
+    """Cancel all pending (not yet dispatched) work."""
 
 
 class Shutdown(typing.NamedTuple):
-    pass
+    """Shut down the dispatcher process."""
