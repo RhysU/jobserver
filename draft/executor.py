@@ -5,7 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 import concurrent.futures
-import dataclasses
 import itertools
 import queue
 import threading
@@ -16,25 +15,22 @@ from jobserver.impl import Future as JobserverFuture
 
 T = typing.TypeVar("T")
 
-
 # ---- Request messages (main process -> dispatcher process) ----
 # Imperative verbs: commands sent to the dispatcher.
+# Using NamedTuple for pre-3.10 compatibility (dataclass slots require 3.10+).
 
 
 class Request:
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Submit:
+    class Submit(typing.NamedTuple):
         work_id: int
         fn: typing.Callable
         args: tuple
         kwargs: dict
 
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Cancel:
+    class Cancel(typing.NamedTuple):
         pass
 
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Shutdown:
+    class Shutdown(typing.NamedTuple):
         pass
 
 
@@ -43,26 +39,21 @@ class Request:
 
 
 class Response:
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Started:
+    class Started(typing.NamedTuple):
         work_id: int
 
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Completed:
+    class Completed(typing.NamedTuple):
         work_id: int
         value: typing.Any
 
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Failed:
+    class Failed(typing.NamedTuple):
         work_id: int
         exc: BaseException
 
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Cancelled:
+    class Cancelled(typing.NamedTuple):
         work_id: int
 
-    @dataclasses.dataclass(frozen=True, slots=True)
-    class Shutdown:
+    class Shutdown(typing.NamedTuple):
         pass
 
 
