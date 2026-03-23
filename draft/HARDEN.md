@@ -1,502 +1,504 @@
 # Hardening Plan for `JobserverExecutor`
 
-A specification for testing and hardening the `concurrent.futures.Executor`
-implementation in `draft/`.  Informed by CPython's own
-`Lib/test/test_concurrent_futures/` suite, known CPython bug reports, and
-common pitfalls in process-pool executor implementations.
+A specification for testing the **public API** of `JobserverExecutor`
+as a `concurrent.futures.Executor`.  Informed by CPython's own
+`Lib/test/test_concurrent_futures/` suite, known CPython bug reports,
+and common pitfalls in process-pool executor implementations.
+
+Every test interacts only through the public surface:
+
+- `JobserverExecutor(jobserver)` -- construction
+- `executor.submit(fn, /, *args, **kwargs)` -- submission
+- `executor.map(fn, *iterables, timeout=)` -- bulk submission
+- `executor.shutdown(wait=, cancel_futures=)` -- lifecycle
+- `with JobserverExecutor(js) as exe:` -- context manager
+- The returned `concurrent.futures.Future` -- `result()`,
+  `exception()`, `done()`, `running()`, `cancelled()`, `cancel()`,
+  `add_done_callback()`
+- `concurrent.futures.wait()` and `concurrent.futures.as_completed()`
+
+No test should reach into private attributes, mock internal queues,
+or test the underlying `Jobserver` in isolation.
 
 ---
 
-## 1. Future State-Machine Correctness
+## 1. Submit and Result
 
-The `concurrent.futures.Future` state machine has five states
-(`PENDING`, `RUNNING`, `CANCELLED`, `CANCELLED_AND_NOTIFIED`, `FINISHED`)
-and a small set of valid transitions.  Every invalid transition must raise
-`InvalidStateError`.
+### 1.1 Successful call returns correct result
 
-### 1.1 Deterministic state-transition tests
+```python
+with JobserverExecutor(js) as exe:
+    assert exe.submit(len, (1, 2, 3)).result(timeout=10) == 3
+```
 
-Create futures in known states (without a live executor) and verify:
+### 1.2 Keyword arguments are forwarded
 
-| Start state | Operation | Expected result |
-|---|---|---|
-| PENDING | `cancel()` | returns `True`; state becomes CANCELLED |
-| PENDING | `set_running_or_notify_cancel()` | state becomes RUNNING |
-| RUNNING | `cancel()` | returns `False`; state unchanged |
-| RUNNING | `set_result(v)` | state becomes FINISHED; `result()` returns `v` |
-| RUNNING | `set_exception(e)` | state becomes FINISHED; `exception()` returns `e` |
-| FINISHED | `set_result(v)` | raises `InvalidStateError` |
-| FINISHED | `set_exception(e)` | raises `InvalidStateError` |
-| CANCELLED | `set_running_or_notify_cancel()` | fires cancel callbacks |
-| CANCELLED | `result()` | raises `CancelledError` |
-| FINISHED | `cancel()` | returns `False` |
+```python
+with JobserverExecutor(js) as exe:
+    assert exe.submit(int, "ff", base=16).result(timeout=10) == 255
+```
 
-These tests should run without spawning any processes; they exercise the
-c.f.Future object directly and confirm `JobserverExecutor._receive_loop`
-can rely on the documented state machine.
+### 1.3 `None` can be returned
 
-### 1.2 Double-set guards
+```python
+with JobserverExecutor(js) as exe:
+    assert exe.submit(min, (), default=None).result(timeout=10) is None
+```
 
-Verify that calling `set_result()` or `set_exception()` a second time on
-the same future raises `InvalidStateError`.  This protects against the
-receiver accidentally completing a future twice (e.g. a `Completed` message
-arriving after a `Failed` for the same `work_id`).
+### 1.4 Multiple concurrent submissions
 
-### 1.3 State queries at each stage
+Submit several tasks and collect results in submission order.  All
+results must be correct regardless of completion order.
 
-For a live executor submission, sample:
-- `f.done()`, `f.running()`, `f.cancelled()` while PENDING
-- The same while RUNNING (use a barrier/event to hold the worker)
-- The same after completion
+### 1.5 `submit()` returns a `concurrent.futures.Future`
+
+```python
+assert isinstance(exe.submit(len, (1,)), concurrent.futures.Future)
+```
 
 ---
 
-## 2. Shutdown Semantics
+## 2. Exception Propagation
 
-CPython's `test_shutdown.py` is the richest source of edge cases.
-Each test below should be run for every available `multiprocessing`
-start method (`fork`, `forkserver`, `spawn`).
+### 2.1 Exception raised in callable surfaces via `result()`
 
-### 2.1 `shutdown(wait=True)` blocks until all futures complete
+```python
+with JobserverExecutor(js) as exe:
+    f = exe.submit(raises, ValueError, "boom")
+    with self.assertRaises(ValueError):
+        f.result(timeout=10)
+```
 
-Submit several slow tasks, call `shutdown(wait=True)`, and assert all
-futures are done before the call returns.
+### 2.2 `exception()` returns the raised exception
 
-### 2.2 `shutdown(wait=False)` returns immediately
+```python
+exc = f.exception(timeout=10)
+assert isinstance(exc, ValueError)
+```
 
-Submit a slow task, call `shutdown(wait=False)`, record the wall-clock
-time of the call.  Assert the call returns in < 0.5 s.  Assert the
-future eventually completes.
+### 2.3 `exception()` returns `None` on success
 
-### 2.3 `shutdown(cancel_futures=True)` cancels pending work
+```python
+f = exe.submit(len, (1, 2))
+assert f.exception(timeout=10) is None
+```
+
+### 2.4 An Exception can be *returned* (not raised)
+
+Submit a callable that returns `ValueError("not raised")` as a value.
+`result()` must return it, not raise it.
+
+### 2.5 Worker killed by signal
+
+Submit a task that sends `SIGKILL` to its own process.  `result()`
+must raise an exception (not hang).  A subsequent submission must
+succeed, proving the executor recovered.
+
+### 2.6 Worker exits via `sys.exit()`
+
+Submit `sys.exit(1)`.  `result()` must raise.  The executor must
+remain usable for further submissions.
+
+### 2.7 Unpicklable callable
+
+Submit a lambda (unpicklable under `spawn` context).  `result()` must
+raise an exception, not hang.
+
+### 2.8 Unpicklable arguments
+
+Submit `len` with a `threading.Lock()` argument.  `result()` must
+raise, not hang.
+
+### 2.9 Very large arguments and results
+
+Submit work that passes and returns large byte strings (e.g. 10 MB).
+Verify correct round-trip and no hang.
+
+---
+
+## 3. Future State Queries
+
+### 3.1 A newly submitted future is PENDING when slots are full
+
+Fill all slots with slow tasks, then submit another.  The new future
+must report `done() == False`, `running() == False`,
+`cancelled() == False`.
+
+### 3.2 A dispatched future transitions to RUNNING
+
+Submit a task that blocks on a barrier.  Poll `running()` until it
+becomes `True` (with a timeout).  Verify `done() == False`.
+
+### 3.3 A completed future is FINISHED
+
+After `result()` returns, `done() == True`, `running() == False`,
+`cancelled() == False`.
+
+---
+
+## 4. Cancellation
+
+### 4.1 A PENDING future can be cancelled
+
+Fill all slots, submit another, call `cancel()`.  Assert:
+- `cancel()` returns `True`
+- `cancelled()` returns `True`
+- `done()` returns `True`
+- `result()` raises `CancelledError`
+
+### 4.2 A RUNNING future cannot be cancelled
+
+Submit a slow task, wait until `running()` is `True`, then call
+`cancel()`.  Assert `cancel()` returns `False` and the future
+completes normally.
+
+### 4.3 A FINISHED future cannot be cancelled
+
+Wait for `result()`, then call `cancel()`.  Returns `False`.
+
+### 4.4 Rapid submit-then-cancel churn
+
+In a tight loop, submit and immediately cancel N=200 futures.
+Verify no deadlock and no leaked processes (process count returns
+to baseline after `shutdown()`).
+
+### 4.5 Cancel racing with dispatch
+
+Fill slots, submit extra work, cancel the pending future, then
+free a slot.  The cancelled future must stay cancelled even though
+a slot became available.
+
+---
+
+## 5. Callbacks
+
+### 5.1 `add_done_callback` fires on success
+
+Register a callback before the future completes.  Verify it fires
+and receives the future as its argument.
+
+### 5.2 `add_done_callback` fires on exception
+
+Same, but the callable raises.  Callback still fires.
+
+### 5.3 `add_done_callback` fires on cancellation
+
+Cancel a PENDING future, verify the callback fires.
+
+### 5.4 Callback on already-done future fires immediately
+
+Wait for `result()`, then register a callback.  It must fire
+synchronously before `add_done_callback` returns.
+
+### 5.5 Multiple callbacks fire in registration order
+
+Register callbacks A, B, C.  After completion, verify they fired
+in order A, B, C.
+
+### 5.6 A raising callback does not prevent subsequent callbacks
+
+Register three callbacks where the middle one raises.  The first and
+third must still fire.
+
+### 5.7 Callback receives the correct future
+
+When multiple futures each have callbacks, each callback's argument
+must be the future on which it was registered.
+
+---
+
+## 6. Shutdown Semantics
+
+### 6.1 `shutdown(wait=True)` blocks until all futures complete
+
+Submit several slow tasks, call `shutdown(wait=True)`, assert all
+futures report `done() == True` before the call returns.
+
+### 6.2 `shutdown(wait=False)` returns immediately
+
+Submit a slow task, measure wall-clock time of
+`shutdown(wait=False)`.  Assert < 0.5 s.  Assert the future
+eventually completes.
+
+### 6.3 `shutdown(cancel_futures=True)` cancels pending work
 
 Fill slots with slow tasks, submit additional work, then
-`shutdown(cancel_futures=True)`.  Assert:
-- Running futures are **not** cancelled (cancel returns False).
-- Pending futures **are** cancelled.
+`shutdown(wait=True, cancel_futures=True)`.  Assert:
+- Futures that were RUNNING complete normally.
+- Futures that were PENDING are cancelled.
 - `result()` on cancelled futures raises `CancelledError`.
 
-### 2.4 Submit-after-shutdown raises `RuntimeError`
+### 6.4 `shutdown(wait=False, cancel_futures=True)` combined
 
-Call `shutdown()`, then `submit()`.  Expect `RuntimeError`.
+Must not deadlock.  Pending futures should be cancelled.
 
-### 2.5 Double shutdown is safe
+### 6.5 `submit()` after `shutdown()` raises `RuntimeError`
 
-Call `shutdown()` twice in succession; no exception should be raised.
+### 6.6 Double `shutdown()` is safe
 
-### 2.6 Concurrent submit and shutdown
+Call `shutdown()` twice; no exception.
 
-Use a `threading.Barrier` so that one thread calls `submit()` while
-another calls `shutdown()` at the same instant.  The submit must either
-succeed (and the future eventually completes) or raise `RuntimeError`.
-No hang, no crash.  Repeat N=100 times.
+### 6.7 Context-manager exit calls `shutdown(wait=True)`
 
-### 2.7 Context-manager exit calls `shutdown(wait=True)`
+```python
+with JobserverExecutor(js) as exe:
+    f = exe.submit(len, "hello")
+assert f.result(timeout=0) == 5
+with self.assertRaises(RuntimeError):
+    exe.submit(len, "x")
+```
 
-Verify `__exit__` path, and that subsequent `submit()` raises
-`RuntimeError`.
+### 6.8 Concurrent submit and shutdown (race test)
 
-### 2.8 `shutdown(wait=False)` with `cancel_futures=True` combined
+Use a `threading.Barrier` so one thread calls `submit()` while
+another calls `shutdown()` at the same instant.  The submit must
+either succeed (future eventually completes) or raise
+`RuntimeError`.  No hang, no crash.  Repeat N=100 times.
 
-The combination must not deadlock.  All pending futures should be
-cancelled; running futures should complete normally.
+### 6.9 `wait()` does not hang after `shutdown(cancel_futures=True)`
 
----
+After `shutdown(cancel_futures=True)`, call
+`concurrent.futures.wait(futures, timeout=5)`.  Must return
+promptly, not hang.  (CPython `#109934`.)
 
-## 3. Callback Semantics
+### 6.10 Trivial submit immediately after construction
 
-### 3.1 `add_done_callback` fires on success, failure, cancellation
-
-Register a callback before the future completes and verify it fires in
-each terminal state.
-
-### 3.2 Callback on already-done future fires immediately
-
-Wait for a future to finish, then add a callback; it must fire
-synchronously in the caller's thread.
-
-### 3.3 A raising callback does not prevent subsequent callbacks
-
-Register three callbacks where the second raises.  Verify the first and
-third still fire.  (Note: `concurrent.futures.Future` logs exceptions
-from callbacks but does not suppress them for other callbacks.)
-
-### 3.4 Callback ordering
-
-Callbacks must fire in registration order per the `concurrent.futures`
-contract.
-
-### 3.5 Callback receives the correct future
-
-Each callback's argument must be the future on which it was registered.
+Submit a single trivial task right after creating the executor.
+Must not hang.  (CPython `#56665`.)
 
 ---
 
-## 4. Pickling / Serialization Boundary
-
-The dispatcher process boundary requires pickling of `_request.Submit`
-(including `fn`, `args`, `kwargs`) and `_response.*` messages.  Each
-serialization failure point must be tested.
-
-### 4.1 Unpicklable callable
-
-Submit a lambda or a closure that cannot be pickled (with `spawn`
-context where globals are not inherited).  The resulting future must
-surface an exception, not hang.
-
-### 4.2 Unpicklable arguments
-
-Submit `len` with an argument containing an unpicklable object
-(e.g. a lock).  Same expectation.
-
-### 4.3 Unpicklable result
-
-Submit a callable that returns an unpicklable object (e.g. a generator).
-The future must surface an exception.
-
-### 4.4 Very large objects
-
-Submit work that passes and/or returns large objects (e.g. 10 MB, 100 MB
-byte strings).  Verify correct results and no hang.  This exercises the
-pipe capacity limits -- `Connection.send()` can block or raise
-`ValueError` for very large objects.
-
-### 4.5 Pickle failure during shutdown
-
-Inject a pickling failure (via `unittest.mock.patch` on
-`MinimalQueue.put`) during `shutdown()`.  The `BrokenPipeError` handler
-must not hang.
-
----
-
-## 5. Worker / Dispatcher Death
-
-### 5.1 Worker killed by signal
-
-Submit a task that sends `SIGKILL` to itself.  The future must raise an
-exception (not hang).  A subsequent submission must succeed, proving the
-executor recovered.
-
-### 5.2 Worker exits via `sys.exit()`
-
-Submit `sys.exit(1)`.  The future must raise.  Executor must remain
-usable.
-
-### 5.3 Dispatcher process killed externally
-
-While futures are in flight, send `SIGKILL` to `_dispatcher.pid`.
-All outstanding futures must eventually raise
-`RuntimeError("dispatcher process terminated")`.
-No deadlock in `shutdown()`.
-
-### 5.4 Dispatcher crash during large data transfer
-
-Submit many large-payload tasks, then kill the dispatcher mid-stream.
-All futures must resolve (with errors) and shutdown must complete.
-
-### 5.5 Parent process dies (orphan detection)
-
-The dispatcher closes unused pipe ends so that EOF propagates on parent
-death.  Verify: if the parent process is killed, the dispatcher's
-`request_queue.get()` sees `EOFError` and exits.
-(Test by forking a child that creates the executor, kills itself, and
-the test harness verifies no leaked dispatcher/worker processes.)
-
----
-
-## 6. Concurrency Stress Tests
-
-### 6.1 Heavy submission exceeding slot count
-
-Submit N >> slots tasks.  Verify all N results are correct and arrive
-in bounded time.  Current test uses N=20; increase to N=200 or N=1000.
-
-### 6.2 Rapid submit/cancel churn
-
-In a tight loop, submit and immediately cancel futures.  Verify no
-deadlock and no resource leak (process count returns to baseline).
-This targets the `PENDING -> cancel() -> Cancelled response` path
-racing with `Started` responses.
-
-### 6.3 Mixed success/failure/cancel/death workload
-
-Submit a mix of: successful tasks, tasks that raise, tasks that are
-cancelled, tasks whose workers die.  Run all concurrently and verify
-every future resolves correctly.
-
-### 6.4 Concurrent `submit()` from multiple threads
-
-Spawn T threads each submitting M tasks.  Verify all T*M results and
-that `_work_ids` produces unique IDs under contention.
-
-### 6.5 `sys.setswitchinterval(1e-6)` stress
-
-Run the submit/shutdown race test (2.6) and the multi-threaded submit
-test (6.4) with the GIL switch interval set to 1 microsecond to
-maximize thread-switching and expose races.
-
-### 6.6 Slot exhaustion with nested submissions
-
-If the underlying `Jobserver` is shared and the executor's dispatcher
-submits work that itself uses the same `Jobserver`, slots can be
-exhausted.  Verify this either deadlocks predictably (documented) or
-is handled gracefully.
-
----
-
-## 7. `map()` and Iteration
+## 7. `map()`
 
 ### 7.1 Basic correctness
 
-`list(executor.map(str, range(100)))` == `[str(i) for i in range(100)]`.
+```python
+with JobserverExecutor(js) as exe:
+    assert list(exe.map(str, range(5))) == ["0","1","2","3","4"]
+```
 
-### 7.2 Exception propagation
+### 7.2 Exception propagation preserves position
 
 When the k-th invocation raises, iterating the result raises that
 exception at position k.
 
-### 7.3 Timeout
+### 7.3 Timeout raises `TimeoutError`
 
-`executor.map(time.sleep, [5], timeout=0.1)` raises
-`concurrent.futures.TimeoutError`.
+```python
+it = exe.map(time.sleep, [5], timeout=0.1)
+with self.assertRaises(concurrent.futures.TimeoutError):
+    next(it)
+```
 
 ### 7.4 Empty iterables
 
-`list(executor.map(str, []))` == `[]`.
+```python
+assert list(exe.map(str, [])) == []
+```
 
 ### 7.5 Unequal-length iterables
 
-Verify `map()` stops at the shortest iterable, matching `builtins.map`.
+`map()` stops at the shortest iterable, matching `builtins.map`.
 
-### 7.6 Memory: iterator does not retain completed futures
+### 7.6 Iterator does not retain completed futures
 
-After yielding a result from `map()`, the corresponding future should
-be eligible for garbage collection.  Use `weakref.ref` to confirm.
+After yielding a result from `map()`, the corresponding future
+should be eligible for garbage collection.  Confirm with
+`weakref.ref`.
 
-### 7.7 Generator not fully consumed
+### 7.7 Partially consumed iterator
 
-Create an iterator via `map()`, consume only the first element, then
-let the iterator be garbage collected.  Verify no leaked processes.
+Create an iterator via `map()`, consume only the first element,
+then drop the iterator.  Verify no leaked processes after
+`shutdown()`.
+
+### 7.8 Multiple iterables
+
+```python
+list(exe.map(pow, [2,3], [10,10])) == [1024, 59049]
+```
 
 ---
 
 ## 8. `wait()` and `as_completed()` Integration
 
-### 8.1 `wait(FIRST_COMPLETED)` returns on first done future
+### 8.1 `wait(ALL_COMPLETED)` returns all futures in `done`
 
-Submit slow and fast tasks; `wait(FIRST_COMPLETED)` should return as
-soon as the fast task finishes.
+### 8.2 `wait(FIRST_COMPLETED)` returns on first completion
 
-### 8.2 `wait(FIRST_EXCEPTION)` returns on first exception
+Submit slow and fast tasks.  `wait(FIRST_COMPLETED)` must return
+as soon as any one task finishes.
 
-Submit a mix of successful and failing tasks.  `wait(FIRST_EXCEPTION)`
-should return as soon as any task raises.
+### 8.3 `wait(FIRST_EXCEPTION)` returns on first exception
 
-### 8.3 `wait(ALL_COMPLETED)` waits for everything
+Submit a mix of successful and failing tasks.  Must return as soon
+as any task raises.
 
-All futures should be in `done` set.
+### 8.4 `wait()` with timeout returns partial results
 
-### 8.4 `wait()` with timeout
-
-Submit slow tasks, call `wait(timeout=0.1)`.  Some futures should be
+Submit slow tasks, call `wait(timeout=0.1)`.  Some futures must be
 in `not_done`.
 
 ### 8.5 `as_completed()` yields in completion order
 
-Submit tasks with varying durations; verify that `as_completed()` yields
+Submit tasks with varying durations.  Verify `as_completed()` yields
 faster tasks first.
 
-### 8.6 Duplicate future in `wait()` / `as_completed()`
+### 8.6 `as_completed()` with timeout
 
-Pass the same future twice.  Verify it appears only once in the result
-(CPython `test_20369`).
+Submit a slow task.  `as_completed(timeout=0.1)` must raise
+`TimeoutError`.
 
-### 8.7 `as_completed()` does not retain references
+### 8.7 Duplicate future in `wait()` and `as_completed()`
+
+Pass the same future twice.  Verify it appears only once in the
+result.  (CPython `test_20369`.)
+
+### 8.8 `as_completed()` does not retain references to yielded futures
 
 Use `weakref.ref` to confirm futures are GC-eligible after being
-yielded (CPython `test_free_reference_yielded_future`).
+yielded.  (CPython `test_free_reference_yielded_future`.)
 
 ---
 
-## 9. Resource Leak Detection
+## 9. Concurrency Stress
 
-### 9.1 Process count returns to baseline after shutdown
+### 9.1 Heavy submission exceeding slot count
 
-Before creating the executor, count processes.  After `shutdown()`,
-assert the count returns to the original value (within a timeout).
+Submit N=200 tasks with 2 slots.  All N results must be correct.
 
-### 9.2 File descriptor count returns to baseline
+### 9.2 Mixed workload
 
-Use `/proc/self/fd` (Linux) to count open file descriptors before and
-after an executor lifecycle.  No leak.
+Submit a mix of: successful tasks, tasks that raise, tasks that
+are immediately cancelled, and tasks whose workers die.  Run all
+concurrently and verify every future resolves to the expected
+outcome.
 
-### 9.3 Thread count returns to baseline
+### 9.3 Concurrent `submit()` from multiple threads
 
-`threading.active_count()` before and after.  The receiver thread must
-exit after `shutdown(wait=True)`.
+Spawn T=8 threads each submitting M=25 tasks.  Verify all T*M=200
+results are correct.
 
-### 9.4 `_futures` dict is empty after shutdown
+### 9.4 `sys.setswitchinterval(1e-6)` stress
 
-After `shutdown(wait=True)`, assert `len(exe._futures) == 0`.
+Re-run the concurrent submit (9.3) and the submit/shutdown race
+(6.8) with the GIL switch interval set to 1 microsecond to
+maximize context switching and expose races.
 
-### 9.5 Repeated create/shutdown cycles
+### 9.5 Burst submission (thousands of tasks)
+
+Submit N=2000 tasks in rapid succession.  All must complete
+correctly with no deadlock.  Exercises queue capacity under burst
+load.
+
+---
+
+## 10. Resource Leak Detection
+
+### 10.1 Process count returns to baseline
+
+Count child processes before and after a full executor lifecycle
+(create, submit work, shutdown).  Must return to baseline.
+
+### 10.2 File descriptor count returns to baseline
+
+Use `/proc/self/fd` (Linux) to count open FDs before and after.
+No leak.
+
+### 10.3 Thread count returns to baseline
+
+`threading.active_count()` before and after.  The receiver thread
+must exit after `shutdown(wait=True)`.
+
+### 10.4 Repeated create/shutdown cycles
 
 Create and shut down the executor 50 times in a loop.  Monitor for
-monotonically increasing resource consumption (processes, FDs, memory).
+monotonically increasing resource consumption (processes, FDs,
+threads, RSS).
+
+### 10.5 Shutdown after worker death cleans up
+
+After a worker dies (SIGKILL), verify `shutdown(wait=True)`
+completes and all resources are reclaimed.
 
 ---
 
-## 10. Multiprocessing Start Method Coverage
+## 11. Multiprocessing Start Method Coverage
 
-All tests in sections 1--9 should be parameterized over every available
-start method: `fork`, `forkserver`, `spawn`.  The current test suite
-defaults to `fork` for speed; a hardening pass must cover all methods
-because:
+All tests in sections 1--10 should be parameterized over every
+available start method: `fork`, `forkserver`, `spawn`.
 
-- `spawn` requires full picklability (catches issues `fork` hides).
-- `forkserver` has different process-tree topology and different
+Rationale:
+
+- `spawn` requires full picklability of callables and arguments,
+  catching issues that `fork` hides by inheriting process state.
+- `forkserver` has a different process-tree topology and different
   EOF/broken-pipe propagation characteristics.
-- `fork` can inherit locks in inconsistent states from threaded parents.
+- `fork` can inherit locks in inconsistent states from threaded
+  parents.
 
-Use `@parameterized` or `subTest` to run each test under each method.
+Use `subTest(method=method)` to run each test under each method.
 
 ---
 
-## 11. Timing and Deadlock Detection
+## 12. Timing and Deadlock Detection
 
-### 11.1 Global test timeout
+### 12.1 Global test timeout
 
 Every test must complete within a hard timeout (e.g. 60 s).  Use
-`unittest`'s `timeout` support or a `signal.alarm`-based decorator.
-A test that exceeds the timeout is treated as a deadlock.
+a `signal.alarm`-based decorator or `unittest` timeout support.
+A test that exceeds the timeout is treated as a deadlock failure.
 
-### 11.2 Targeted short timeouts
+### 12.2 Targeted short timeouts
 
-For tests that are expected to be fast (e.g. `shutdown(wait=False)`),
-assert wall-clock time < 1 s.
+Tests expected to be fast (e.g. `shutdown(wait=False)`, trivial
+submit) should assert wall-clock time < 1 s.
 
-### 11.3 CI deadlock canary
+### 12.3 CI deadlock canary
 
-Add a CI step that runs the full test suite under a 5-minute wall-clock
-limit.  If any test hangs, the CI job is killed and reported as failed.
-
----
-
-## 12. Lock Discipline and Internal Invariants
-
-### 12.1 `_lock` is not held during `put()`
-
-Already tested (`test_lock_released_before_put`).  Extend to cover the
-`shutdown()` path: verify `_lock` is released before `_request_queue.put`
-of `Cancel` and `Shutdown` messages.
-
-### 12.2 `_lock` is not held during `_response_queue.get()`
-
-The receiver thread must never hold `_lock` while blocking on the
-response queue.  Instrument with a spy to verify.
-
-### 12.3 `_futures` cleanup on `put()` failure
-
-Already tested (`test_submit_removes_future_on_put_failure`).  Extend
-to cover `BrokenPipeError` specifically (the path that translates to
-`RuntimeError("cannot submit after shutdown")`).
-
-### 12.4 No lock ordering violations
-
-Document the lock ordering: `_lock` is always acquired before any queue
-operation, and released before the queue operation.  A test or assertion
-should verify this invariant is never violated.  Consider a debug-mode
-wrapper around `_lock` that records acquire/release and checks ordering.
+Run the full test suite under a 5-minute wall-clock limit in CI.
+If any test hangs, the CI job is killed and reported as a failure.
 
 ---
 
-## 13. Edge Cases from CPython Bug Reports
+## 13. Edge Cases Inspired by CPython Bug Reports
 
-### 13.1 `#105829` -- Wakeup pipe full
+Each of these is tested purely through the public API.
 
-Submit many tasks in rapid succession (thousands).  The internal pipe
-must not fill up and deadlock.  If the implementation uses a bounded
-pipe, verify backpressure or overflow handling.
+### 13.1 Cancel then `result()` on same future
 
-### 13.2 `#76757` / `#65208` -- GC during queue operations
+Cancel a PENDING future, then call `result()`.  Must raise
+`CancelledError`, not hang or raise `InvalidStateError`.
 
-Force garbage collection (`gc.collect()`) while the executor is actively
-processing submissions.  No deadlock.
+### 13.2 Worker death does not poison the executor
 
-### 13.3 `#107219` -- `InvalidStateError` during crash cleanup
+After a worker dies (SIGKILL), subsequent submissions must succeed.
+The executor must not enter a permanently broken state.  (Unlike
+CPython's `BrokenProcessPool`, which is terminal.)
 
-Kill a worker while the receiver is processing its `Started` message.
-The `Failed` message for the same `work_id` must not attempt
-`set_exception()` on an already-done future.
+### 13.3 Executor created inside a forked child
 
-### 13.4 `#109934` -- `wait()` hangs after `cancel_futures`
+Create the executor in a `fork()`ed child process.  Must not
+inherit stale lock state from the parent.  (CPython `#89184`.)
 
-After `shutdown(cancel_futures=True)`, call
-`concurrent.futures.wait(futures, timeout=5)`.  Must not hang.
+### 13.4 `result(timeout=0)` on incomplete future raises `TimeoutError`
 
-### 13.5 `#56665` -- Early hangs
+```python
+f = exe.submit(time.sleep, 5)
+with self.assertRaises(concurrent.futures.TimeoutError):
+    f.result(timeout=0)
+```
 
-Submit a single trivial task immediately after construction.
-Must not hang.
+### 13.5 `exception(timeout=0)` on incomplete future raises `TimeoutError`
 
-### 13.6 `#89184` -- Race in forked children
+Same as above but via `exception()`.
 
-Create the executor in a forked child process.  Must not inherit stale
-lock state from the parent.  (Relevant when start method is `fork`.)
+### 13.6 Submitting after `shutdown(wait=False)` raises `RuntimeError`
 
----
+Even though `wait=False` returns immediately, `submit()` must
+still be rejected.
 
-## 14. `_dispatch_loop` Internal Testing
+### 13.7 Many futures cancelled then `shutdown(wait=True)`
 
-The dispatcher runs in a separate process, making it hard to test in
-isolation.  Consider:
-
-### 14.1 Unit-test `_drain_requests` in-process
-
-Construct `MinimalQueue` pairs, enqueue known `_request` messages, and
-call `_drain_requests` directly.  Verify `pending` list and return value.
-
-### 14.2 Unit-test `_dispatch_pending` with a mock Jobserver
-
-Inject a `Jobserver` that raises `Blocked` after N submissions.  Verify
-`still_pending` and `in_flight` are correct.
-
-### 14.3 Unit-test `_poll_in_flight` with mock Futures
-
-Create `JobserverFuture` mocks that report `done()` and verify
-`_bridge_result` produces correct `_response.Completed` / `Failed`.
-
-### 14.4 Unit-test `_handle_shutdown`
-
-Verify pending items are cancelled, in-flight items are drained, and
-`_response.Shutdown` is sent.
-
-### 14.5 `_poll_requests_briefly` timeout behavior
-
-Verify the 5 ms timeout does not cause busy-spinning (measure CPU usage
-over 1 s with no pending work).
-
----
-
-## 15. Implementation Checklist
-
-The following items are not tests but rather code-review items to verify
-or fix before declaring the implementation hardened:
-
-- [ ] `daemon=False` on dispatcher -- correct, prevents orphan workers.
-      Verify workers spawned by the dispatcher also use `daemon=False`.
-- [ ] Pipe-end closure -- verify `_reader`/`_writer` closes are symmetric
-      between parent and dispatcher.
-- [ ] `_receive_loop` handles every `_response` variant -- no unhandled
-      message type silently dropped.
-- [ ] `_dispatch_loop` handles every `_request` variant -- same.
-- [ ] `_bridge_result` catches `BaseException` or only `Exception`?
-      If a worker raises `SystemExit` or `KeyboardInterrupt`, does it
-      propagate correctly?
-- [ ] The `Cancel` message only cancels `pending` items in the dispatcher.
-      In-flight items continue.  Verify this matches the `cancel_futures`
-      contract (running tasks must not be cancelled).
-- [ ] `_poll_requests_briefly` returns `False` on `EOFError` -- should
-      this be `True` (treat parent death as shutdown)?
-- [ ] Thread safety of `_futures` dict -- all accesses are under `_lock`,
-      including in `_receive_loop`.  Verify no unguarded path.
+Submit many futures, cancel them all, then `shutdown(wait=True)`.
+Must return promptly, not block.
