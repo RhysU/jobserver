@@ -11,6 +11,7 @@ import os
 import pickle
 import signal
 import sys
+import threading
 import time
 import typing
 import unittest
@@ -610,3 +611,41 @@ class JobserverTest(unittest.TestCase):
                     ),
                     msg="Recursion is limited by number of available slots",
                 )
+
+    @staticmethod
+    def helper_sleep_briefly() -> None:
+        """Helper that sleeps briefly to create a window for concurrent done()."""
+        time.sleep(0.05)
+
+    def test_concurrent_done_no_crash(self) -> None:
+        """Concurrent done() on the same Future must not crash (issue #38).
+
+        Two threads calling done() on the same Future concurrently must not
+        cause an AttributeError or AssertionError.  This naturally happens
+        when one thread calls reclaim_resources() while another is inside
+        submit() with callbacks=True.
+        """
+        js = Jobserver(slots=4)
+        errors = []  # type: typing.List[Exception]
+
+        def call_done(future: Future, barrier: threading.Barrier) -> None:
+            """Wait at barrier then race into done()."""
+            barrier.wait()
+            try:
+                future.done(timeout=10)
+            except Exception as e:
+                errors.append(e)
+
+        # Repeat to increase chance of hitting the race window
+        for _ in range(20):
+            f = js.submit(fn=self.helper_sleep_briefly, timeout=5)
+            barrier = threading.Barrier(2)
+            t = threading.Thread(target=call_done, args=(f, barrier))
+            t.start()
+            call_done(f, barrier)  # Main thread also races into done()
+            t.join(timeout=10)
+
+        # Drain any remaining futures
+        for future in list(js._future_sentinels.keys()):
+            future.done(timeout=10)
+        self.assertEqual(errors, [], f"Concurrent done() crashed: {errors}")
