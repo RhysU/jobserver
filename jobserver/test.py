@@ -10,6 +10,7 @@ import itertools
 import os
 import pickle
 import signal
+import sys
 import time
 import typing
 import unittest
@@ -531,6 +532,15 @@ class JobserverTest(unittest.TestCase):
                     g.result()
                 with self.assertRaises(SubmissionDied):
                     f.result()
+
+    def test_base_exception_surfaces_as_submission_died(self) -> None:
+        """SystemExit in fn must surface as SubmissionDied."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=sys.exit, args=(1,))
+                with self.assertRaises(SubmissionDied):
+                    f.result(timeout=5)
 
     def test_sleep_fn(self) -> None:
         """Confirm sleep_fn(...) invoked and handled per documentation."""

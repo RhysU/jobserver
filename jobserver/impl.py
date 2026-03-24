@@ -493,7 +493,10 @@ class Jobserver:
             # Ignore broken pipes which naturally occur when the destination
             # terminates (or otherwise hangs up) before the result is ready
             try:
-                send.send(result)  # On ValueError suspect object too large!
+                # None means a BaseException (not Exception) escaped fn; let
+                # the pipe close so the parent sees EOFError -> SubmissionDied.
+                if result is not None:
+                    send.send(result)  # ValueError => object too large
             except BrokenPipeError:
                 pass
             send.close()
