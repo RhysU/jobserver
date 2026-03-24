@@ -493,7 +493,8 @@ class Jobserver:
             # Ignore broken pipes which naturally occur when the destination
             # terminates (or otherwise hangs up) before the result is ready
             try:
-                send.send(result)  # On ValueError suspect object too large!
+                if result is not None:
+                    send.send(result)  # ValueError => object too large
             except BrokenPipeError:
                 pass
             send.close()

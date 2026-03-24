@@ -532,6 +532,20 @@ class JobserverTest(unittest.TestCase):
                 with self.assertRaises(SubmissionDied):
                     f.result()
 
+    @staticmethod
+    def helper_raise_system_exit() -> typing.NoReturn:
+        """Helper raising SystemExit, a BaseException."""
+        raise SystemExit(1)
+
+    def test_base_exception_surfaces_as_submission_died(self) -> None:
+        """SystemExit in fn must surface as SubmissionDied."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=self.helper_raise_system_exit)
+                with self.assertRaises(SubmissionDied):
+                    f.result(timeout=10)
+
     def test_sleep_fn(self) -> None:
         """Confirm sleep_fn(...) invoked and handled per documentation."""
         for method in get_all_start_methods():
