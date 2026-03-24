@@ -540,7 +540,7 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=method, slots=1)
                 f = js.submit(fn=sys.exit, args=(1,))
                 with self.assertRaises(SubmissionDied):
-                    f.result(timeout=10)
+                    f.result(timeout=5)
 
     def test_sleep_fn(self) -> None:
         """Confirm sleep_fn(...) invoked and handled per documentation."""
