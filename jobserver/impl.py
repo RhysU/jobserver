@@ -110,7 +110,7 @@ class Future(typing.Generic[T]):
     """
 
     __slots__ = (
-        "_lock",
+        "_rlock",
         "_process",
         "_connection",
         "_wrapper",
@@ -121,7 +121,7 @@ class Future(typing.Generic[T]):
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
-        self._lock = threading.RLock()
+        self._rlock = threading.RLock()
 
         assert process is not None  # Becomes None after BaseProcess.join()
         self._process = process  # type: typing.Optional[BaseProcess]
@@ -155,7 +155,7 @@ class Future(typing.Generic[T]):
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
-        with self._lock:
+        with self._rlock:
             self._callbacks.append((__internal, fn, args, kwargs))
             if self._connection is None:
                 self._issue_callbacks()
@@ -173,7 +173,7 @@ class Future(typing.Generic[T]):
 
         # Acquire the lock, respecting the caller's timeout budget
         remaining = max(0, deadline - time.monotonic())
-        if not self._lock.acquire(timeout=remaining):
+        if not self._rlock.acquire(timeout=remaining):
             return False
 
         try:
@@ -206,7 +206,7 @@ class Future(typing.Generic[T]):
             self._issue_callbacks()
             return True
         finally:
-            self._lock.release()
+            self._rlock.release()
 
     def _issue_callbacks(self):
         # Only a non-internal callback may cause CallbackRaised
@@ -270,7 +270,7 @@ class MinimalQueue(typing.Generic[T]):
     Both get(...) and put(...) detect and report when one end hangs up.
     """
 
-    __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
+    __slots__ = ("_reader", "_writer", "_read_rlock", "_write_rlock")
 
     def __init__(
         self, context: typing.Union[None, str, BaseContext] = None
@@ -278,8 +278,8 @@ class MinimalQueue(typing.Generic[T]):
         """Use given context with default of multiprocessing.get_context()."""
         context = resolve_context(context)
         self._reader, self._writer = context.Pipe(duplex=False)
-        self._read_lock = context.Lock()
-        self._write_lock = context.Lock()
+        self._read_rlock = context.Lock()
+        self._write_rlock = context.Lock()
 
     def __copy__(self) -> "MinimalQueue":
         """Shallow copies return the original MinimalQueue unchanged."""
@@ -305,14 +305,14 @@ class MinimalQueue(typing.Generic[T]):
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = absolute_deadline(relative_timeout=timeout)
-        if not self._read_lock.acquire(block=True, timeout=timeout):
+        if not self._read_rlock.acquire(block=True, timeout=timeout):
             raise queue.Empty
         try:
             if not self._reader.poll(deadline - time.monotonic()):
                 raise queue.Empty
             recv = self._reader.recv_bytes()
         finally:
-            self._read_lock.release()
+            self._read_rlock.release()
 
         # Deserialize outside the critical section
         return ForkingPickler.loads(recv)
@@ -326,7 +326,7 @@ class MinimalQueue(typing.Generic[T]):
         if args:
             # Serialize outside the critical section
             send = [ForkingPickler.dumps(arg) for arg in args]
-            with self._write_lock:
+            with self._write_rlock:
                 while send:
                     self._writer.send_bytes(send.pop(0))
 

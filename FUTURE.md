@@ -58,7 +58,7 @@ acquisition, then subtract elapsed time before calling `poll()`:
 ```python
 deadline = absolute_deadline(relative_timeout=timeout)
 remaining = max(0, deadline - time.monotonic())
-if not self._lock.acquire(timeout=remaining):
+if not self._rlock.acquire(timeout=remaining):
     return False
 # ...
 remaining = max(0, deadline - time.monotonic())
@@ -81,7 +81,7 @@ exhausted.
 
 A non-blocking `done(timeout=0)` computes a deadline approximately
 equal to `time.monotonic()`.  If another thread holds the lock, then
-`self._lock.acquire(timeout=remaining)` where `remaining` is zero (or
+`self._rlock.acquire(timeout=remaining)` where `remaining` is zero (or
 near-zero) will fail immediately, causing `done` to return `False`
 even if the `Future` is already done.
 
@@ -107,7 +107,7 @@ The lock must make the append and `_connection is None` check in
 
 ```python
 def when_done(self, fn, *args, __internal=False, **kwargs):
-    with self._lock:
+    with self._rlock:
         self._callbacks.append(...)
         if self._connection is None:
             self._issue_callbacks()
@@ -212,8 +212,8 @@ mutable state in a way that requires locking.  No changes needed.
 ## Summary of changes required
 
 1. Add `import threading` to `impl.py`.
-2. Add `_lock` to `Future.__slots__`.
-3. Initialize `self._lock = threading.RLock()` in `__init__`.
+2. Add `_rlock` to `Future.__slots__`.
+3. Initialize `self._rlock = threading.RLock()` in `__init__`.
 4. In `done()`: compute deadline via `absolute_deadline()` before
    acquiring the lock; acquire with `timeout=max(0, deadline -
    time.monotonic())`; under the lock, check fast-path, poll with

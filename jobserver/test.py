@@ -685,7 +685,7 @@ class JobserverTest(unittest.TestCase):
         release = threading.Event()
 
         def hold_lock() -> None:
-            with f._lock:
+            with f._rlock:
                 acquired.set()
                 release.wait(timeout=10)
 
@@ -833,7 +833,7 @@ class JobserverTest(unittest.TestCase):
         release = threading.Event()
 
         def hold_lock() -> None:
-            with f._lock:
+            with f._rlock:
                 acquired.set()
                 release.wait(timeout=10)
 
