@@ -107,13 +107,6 @@ class JobserverExecutorTest(unittest.TestCase):
             f = exe.submit(len, (1, 2))
             self.assertIsNone(f.exception(timeout=10))
 
-    @staticmethod
-    def _wait_on_event(event_path):
-        """Block until a file appears, to stall a worker."""
-        while not os.path.exists(event_path):
-            time.sleep(0.01)
-        return "released"
-
     def test_future_starts_pending(self) -> None:
         """Futures begin in the PENDING state."""
         js = Jobserver(context=_FAST, slots=1)
