@@ -7,6 +7,7 @@
 import concurrent.futures
 import os
 import signal
+import sys
 import threading
 import time
 import typing
@@ -19,11 +20,13 @@ from draft._request import Submit
 from draft.executor import JobserverExecutor
 from jobserver.impl import Jobserver, MinimalQueue
 
-# Most tests use "fork" only -- it is the fastest start method and the
-# Executor logic is independent of the multiprocessing context.  A single
-# cross-method smoke test (test_all_start_methods) ensures compatibility
-# with every available context.
-_FAST = "fork"
+# Most tests use the fastest start method and the Executor logic is
+# independent of the multiprocessing context.  A single cross-method smoke
+# test (test_all_start_methods) ensures compatibility with every available
+# context.  On Python 3.12+ "fork" is deprecated when the process is
+# multi-threaded (as it is here because JobserverExecutor has a dispatcher
+# thread), so fall back to "forkserver".
+_FAST = "forkserver" if sys.version_info >= (3, 12) else "fork"
 
 
 class JobserverExecutorTest(unittest.TestCase):
@@ -31,7 +34,10 @@ class JobserverExecutorTest(unittest.TestCase):
 
     def test_all_start_methods(self) -> None:
         """Core submit/result/exception path works for every start method."""
-        for method in get_all_start_methods():
+        methods = get_all_start_methods()
+        if sys.version_info >= (3, 12):
+            methods = [m for m in methods if m != "fork"]
+        for method in methods:
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=2)
                 with JobserverExecutor(js) as exe:
