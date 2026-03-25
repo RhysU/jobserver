@@ -624,7 +624,7 @@ class JobserverTest(unittest.TestCase):
         errors = []  # type: typing.List[Exception]
 
         def call_done(future: Future, barrier: threading.Barrier) -> None:
-            """Wait at barrier then race into done()."""
+            """Wait at the barrier then count exceptions from done()."""
             barrier.wait()
             try:
                 future.done(timeout=5)
