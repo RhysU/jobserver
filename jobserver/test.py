@@ -627,7 +627,7 @@ class JobserverTest(unittest.TestCase):
             """Wait at barrier then race into done()."""
             barrier.wait()
             try:
-                future.done(timeout=10)
+                future.done(timeout=5)
             except Exception as e:
                 errors.append(e)
 
@@ -638,7 +638,7 @@ class JobserverTest(unittest.TestCase):
             t = threading.Thread(target=call_done, args=(f, barrier))
             t.start()
             call_done(f, barrier)  # Main thread also races into done()
-            t.join(timeout=10)
+            t.join(timeout=5)
 
         # Drain any remaining futures
         for future in list(js._future_sentinels.keys()):
