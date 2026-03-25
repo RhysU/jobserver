@@ -799,6 +799,9 @@ class JobserverTest(unittest.TestCase):
         A callback that registers another callback via when_done()
         triggers a nested _issue_callbacks() invocation.  All callbacks
         must fire in registration order, exactly once.
+
+        NB: The CPython GIL may prevent this test from failing even if
+        Future had no explicit locking.
         """
         js = Jobserver(slots=1)
         f = js.submit(fn=len, args=((1, 2),), timeout=5)
