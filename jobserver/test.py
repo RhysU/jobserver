@@ -38,7 +38,7 @@ class JobserverTest(unittest.TestCase):
         js = Jobserver()
         f = js(len, (1, 2, 3))
         g = js(str, object=2)
-        h = js(lambda x: len(x), (1, 2, 3, 4))
+        h = js(len, (1, 2, 3, 4))
         self.assertEqual(4, h.result())
         self.assertEqual("2", g.result())
         self.assertEqual(3, f.result())
