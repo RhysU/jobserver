@@ -121,6 +121,7 @@ class Future(typing.Generic[T]):
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
+        # Re-entrant so callbacks can register and issue new callbacks
         self._rlock = threading.RLock()
 
         assert process is not None  # Becomes None after BaseProcess.join()
