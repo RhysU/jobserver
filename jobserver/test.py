@@ -612,11 +612,6 @@ class JobserverTest(unittest.TestCase):
                     msg="Recursion is limited by number of available slots",
                 )
 
-    @staticmethod
-    def helper_sleep_briefly() -> None:
-        """Helper that sleeps briefly to create a window for concurrent done()."""
-        time.sleep(0.05)
-
     def test_concurrent_done_no_crash(self) -> None:
         """Concurrent done() on the same Future must not crash (issue #38).
 
@@ -638,7 +633,7 @@ class JobserverTest(unittest.TestCase):
 
         # Repeat to increase chance of hitting the race window
         for _ in range(20):
-            f = js.submit(fn=self.helper_sleep_briefly, timeout=5)
+            f = js.submit(fn=time.sleep, args=(0.005,), timeout=5)
             barrier = threading.Barrier(2)
             t = threading.Thread(target=call_done, args=(f, barrier))
             t.start()
