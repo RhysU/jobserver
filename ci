@@ -9,8 +9,8 @@ for ex in examples/*.py; do
     PYTHONPATH=. uv run "$ex"
 done
 
-# Unit testing runs the draft executor tests
-uv run -m unittest -v draft.test_executor
+# Unit testing runs the draft hardening tests
+uv run -m unittest -v draft.test_harden
 
 # PEP8 linting
 uvx --from flake8 flake8 jobserver/ draft/ examples/
