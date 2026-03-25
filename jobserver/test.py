@@ -714,6 +714,9 @@ class JobserverTest(unittest.TestCase):
 
         The callback registered by when_done() must fire exactly once,
         regardless of the timing relative to the done() transition.
+
+        NB: The CPython GIL may prevent this test from failing even if
+        Future had no explicit locking.
         """
         js = Jobserver(slots=4)
         fired = []  # type: typing.List[str]
