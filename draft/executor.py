@@ -149,6 +149,7 @@ class JobserverExecutor(concurrent.futures.Executor):
                     future = self._futures.pop(msg.work_id, None)
                 if future is not None:
                     future.cancel()
+                    future.set_running_or_notify_cancel()
 
         # Fail any futures still outstanding (dispatcher crash)
         with self._lock:
