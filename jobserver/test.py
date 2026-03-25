@@ -640,7 +640,7 @@ class JobserverTest(unittest.TestCase):
             call_done(f, barrier)  # Main thread also races into done()
             t.join(timeout=5)
 
-        # Drain any remaining futures
+        # Drain futures left incomplete when the race caused an exception
         for future in list(js._future_sentinels.keys()):
             future.done(timeout=10)
         self.assertEqual(errors, [], f"Concurrent done() crashed: {errors}")
