@@ -164,6 +164,7 @@ class Future(typing.Generic[T]):
         """
         Is result ready?  Never raises Blocked instead returning False.
 
+        Returns whether completion can be confirmed within the timeout.
         Timeout is given in seconds with None meaning to block indefinitely.
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
