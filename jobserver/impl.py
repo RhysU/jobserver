@@ -106,7 +106,7 @@ class Future(typing.Generic[T]):
 
     Futures report if a submission is done(), its result(), and may
     additionally be used to register callbacks issued at completion.
-    Futures can be neither copied nor pickled.
+    Futures are threadsafe.  Futures can be neither copied nor pickled.
     """
 
     __slots__ = (
