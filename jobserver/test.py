@@ -613,7 +613,7 @@ class JobserverTest(unittest.TestCase):
                 )
 
     def test_concurrent_done_no_crash(self) -> None:
-        """Concurrent done() on the same Future must not crash (issue #38).
+        """Concurrent done() on the same Future must not crash.
 
         Two threads calling done() on the same Future concurrently must not
         cause an AttributeError or AssertionError.  This naturally happens
