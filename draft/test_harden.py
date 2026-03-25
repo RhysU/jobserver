@@ -98,8 +98,7 @@ def _sleep_return(secs: float, val: typing.Any) -> typing.Any:
     return val
 
 
-def _identity(x: typing.Any) -> typing.Any:
-    return x
+_identity = _return_value
 
 
 def _add(a: int, b: int) -> int:
@@ -109,10 +108,6 @@ def _add(a: int, b: int) -> int:
 def _round_trip_bytes(n: int) -> bytes:
     """Create and return n bytes."""
     return b"x" * n
-
-
-def _mul(a: int, b: int) -> int:
-    return a * b
 
 
 def _barrier_wait(path: str) -> str:
@@ -1026,11 +1021,6 @@ class TestConcurrencyStress(unittest.TestCase):
 
 class TestResourceLeaks(unittest.TestCase):
     """Section 10: Resource Leak Detection."""
-
-    @staticmethod
-    def _child_process_count() -> int:
-        """Count child processes via /proc."""
-        return len(multiprocessing.active_children())
 
     @staticmethod
     def _fd_count() -> int:
