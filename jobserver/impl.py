@@ -270,7 +270,7 @@ class MinimalQueue(typing.Generic[T]):
     Both get(...) and put(...) detect and report when one end hangs up.
     """
 
-    __slots__ = ("_reader", "_writer", "_read_rlock", "_write_rlock")
+    __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
 
     def __init__(
         self, context: typing.Union[None, str, BaseContext] = None
@@ -278,8 +278,8 @@ class MinimalQueue(typing.Generic[T]):
         """Use given context with default of multiprocessing.get_context()."""
         context = resolve_context(context)
         self._reader, self._writer = context.Pipe(duplex=False)
-        self._read_rlock = context.Lock()
-        self._write_rlock = context.Lock()
+        self._read_lock = context.Lock()
+        self._write_lock = context.Lock()
 
     def __copy__(self) -> "MinimalQueue":
         """Shallow copies return the original MinimalQueue unchanged."""
@@ -305,14 +305,14 @@ class MinimalQueue(typing.Generic[T]):
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = absolute_deadline(relative_timeout=timeout)
-        if not self._read_rlock.acquire(block=True, timeout=timeout):
+        if not self._read_lock.acquire(block=True, timeout=timeout):
             raise queue.Empty
         try:
             if not self._reader.poll(deadline - time.monotonic()):
                 raise queue.Empty
             recv = self._reader.recv_bytes()
         finally:
-            self._read_rlock.release()
+            self._read_lock.release()
 
         # Deserialize outside the critical section
         return ForkingPickler.loads(recv)
@@ -326,7 +326,7 @@ class MinimalQueue(typing.Generic[T]):
         if args:
             # Serialize outside the critical section
             send = [ForkingPickler.dumps(arg) for arg in args]
-            with self._write_rlock:
+            with self._write_lock:
                 while send:
                     self._writer.send_bytes(send.pop(0))
 
