@@ -822,7 +822,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             slow = exe.submit(_sleep, 2.0)
             fast = exe.submit(len, (1,))
-            futures: list[concurrent.futures.Future[typing.Any]] = [
+            futures: typing.List[concurrent.futures.Future[typing.Any]] = [
                 slow,
                 fast,
             ]
