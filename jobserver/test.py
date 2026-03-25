@@ -30,19 +30,6 @@ from .impl import (
 T = typing.TypeVar("T")
 
 
-def _safe_start_methods() -> typing.List[str]:
-    """Return multiprocessing start methods safe for testing.
-
-    On Python 3.12+ the "fork" method emits a DeprecationWarning when the
-    process is already multi-threaded.  Because unittest (and our own
-    concurrent-* tests) may introduce threads, exclude "fork" on 3.12+.
-    """
-    methods = get_all_start_methods()
-    if sys.version_info >= (3, 12):
-        methods = [m for m in methods if m != "fork"]
-    return methods
-
-
 class JobserverTest(unittest.TestCase):
     """Unit tests (doubling as examples) for Jobserver/Future/Wrapper."""
 
@@ -64,7 +51,7 @@ class JobserverTest(unittest.TestCase):
     def test_basic(self) -> None:
         """Basic submission up to slot limit along with callbacks firing?"""
         for method, check_done in itertools.product(
-            _safe_start_methods(), (True, False)
+            get_all_start_methods(), (True, False)
         ):
             with self.subTest(method=method, check_done=check_done):
                 # Prepare how callbacks will be observed
@@ -171,7 +158,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_callback_semantics(self) -> None:
         """Inside a Future's callback the Future reports it is done."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
@@ -181,7 +168,7 @@ class JobserverTest(unittest.TestCase):
     # TODO Can the "method != fork" clause be relaxed?
     def test_duplication_futures(self) -> None:
         """Copying and pickling of Futures is explicitly disallowed."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(fn=len, args=((1, 2, 3),))
@@ -202,7 +189,7 @@ class JobserverTest(unittest.TestCase):
     # No behavioral assertions made around pickling, however.
     def test_duplication_jobserver(self) -> None:
         """Copying of Jobservers is explicitly allowed."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js1 = Jobserver(context=method, slots=3)
                 js2 = copy.copy(js1)
@@ -222,7 +209,7 @@ class JobserverTest(unittest.TestCase):
     # Indeed, disabling pickling MinimalQueues empirically breaks many tests.
     def test_duplication_minimalqueue(self) -> None:
         """Copying of MinimalQueue is explicitly allowed."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 mq1 = MinimalQueue(context=method)  # type: MinimalQueue[int]
                 mq2 = copy.copy(mq1)
@@ -241,7 +228,7 @@ class JobserverTest(unittest.TestCase):
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
         """Confirm increasingly large objects can be processed."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 for size in (1 << i for i in range(22, 28)):  # 2**27 is 128 MB
@@ -267,7 +254,7 @@ class JobserverTest(unittest.TestCase):
     def test_nonblocking(self) -> None:
         """Ensure non-blocking done() and submit() logic honors timeouts."""
         for method, check_done in itertools.product(
-            _safe_start_methods(), (True, False)
+            get_all_start_methods(), (True, False)
         ):
             with self.subTest(method=method, check_done=check_done):
                 context = get_context(method)
@@ -306,7 +293,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_jobserver_as_submit_argument(self) -> None:
         """Ensure instances with in-flight Futures passable as arguments."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Submit work so an in-flight Future is being tracked
                 js = Jobserver(context=method, slots=1)
@@ -336,7 +323,7 @@ class JobserverTest(unittest.TestCase):
         self.assertIsNone(os.environ.get(key, None))
 
         # Test observability of changes to the environment
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 # Notice f sets, g confirms unset, and h re-sets they key.
@@ -384,7 +371,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Prepare workload based on number of available slots
                 context = get_context(method)
@@ -408,7 +395,7 @@ class JobserverTest(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self) -> None:
         """None can be returned from a Future?"""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 f = js.submit(
@@ -424,7 +411,7 @@ class JobserverTest(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
         """An Exception can be returned, not raised, from a Future?"""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
                 e = Exception("Returned by method {}".format(method))
@@ -439,7 +426,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_raises(self) -> None:
         """Future.result() raises Exceptions thrown while processing work?"""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Prepare how callbacks will be observed
                 mutable = [0]
@@ -470,7 +457,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_done_callback_raises(self) -> None:
         """Future.done() raises Exceptions thrown while processing work?"""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
 
@@ -509,7 +496,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_submission_died(self) -> None:
         """Signal receipt by worker can be detected via Future?"""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 # Permit observing callback side-effects
                 mutable = [0, 0, 0, 0, 0]
@@ -549,7 +536,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_base_exception_surfaces_as_submission_died(self) -> None:
         """SystemExit in fn must surface as SubmissionDied."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 f = js.submit(fn=sys.exit, args=(1,))
@@ -558,7 +545,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_sleep_fn(self) -> None:
         """Confirm sleep_fn(...) invoked and handled per documentation."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
 
@@ -600,7 +587,7 @@ class JobserverTest(unittest.TestCase):
 
     def test_submission_nested(self) -> None:
         """Jobserver resource limits honored during nested submissions."""
-        for method in _safe_start_methods():
+        for method in get_all_start_methods():
             with self.subTest(method=method):
                 context = get_context(method)
                 self.assertEqual(
