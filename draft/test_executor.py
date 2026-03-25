@@ -114,7 +114,7 @@ class JobserverExecutorTest(unittest.TestCase):
         exe = JobserverExecutor(js)
         try:
             # Fill the single slot so the next submit stays PENDING
-            exe.submit(time.sleep, 2)
+            exe.submit(time.sleep, 0.5)
             time.sleep(0.1)  # Let the dispatcher dispatch it
             f = exe.submit(len, (1, 2, 3))
             # f should be PENDING because the slot is occupied
@@ -131,7 +131,7 @@ class JobserverExecutorTest(unittest.TestCase):
         exe = JobserverExecutor(js)
         try:
             # Fill the single slot
-            exe.submit(time.sleep, 2)
+            exe.submit(time.sleep, 0.5)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -147,7 +147,7 @@ class JobserverExecutorTest(unittest.TestCase):
         """A RUNNING future cannot be cancelled."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(time.sleep, 2)
+            f = exe.submit(time.sleep, 0.5)
             # Wait for it to become RUNNING
             deadline = time.monotonic() + 5
             while not f.running() and time.monotonic() < deadline:
@@ -189,7 +189,7 @@ class JobserverExecutorTest(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
         # Fill the slot
-        exe.submit(time.sleep, 2)
+        exe.submit(time.sleep, 0.5)
         time.sleep(0.15)
         # These should be pending
         futures = [exe.submit(len, (i,)) for i in range(5)]
@@ -253,7 +253,7 @@ class JobserverExecutorTest(unittest.TestCase):
         """map() raises TimeoutError when results take too long."""
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
-            it = exe.map(time.sleep, [2], timeout=0.1)
+            it = exe.map(time.sleep, [0.5], timeout=0.1)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 next(it)
 

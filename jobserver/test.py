@@ -260,7 +260,7 @@ class JobserverTest(unittest.TestCase):
                 context = get_context(method)
                 mq = MinimalQueue(context=context)  # type: MinimalQueue[str]
                 js = Jobserver(context=context, slots=1)
-                delay = 0.1  # Impacts test runtime on the success path
+                delay = 0.05  # Impacts test runtime on the success path
 
                 # Future f stalls until it receives the handshake below
                 f = js.submit(fn=self.helper_nonblocking, args=(mq,))
@@ -565,7 +565,7 @@ class JobserverTest(unittest.TestCase):
                 # Note fn is never called as sleep_fn vetoes the invocation.
                 hs = iter(itertools.cycle((0.1,)))
                 with self.assertRaises(Blocked):
-                    js.submit(fn=len, sleep_fn=lambda: next(hs), timeout=0.35)
+                    js.submit(fn=len, sleep_fn=lambda: next(hs), timeout=0.2)
 
                 # Confirm as expected.  Importantly, results not previously
                 # retrieved implying above submissions finalized results.
@@ -678,7 +678,7 @@ class JobserverTest(unittest.TestCase):
         approximately T seconds, even if the lock is contested.
         """
         js = Jobserver(slots=1)
-        f = js.submit(fn=time.sleep, args=(5.0,), timeout=5)
+        f = js.submit(fn=time.sleep, args=(1.5,), timeout=5)
 
         # Hold the lock from another thread to force contention
         acquired = threading.Event()
