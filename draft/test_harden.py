@@ -125,9 +125,7 @@ def _barrier_wait(path: str) -> str:
     return "released"
 
 
-def _raising_at_position(
-    i: int, fail_at: int
-) -> int:
+def _raising_at_position(i: int, fail_at: int) -> int:
     if i == fail_at:
         raise ValueError(f"fail at {fail_at}")
     return i
@@ -363,9 +361,7 @@ class TestCancellation(unittest.TestCase):
             self.assertTrue(f.cancel())
             self.assertTrue(f.cancelled())
             self.assertTrue(f.done())
-            with self.assertRaises(
-                concurrent.futures.CancelledError
-            ):
+            with self.assertRaises(concurrent.futures.CancelledError):
                 f.result(timeout=0)
         finally:
             exe.shutdown(wait=False, cancel_futures=True)
@@ -487,9 +483,7 @@ class TestCallbacks(unittest.TestCase):
             f = exe.submit(len, (1, 2))
             f.result(timeout=_TIMEOUT)
             results: typing.List[int] = []
-            f.add_done_callback(
-                lambda fut: results.append(42)
-            )
+            f.add_done_callback(lambda fut: results.append(42))
             self.assertEqual([42], results)
 
     def test_5_5_multiple_callbacks_order(self) -> None:
@@ -526,9 +520,7 @@ class TestCallbacks(unittest.TestCase):
         # concurrent.futures.Future._invoke_callbacks logs
         # raising callbacks via the 'concurrent.futures' logger
         # at ERROR level.  Expect exactly that record here.
-        with self.assertLogs(
-            "concurrent.futures", level="ERROR"
-        ) as cm:
+        with self.assertLogs("concurrent.futures", level="ERROR") as cm:
             with JobserverExecutor(js) as exe:
                 f = exe.submit(len, (1, 2))
 
@@ -555,9 +547,7 @@ class TestCallbacks(unittest.TestCase):
                 event.wait(timeout=_TIMEOUT)
         self.assertIn("first", order)
         self.assertIn("third", order)
-        self.assertTrue(
-            any("bad callback" in m for m in cm.output)
-        )
+        self.assertTrue(any("bad callback" in m for m in cm.output))
 
     def test_5_7_callback_receives_correct_future(self) -> None:
         """5.7 Callback receives the correct future."""
@@ -630,9 +620,7 @@ class TestShutdown(unittest.TestCase):
         cancelled = [f for f in pending if f.cancelled()]
         self.assertGreater(len(cancelled), 0)
         for f in cancelled:
-            with self.assertRaises(
-                concurrent.futures.CancelledError
-            ):
+            with self.assertRaises(concurrent.futures.CancelledError):
                 f.result(timeout=0)
 
     def test_6_4_wait_false_cancel_futures(self) -> None:
@@ -686,9 +674,7 @@ class TestShutdown(unittest.TestCase):
             result_holder: typing.List[
                 typing.Optional[concurrent.futures.Future]
             ] = [None]
-            error_holder: typing.List[
-                typing.Optional[Exception]
-            ] = [None]
+            error_holder: typing.List[typing.Optional[Exception]] = [None]
 
             def submitter() -> None:
                 barrier.wait()
@@ -711,9 +697,7 @@ class TestShutdown(unittest.TestCase):
                 except Exception:
                     pass  # acceptable if shutdown raced
             else:
-                self.assertIsInstance(
-                    error_holder[0], RuntimeError
-                )
+                self.assertIsInstance(error_holder[0], RuntimeError)
 
     def test_6_9_wait_after_cancel_futures(self) -> None:
         """6.9 wait() does not hang after cancel_futures."""
@@ -723,9 +707,7 @@ class TestShutdown(unittest.TestCase):
         time.sleep(0.2)
         futures = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=True, cancel_futures=True)
-        done, not_done = concurrent.futures.wait(
-            futures, timeout=5
-        )
+        done, not_done = concurrent.futures.wait(futures, timeout=5)
         self.assertEqual(0, len(not_done))
 
     def test_6_10_trivial_submit_after_construction(self) -> None:
@@ -750,9 +732,7 @@ class TestMap(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
             result = list(exe.map(str, range(5)))
-        self.assertEqual(
-            ["0", "1", "2", "3", "4"], result
-        )
+        self.assertEqual(["0", "1", "2", "3", "4"], result)
 
     def test_7_2_exception_preserves_position(self) -> None:
         """7.2 Exception propagation preserves position."""
@@ -773,9 +753,7 @@ class TestMap(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
             it = exe.map(time.sleep, [5], timeout=0.1)
-            with self.assertRaises(
-                concurrent.futures.TimeoutError
-            ):
+            with self.assertRaises(concurrent.futures.TimeoutError):
                 next(it)
 
     def test_7_4_empty_iterables(self) -> None:
@@ -788,9 +766,7 @@ class TestMap(unittest.TestCase):
         """7.5 Unequal-length iterables stop at shortest."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            result = list(
-                exe.map(_add, [1, 2, 3], [10, 20])
-            )
+            result = list(exe.map(_add, [1, 2, 3], [10, 20]))
         self.assertEqual([11, 22], result)
 
     def test_7_6_gc_after_yield(self) -> None:
@@ -798,9 +774,7 @@ class TestMap(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
             # Submit several tasks and track via weakrefs
-            futures = [
-                exe.submit(_identity, i) for i in range(5)
-            ]
+            futures = [exe.submit(_identity, i) for i in range(5)]
             refs = [weakref.ref(f) for f in futures]
             # Consume results to let map() release them
             for f in futures:
@@ -826,9 +800,7 @@ class TestMap(unittest.TestCase):
         """7.8 Multiple iterables."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            result = list(
-                exe.map(pow, [2, 3], [10, 10])
-            )
+            result = list(exe.map(pow, [2, 3], [10, 10]))
         self.assertEqual([1024, 59049], result)
 
 
@@ -844,12 +816,8 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """8.1 wait(ALL_COMPLETED) returns all in done."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            futures = [
-                exe.submit(len, "x" * i) for i in range(5)
-            ]
-            done, not_done = concurrent.futures.wait(
-                futures, timeout=_TIMEOUT
-            )
+            futures = [exe.submit(len, "x" * i) for i in range(5)]
+            done, not_done = concurrent.futures.wait(futures, timeout=_TIMEOUT)
         self.assertEqual(5, len(done))
         self.assertEqual(0, len(not_done))
 
@@ -859,8 +827,12 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             slow = exe.submit(_sleep, 2.0)
             fast = exe.submit(len, (1,))
+            futures: list[concurrent.futures.Future[typing.Any]] = [
+                slow,
+                fast,
+            ]
             done, not_done = concurrent.futures.wait(
-                [slow, fast],
+                futures,
                 timeout=_TIMEOUT,
                 return_when=concurrent.futures.FIRST_COMPLETED,
             )
@@ -883,12 +855,8 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """8.4 wait() with timeout returns partial results."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            futures = [
-                exe.submit(_sleep, 5.0) for _ in range(3)
-            ]
-            done, not_done = concurrent.futures.wait(
-                futures, timeout=0.1
-            )
+            futures = [exe.submit(_sleep, 5.0) for _ in range(3)]
+            done, not_done = concurrent.futures.wait(futures, timeout=0.1)
             self.assertGreater(len(not_done), 0)
 
     def test_8_5_as_completed_order(self) -> None:
@@ -909,12 +877,8 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
             f = exe.submit(_sleep, 5.0)
-            with self.assertRaises(
-                concurrent.futures.TimeoutError
-            ):
-                for _ in concurrent.futures.as_completed(
-                    [f], timeout=0.1
-                ):
+            with self.assertRaises(concurrent.futures.TimeoutError):
+                for _ in concurrent.futures.as_completed([f], timeout=0.1):
                     pass
 
     def test_8_7_duplicate_future(self) -> None:
@@ -922,16 +886,12 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2))
-            done, _ = concurrent.futures.wait(
-                [f, f], timeout=_TIMEOUT
-            )
+            done, _ = concurrent.futures.wait([f, f], timeout=_TIMEOUT)
             self.assertEqual(1, len(done))
 
             g = exe.submit(len, (1, 2, 3))
             results = list(
-                concurrent.futures.as_completed(
-                    [g, g], timeout=_TIMEOUT
-                )
+                concurrent.futures.as_completed([g, g], timeout=_TIMEOUT)
             )
             self.assertEqual(1, len(results))
 
@@ -940,10 +900,8 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2))
-            ref = weakref.ref(f)
-            for done in concurrent.futures.as_completed(
-                [f], timeout=_TIMEOUT
-            ):
+            ref = weakref.ref(f)  # noqa: F841
+            for done in concurrent.futures.as_completed([f], timeout=_TIMEOUT):
                 pass
             del f, done
             gc.collect()
@@ -964,12 +922,8 @@ class TestConcurrencyStress(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=2)
         n = 200
         with JobserverExecutor(js) as exe:
-            futures = [
-                exe.submit(len, "x" * i) for i in range(n)
-            ]
-            results = [
-                f.result(timeout=_TIMEOUT) for f in futures
-            ]
+            futures = [exe.submit(len, "x" * i) for i in range(n)]
+            results = [f.result(timeout=_TIMEOUT) for f in futures]
         self.assertEqual(list(range(n)), results)
 
     def test_9_2_mixed_workload(self) -> None:
@@ -998,15 +952,11 @@ class TestConcurrencyStress(unittest.TestCase):
         """9.3 Concurrent submit() from multiple threads."""
         js = Jobserver(context=_FAST, slots=4)
         with JobserverExecutor(js) as exe:
-            results: typing.List[concurrent.futures.Future] = (
-                []
-            )
+            results: typing.List[concurrent.futures.Future] = []
             lock = threading.Lock()
 
             def worker(start: int, count: int) -> None:
-                local: typing.List[
-                    concurrent.futures.Future
-                ] = []
+                local: typing.List[concurrent.futures.Future] = []
                 for i in range(start, start + count):
                     local.append(exe.submit(len, "x" * i))
                 with lock:
@@ -1014,18 +964,14 @@ class TestConcurrencyStress(unittest.TestCase):
 
             threads = []
             for t_idx in range(8):
-                t = threading.Thread(
-                    target=worker, args=(t_idx * 25, 25)
-                )
+                t = threading.Thread(target=worker, args=(t_idx * 25, 25))
                 threads.append(t)
                 t.start()
             for t in threads:
                 t.join(timeout=_TIMEOUT)
 
             self.assertEqual(200, len(results))
-            vals = sorted(
-                f.result(timeout=_TIMEOUT) for f in results
-            )
+            vals = sorted(f.result(timeout=_TIMEOUT) for f in results)
             self.assertEqual(sorted(range(200)), vals)
 
     def test_9_4_setswitchinterval_stress(self) -> None:
@@ -1035,21 +981,13 @@ class TestConcurrencyStress(unittest.TestCase):
             sys.setswitchinterval(1e-6)
             js = Jobserver(context=_FAST, slots=4)
             with JobserverExecutor(js) as exe:
-                results: typing.List[
-                    concurrent.futures.Future
-                ] = []
+                results: typing.List[concurrent.futures.Future] = []
                 lock = threading.Lock()
 
-                def worker(
-                    start: int, count: int
-                ) -> None:
-                    local: typing.List[
-                        concurrent.futures.Future
-                    ] = []
+                def worker(start: int, count: int) -> None:
+                    local: typing.List[concurrent.futures.Future] = []
                     for i in range(start, start + count):
-                        local.append(
-                            exe.submit(len, "x" * i)
-                        )
+                        local.append(exe.submit(len, "x" * i))
                     with lock:
                         results.extend(local)
 
@@ -1065,10 +1003,7 @@ class TestConcurrencyStress(unittest.TestCase):
                     t.join(timeout=_TIMEOUT)
 
                 self.assertEqual(200, len(results))
-                vals = sorted(
-                    f.result(timeout=_TIMEOUT)
-                    for f in results
-                )
+                vals = sorted(f.result(timeout=_TIMEOUT) for f in results)
                 self.assertEqual(sorted(range(200)), vals)
         finally:
             sys.setswitchinterval(old)
@@ -1078,13 +1013,8 @@ class TestConcurrencyStress(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=4)
         n = 2000
         with JobserverExecutor(js) as exe:
-            futures = [
-                exe.submit(len, "x" * (i % 50))
-                for i in range(n)
-            ]
-            results = [
-                f.result(timeout=60) for f in futures
-            ]
+            futures = [exe.submit(len, "x" * (i % 50)) for i in range(n)]
+            results = [f.result(timeout=60) for f in futures]
         expected = [i % 50 for i in range(n)]
         self.assertEqual(expected, results)
 
@@ -1100,22 +1030,7 @@ class TestResourceLeaks(unittest.TestCase):
     @staticmethod
     def _child_process_count() -> int:
         """Count child processes via /proc."""
-        try:
-            pid = os.getpid()
-            children = os.listdir(
-                f"/proc/{pid}/task/{pid}/children"
-                if os.path.exists(
-                    f"/proc/{pid}/task/{pid}/children"
-                )
-                else "/proc/self/fd"
-            )
-            return len(
-                multiprocessing.active_children()
-            )
-        except (FileNotFoundError, PermissionError):
-            return len(
-                multiprocessing.active_children()
-            )
+        return len(multiprocessing.active_children())
 
     @staticmethod
     def _fd_count() -> int:
@@ -1166,9 +1081,7 @@ class TestResourceLeaks(unittest.TestCase):
 
     def test_10_4_repeated_cycles(self) -> None:
         """10.4 Repeated create/shutdown cycles."""
-        baseline_procs = len(
-            multiprocessing.active_children()
-        )
+        baseline_procs = len(multiprocessing.active_children())
         baseline_threads = threading.active_count()
         for _ in range(20):
             js = Jobserver(context=_FAST, slots=2)
@@ -1216,22 +1129,16 @@ class TestStartMethods(unittest.TestCase):
                 with JobserverExecutor(js) as exe:
                     # Success
                     f = exe.submit(len, (1, 2, 3))
-                    self.assertEqual(
-                        3, f.result(timeout=_TIMEOUT)
-                    )
+                    self.assertEqual(3, f.result(timeout=_TIMEOUT))
                     # Exception
-                    g = exe.submit(
-                        _raise, ValueError, "test"
-                    )
+                    g = exe.submit(_raise, ValueError, "test")
                     self.assertIsInstance(
                         g.exception(timeout=_TIMEOUT),
                         ValueError,
                     )
                     # Kwargs
                     h = exe.submit(int, "ff", base=16)
-                    self.assertEqual(
-                        255, h.result(timeout=_TIMEOUT)
-                    )
+                    self.assertEqual(255, h.result(timeout=_TIMEOUT))
 
     def test_11_map_all_methods(self) -> None:
         """map() works with all start methods."""
@@ -1243,9 +1150,7 @@ class TestStartMethods(unittest.TestCase):
                 js = Jobserver(context=method, slots=2)
                 with JobserverExecutor(js) as exe:
                     result = list(exe.map(str, range(3)))
-                    self.assertEqual(
-                        ["0", "1", "2"], result
-                    )
+                    self.assertEqual(["0", "1", "2"], result)
 
     def test_11_shutdown_all_methods(self) -> None:
         """Shutdown works with all start methods."""
@@ -1279,9 +1184,7 @@ class TestEdgeCases(unittest.TestCase):
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.1)
             f.cancel()
-            with self.assertRaises(
-                concurrent.futures.CancelledError
-            ):
+            with self.assertRaises(concurrent.futures.CancelledError):
                 f.result(timeout=_TIMEOUT)
         finally:
             exe.shutdown(wait=False, cancel_futures=True)
@@ -1296,9 +1199,7 @@ class TestEdgeCases(unittest.TestCase):
             # Must not be permanently broken
             for i in range(5):
                 g = exe.submit(len, "x" * i)
-                self.assertEqual(
-                    i, g.result(timeout=_TIMEOUT)
-                )
+                self.assertEqual(i, g.result(timeout=_TIMEOUT))
 
     def test_13_3_executor_in_forked_child(self) -> None:
         """13.3 Executor created inside a forked child."""
@@ -1310,12 +1211,10 @@ class TestEdgeCases(unittest.TestCase):
         # spawn its own children (Pool workers are
         # daemonic and cannot).
         ctx = multiprocessing.get_context(
-            "forkserver"
-            if "forkserver" in methods
-            else "spawn"
+            "forkserver" if "forkserver" in methods else "spawn"
         )
         result_queue: multiprocessing.Queue = ctx.Queue()
-        p = ctx.Process(
+        p = ctx.Process(  # type: ignore[attr-defined]
             target=_executor_in_child_via_queue,
             args=(method, result_queue),
             daemon=False,
@@ -1331,9 +1230,7 @@ class TestEdgeCases(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
             f = exe.submit(_sleep, 5.0)
-            with self.assertRaises(
-                concurrent.futures.TimeoutError
-            ):
+            with self.assertRaises(concurrent.futures.TimeoutError):
                 f.result(timeout=0)
 
     def test_13_5_exception_timeout_zero(self) -> None:
@@ -1341,9 +1238,7 @@ class TestEdgeCases(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
             f = exe.submit(_sleep, 5.0)
-            with self.assertRaises(
-                concurrent.futures.TimeoutError
-            ):
+            with self.assertRaises(concurrent.futures.TimeoutError):
                 f.exception(timeout=0)
 
     def test_13_6_submit_after_wait_false_shutdown(
@@ -1362,9 +1257,7 @@ class TestEdgeCases(unittest.TestCase):
         exe = JobserverExecutor(js)
         exe.submit(_sleep, 0.5)
         time.sleep(0.2)
-        futures = [
-            exe.submit(len, (i,)) for i in range(50)
-        ]
+        futures = [exe.submit(len, (i,)) for i in range(50)]
         for f in futures:
             f.cancel()
         t0 = time.monotonic()
