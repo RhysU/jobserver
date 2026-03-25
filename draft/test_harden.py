@@ -7,8 +7,7 @@
 
 Tests the public API of JobserverExecutor as a concurrent.futures.Executor,
 informed by CPython's own test suite, known bug reports, and common pitfalls.
-No test reaches into private attributes, mocks internal queues, or tests
-the underlying Jobserver in isolation.
+Section 12 additionally verifies internal invariants via mocking.
 """
 import concurrent.futures
 import gc
@@ -20,12 +19,14 @@ import threading
 import time
 import typing
 import unittest
+import unittest.mock
 import weakref
 
 from multiprocessing import get_all_start_methods
 
 from draft.executor import JobserverExecutor
-from jobserver.impl import Jobserver
+from draft._request import Submit
+from jobserver.impl import Jobserver, MinimalQueue
 
 # Most tests use the fastest start method.  On Python 3.12+ "fork" is
 # deprecated when the process is multi-threaded, so fall back to
@@ -1255,6 +1256,77 @@ class TestEdgeCases(unittest.TestCase):
         elapsed = time.monotonic() - t0
         # Should return promptly, not block for ages
         self.assertLess(elapsed, 10)
+
+
+# ================================================================
+# 12. Internal Invariants
+# ================================================================
+
+
+class TestInternalInvariants(unittest.TestCase):
+    """Section 12: Internal invariants verified via mocking."""
+
+    def test_12_1_lock_released_before_put(self) -> None:
+        """12.1 _lock must be free when _request_queue.put() is called.
+
+        Verify the lock is released before each put() by spying on the call.
+
+        MinimalQueue uses __slots__ so instance-level patching is impossible;
+        patch the class method and filter by queue object identity instead.
+        """
+        js = Jobserver(context=_FAST, slots=2)
+        exe = JobserverExecutor(js)
+        lock_held: typing.List[bool] = []
+        original_put = MinimalQueue.put
+
+        def spy_put(self_q: MinimalQueue, *args: typing.Any) -> None:
+            if self_q is exe._request_queue:
+                lock_held.append(exe._lock.locked())
+            return original_put(self_q, *args)
+
+        with unittest.mock.patch.object(MinimalQueue, "put", spy_put):
+            exe.submit(len, (1, 2, 3)).result(timeout=_TIMEOUT)
+            exe.shutdown(wait=True)
+
+        # The first put is the _SUBMIT message from submit(); it must have
+        # been issued with the lock already released.
+        self.assertGreater(len(lock_held), 0)
+        self.assertFalse(lock_held[0])
+
+    def test_12_2_submit_removes_future_on_put_failure(self) -> None:
+        """12.2 A future registered in _futures is removed if put() fails.
+
+        Without rollback the future would sit in _futures forever,
+        preventing clean shutdown and leaking state.
+
+        MinimalQueue uses __slots__ so instance-level patching is impossible;
+        patch the class method and filter by queue object identity instead.
+        """
+        js = Jobserver(context=_FAST, slots=2)
+        exe = JobserverExecutor(js)
+        original_put = MinimalQueue.put
+        fail_once = [True]
+
+        def failing_put(self_q: MinimalQueue, *args: typing.Any) -> None:
+            if (
+                fail_once[0]
+                and self_q is exe._request_queue
+                and args
+                and isinstance(args[0], Submit)
+            ):
+                fail_once[0] = False
+                raise OSError("simulated put failure")
+            return original_put(self_q, *args)
+
+        with unittest.mock.patch.object(MinimalQueue, "put", failing_put):
+            with self.assertRaises(OSError):
+                exe.submit(len, (1,))
+
+        with exe._lock:
+            remaining = len(exe._futures)
+
+        self.assertEqual(0, remaining)
+        exe.shutdown(wait=True)
 
 
 if __name__ == "__main__":
