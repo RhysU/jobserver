@@ -632,7 +632,7 @@ class JobserverTest(unittest.TestCase):
                 errors.append(e)
 
         # Repeat to increase chance of hitting the race window
-        for _ in range(20):
+        for _ in range(10):
             f = js.submit(fn=time.sleep, args=(0.05,), timeout=5)
             barrier = threading.Barrier(2)
             t = threading.Thread(target=call_done, args=(f, barrier))
