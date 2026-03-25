@@ -8,6 +8,7 @@ import abc
 import collections.abc
 import os
 import queue
+import threading
 import time
 import types
 import typing
@@ -105,15 +106,24 @@ class Future(typing.Generic[T]):
 
     Futures report if a submission is done(), its result(), and may
     additionally be used to register callbacks issued at completion.
-    Futures can be neither copied nor pickled.
+    Futures are threadsafe.  Futures can be neither copied nor pickled.
     """
 
-    __slots__ = ("_process", "_connection", "_wrapper", "_callbacks")
+    __slots__ = (
+        "_rlock",
+        "_process",
+        "_connection",
+        "_wrapper",
+        "_callbacks",
+    )
 
     def __init__(self, process: BaseProcess, connection: Connection) -> None:
         """
         An instance expecting a Process to send(...) a result to a Connection.
         """
+        # Re-entrant so callbacks can register and issue new callbacks
+        self._rlock = threading.RLock()
+
         assert process is not None  # Becomes None after BaseProcess.join()
         self._process = process  # type: typing.Optional[BaseProcess]
 
@@ -146,45 +156,59 @@ class Future(typing.Generic[T]):
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
-        self._callbacks.append((__internal, fn, args, kwargs))
-        if self._connection is None:
-            self._issue_callbacks()
+        with self._rlock:
+            self._callbacks.append((__internal, fn, args, kwargs))
+            if self._connection is None:
+                self._issue_callbacks()
 
     def done(self, timeout: typing.Optional[float] = None) -> bool:
         """
         Is result ready?  Never raises Blocked instead returning False.
 
+        Returns whether completion can be confirmed within the timeout.
         Timeout is given in seconds with None meaning to block indefinitely.
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Multiple calls to done() may be required to issue all callbacks
-        if self._connection is None:
-            self._issue_callbacks()
-            return True
+        # Deadline computed before lock so acquisition time is deducted
+        deadline = absolute_deadline(relative_timeout=timeout)
 
-        # Possibly wait until a result is available for reading
-        if not self._connection.poll(timeout):
+        # Acquire the lock, respecting the caller's timeout budget
+        remaining = max(0, deadline - time.monotonic())
+        if not self._rlock.acquire(timeout=remaining):
             return False
 
-        # Attempt to read the result Wrapper from the underlying Connection
-        # Any EOFError is treated as an unexpected hang up from the other end
         try:
-            self._wrapper = self._connection.recv()
-            assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
-        except EOFError:
-            self._wrapper = ExceptionWrapper(SubmissionDied())
+            # Multiple calls may be required to issue all callbacks
+            if self._connection is None:
+                self._issue_callbacks()
+                return True
 
-        # Now join(...) and set to None thus reclaiming OS/Python resources.
-        assert self._process is not None
-        self._process.join()
-        self._process = None
+            # Possibly wait until a result is available for reading
+            remaining = max(0, deadline - time.monotonic())
+            if not self._connection.poll(remaining):
+                return False
 
-        # Should close() throw just below notice it will never be retried
-        connection, self._connection = self._connection, None
-        connection.close()
-        self._issue_callbacks()
-        return True
+            # Attempt to read the result Wrapper from the Connection
+            # EOFError is an unexpected hang up from the other end
+            try:
+                self._wrapper = self._connection.recv()
+                assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
+            except EOFError:
+                self._wrapper = ExceptionWrapper(SubmissionDied())
+
+            # Now join() and set to None reclaiming OS/Python resources
+            assert self._process is not None
+            self._process.join()
+            self._process = None
+
+            # Should close() throw notice it will never be retried
+            connection, self._connection = self._connection, None
+            connection.close()
+            self._issue_callbacks()
+            return True
+        finally:
+            self._rlock.release()
 
     def _issue_callbacks(self):
         # Only a non-internal callback may cause CallbackRaised
