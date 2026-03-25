@@ -116,6 +116,24 @@ def when_done(self, fn, *args, __internal=False, **kwargs):
 Because callbacks re-enter `when_done` (see `helper_check_semantics`),
 this requires `RLock`.
 
+## Subtlety: Re-entrant `when_done` nests `_issue_callbacks`
+
+A callback calling `done()` re-enters and acquires the `RLock`
+recursively -- fine.  But a callback calling `when_done()` is more
+subtle: `when_done` appends a new callback, sees `_connection is
+None`, and calls `_issue_callbacks()` *inside* the outer
+`_issue_callbacks()` loop.  That inner invocation drains callbacks
+(including the just-appended one) before the outer loop gets back to
+checking `while self._callbacks`.  The outer loop then finds the list
+empty sooner than expected and terminates.
+
+This is correct -- every registered callback fires exactly once, in
+registration order -- but it is surprising nested behavior.
+`helper_check_semantics` exercises this exact pattern: inside a
+callback it calls `f.when_done(...)` twice, and both fire immediately
+via the nested `_issue_callbacks` invocation before control returns to
+the outer loop.
+
 ## Subtlety: `_callbacks` list mutation from multiple threads
 
 `when_done` appends to `_callbacks`; `_issue_callbacks` pops from it.
