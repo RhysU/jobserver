@@ -38,7 +38,10 @@ class JobserverTest(unittest.TestCase):
         js = Jobserver()
         f = js(len, (1, 2, 3))
         g = js(str, object=2)
-        h = js(len, (1, 2, 3, 4))
+        # Python 3.14+ defaults to "forkserver", which requires picklable
+        # callables.  Lambdas are only usable with the "fork" start method.
+        fn = len if sys.version_info >= (3, 14) else lambda x: len(x)
+        h = js(fn, (1, 2, 3, 4))
         self.assertEqual(4, h.result())
         self.assertEqual("2", g.result())
         self.assertEqual(3, f.result())
