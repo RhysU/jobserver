@@ -643,5 +643,211 @@ class JobserverTest(unittest.TestCase):
         # Drain futures left incomplete when the race caused an exception
         for future in list(js._future_sentinels.keys()):
             future.done(timeout=10)
-        # FIXME Reproduces Issue #38
-        # self.assertEqual(errors, [], f"Concurrent done() crashed: {errors}")
+        self.assertEqual(errors, [], f"Concurrent done() crashed: {errors}")
+
+    def test_concurrent_done_both_threads_see_true(self) -> None:
+        """Both threads calling done() concurrently must see True.
+
+        The losing thread must take the fast-path (_connection is None)
+        and return True, never silently swallowing the result.
+        """
+        js = Jobserver(slots=4)
+
+        for _ in range(20):
+            f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
+            results = [None, None]  # type: typing.List
+
+            def call_done(idx: int, barrier: threading.Barrier) -> None:
+                barrier.wait()
+                results[idx] = f.done(timeout=5)
+
+            barrier = threading.Barrier(2)
+            t = threading.Thread(target=call_done, args=(1, barrier))
+            t.start()
+            call_done(0, barrier)
+            t.join(timeout=5)
+            self.assertTrue(results[0], "Main thread must see done() == True")
+            self.assertTrue(
+                results[1], "Background thread must see done() == True"
+            )
+
+    def test_concurrent_done_timeout_budget(self) -> None:
+        """Lock acquisition time is deducted from the timeout budget.
+
+        A done(timeout=T) call must not block for longer than
+        approximately T seconds, even if the lock is contested.
+        """
+        js = Jobserver(slots=1)
+        f = js.submit(fn=time.sleep, args=(5.0,), timeout=5)
+
+        # Hold the lock from another thread to force contention
+        acquired = threading.Event()
+        release = threading.Event()
+
+        def hold_lock() -> None:
+            with f._lock:
+                acquired.set()
+                release.wait(timeout=10)
+
+        t = threading.Thread(target=hold_lock)
+        t.start()
+        acquired.wait(timeout=5)
+
+        # done(timeout=0.1) must return within ~0.2s, not hang
+        start = time.monotonic()
+        result = f.done(timeout=0.1)
+        elapsed = time.monotonic() - start
+
+        release.set()
+        t.join(timeout=5)
+
+        self.assertFalse(result, "Should return False when lock held")
+        self.assertLess(
+            elapsed, 1.0, "Must respect timeout despite lock contention"
+        )
+
+        # Clean up: let the future actually complete
+        f.done(timeout=10)
+
+    def test_concurrent_when_done_with_done(self) -> None:
+        """when_done() from one thread while done() transitions in another.
+
+        The callback registered by when_done() must fire exactly once,
+        regardless of the timing relative to the done() transition.
+        """
+        js = Jobserver(slots=4)
+        fired = []  # type: typing.List[str]
+
+        for trial in range(20):
+            fired.clear()
+            f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
+            barrier = threading.Barrier(2)
+
+            def register_callback(
+                barrier: threading.Barrier,
+            ) -> None:
+                barrier.wait()
+                try:
+                    f.when_done(lambda: fired.append("cb"))
+                except CallbackRaised:
+                    pass  # Callback fired and raised; still counts
+
+            t = threading.Thread(target=register_callback, args=(barrier,))
+            t.start()
+
+            # Main thread races done() against when_done()
+            barrier.wait()
+            f.done(timeout=5)
+            t.join(timeout=5)
+
+            # Drain any remaining callbacks
+            while True:
+                try:
+                    f.done(timeout=0)
+                    break
+                except CallbackRaised:
+                    pass
+
+            self.assertEqual(
+                fired.count("cb"),
+                1,
+                f"Trial {trial}: callback must fire exactly once,"
+                f" got {fired.count('cb')}",
+            )
+
+    def test_concurrent_callback_raised_delivery(self) -> None:
+        """CallbackRaised is delivered to exactly one thread.
+
+        When two threads race into done(), only the winner executes
+        callbacks.  The loser sees an already-done Future with no
+        pending callbacks and does not raise CallbackRaised.
+        """
+        js = Jobserver(slots=4)
+
+        for _ in range(20):
+            f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
+            f.when_done(self.helper_raise, ValueError, "boom")
+
+            raised_in = []  # type: typing.List[str]
+
+            def call_done(name: str, barrier: threading.Barrier) -> None:
+                barrier.wait()
+                try:
+                    f.done(timeout=5)
+                except CallbackRaised:
+                    raised_in.append(name)
+
+            barrier = threading.Barrier(2)
+            t = threading.Thread(target=call_done, args=("bg", barrier))
+            t.start()
+            call_done("main", barrier)
+            t.join(timeout=5)
+
+            self.assertEqual(
+                len(raised_in),
+                1,
+                f"CallbackRaised must be delivered to exactly"
+                f" one thread, got: {raised_in}",
+            )
+
+    def test_reentrant_when_done_nests_issue_callbacks(self) -> None:
+        """Callbacks calling when_done() nest _issue_callbacks correctly.
+
+        A callback that registers another callback via when_done()
+        triggers a nested _issue_callbacks() invocation.  All callbacks
+        must fire in registration order, exactly once.
+        """
+        js = Jobserver(slots=1)
+        f = js.submit(fn=len, args=((1, 2),), timeout=5)
+        order = []  # type: typing.List[str]
+
+        def first_cb() -> None:
+            order.append("first")
+            # Register two more callbacks from inside a callback
+            f.when_done(lambda: order.append("second"))
+            f.when_done(lambda: order.append("third"))
+
+        f.when_done(first_cb)
+        f.done(timeout=5)
+        self.assertEqual(
+            order,
+            ["first", "second", "third"],
+            "Nested when_done() must fire in order via nested"
+            " _issue_callbacks()",
+        )
+        self.assertEqual(f.result(), 2)
+
+    def test_reclaim_resources_with_contested_lock(self) -> None:
+        """reclaim_resources() tolerates a contested Future lock.
+
+        When one thread holds a Future's lock (inside done()), another
+        thread calling reclaim_resources() must not crash.  The
+        done(timeout=0) inside reclaim_resources returns False for the
+        contested Future and moves on.
+        """
+        js = Jobserver(slots=2)
+        f = js.submit(fn=time.sleep, args=(0.05,), timeout=5)
+
+        # Hold the Future's lock from a background thread
+        acquired = threading.Event()
+        release = threading.Event()
+
+        def hold_lock() -> None:
+            with f._lock:
+                acquired.set()
+                release.wait(timeout=10)
+
+        t = threading.Thread(target=hold_lock)
+        t.start()
+        acquired.wait(timeout=5)
+
+        # reclaim_resources uses done(timeout=0) which should fail
+        # gracefully when the lock is contested
+        js.reclaim_resources()  # Must not crash
+
+        release.set()
+        t.join(timeout=5)
+
+        # Now the future can complete normally
+        f.done(timeout=10)
+        self.assertIsNone(f.result())
