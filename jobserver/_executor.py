@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
+
 import concurrent.futures
 import itertools
 import logging
@@ -177,6 +178,8 @@ class JobserverExecutor(concurrent.futures.Executor):
                 if future is not None:
                     future.cancel()
                     future.set_running_or_notify_cancel()
+            else:
+                raise RuntimeError(f"Unexpected response type: {type(msg)!r}")
 
         # Fail any futures still outstanding because the dispatcher
         # exited without sending results for them (crash or unexpected exit).
@@ -185,7 +188,8 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._futures.clear()
         if remaining:
             _LOG.debug(
-                "Dispatcher exited with %d outstanding futures", len(remaining)
+                "Dispatcher exited with %d outstanding futures",
+                len(remaining),
             )
         for future in remaining:
             if future.done():
@@ -265,6 +269,8 @@ def _drain_requests(
             continue
         if isinstance(msg, _request.Submit):
             pending.append(msg)
+            continue
+        raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
 
 
 def _dispatch_pending(
@@ -385,4 +391,6 @@ def _poll_requests_briefly(
         pending.clear()
     elif isinstance(msg, _request.Submit):
         pending.append(msg)
+    else:
+        raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
     return False
