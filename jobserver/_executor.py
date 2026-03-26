@@ -19,8 +19,8 @@ from ._jobserver import (
     CallbackRaised,
     Future,
     Jobserver,
-    MinimalQueue,
 )
+from ._queue import MinimalQueue
 
 from . import _request
 from . import _response
