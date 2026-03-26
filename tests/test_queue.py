@@ -15,7 +15,7 @@ import unittest
 from multiprocessing import get_all_start_methods, get_context
 from multiprocessing.context import BaseContext
 
-from ._queue import MinimalQueue, absolute_deadline, resolve_context
+from jobserver._queue import MinimalQueue, absolute_deadline, resolve_context
 
 
 class MinimalQueueTest(unittest.TestCase):
