@@ -54,21 +54,21 @@ class JobserverExecutor(concurrent.futures.Executor):
         self._futures: Dict[int, concurrent.futures.Future] = {}
 
         context = jobserver._context
-        self._request_queue: MinimalQueue = MinimalQueue(context)
-        self._response_queue: MinimalQueue = MinimalQueue(context)
+        self._requests: MinimalQueue = MinimalQueue(context)
+        self._responses: MinimalQueue = MinimalQueue(context)
 
         self._dispatcher = context.Process(  # type: ignore
             target=_dispatch_loop,
-            args=(jobserver, self._request_queue, self._response_queue),
+            args=(jobserver, self._requests, self._responses),
             daemon=False,
             name="JobserverExecutor-dispatcher",
         )
         self._dispatcher.start()
 
         # Close unused pipe ends so EOF propagates on crash.
-        # Parent only writes to request_queue and reads response_queue.
-        self._request_queue._reader.close()
-        self._response_queue._writer.close()
+        # Parent only writes to requests and reads responses.
+        self._requests._reader.close()
+        self._responses._writer.close()
 
         self._receiver = threading.Thread(
             target=self._receive_loop,
@@ -98,7 +98,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         # Lock is released before put() to avoid holding it across
         # potentially-slow pickling and IPC.
         try:
-            self._request_queue.put(
+            self._requests.put(
                 _request.Submit(
                     work_id=work_id, fn=fn, args=args, kwargs=kwargs
                 )
@@ -131,8 +131,8 @@ class JobserverExecutor(concurrent.futures.Executor):
             )
             try:
                 if cancel_futures:
-                    self._request_queue.put(_request.Cancel())
-                self._request_queue.put(_request.Shutdown())
+                    self._requests.put(_request.Cancel())
+                self._requests.put(_request.Shutdown())
             except BrokenPipeError:
                 _LOG.debug("Dispatcher already exited before shutdown message")
 
@@ -146,7 +146,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         """Drain response queue, completing c.f.Futures as results arrive."""
         while True:
             try:
-                msg = self._response_queue.get(timeout=None)
+                msg = self._responses.get(timeout=None)
             except EOFError:
                 break
 
@@ -214,48 +214,44 @@ class JobserverExecutor(concurrent.futures.Executor):
 
 def _dispatch_loop(
     jobserver: Jobserver,
-    request_queue: MinimalQueue,
-    response_queue: MinimalQueue,
+    requests: MinimalQueue,
+    responses: MinimalQueue,
 ) -> None:
     """Main loop for the dispatcher process."""
     _LOG.debug("Dispatcher process started")
     # Close unused pipe ends so EOF propagates on crash.
-    # Child only reads from request_queue and writes response_queue.
-    request_queue._writer.close()
-    response_queue._reader.close()
+    # Child only reads from requests and writes responses.
+    requests._writer.close()
+    responses._reader.close()
 
     pending: List[_request.Submit] = []
     running: Dict[Future, int] = {}
 
     shutdown = False
     while not shutdown:
-        shutdown = _drain_requests(
-            request_queue, pending, running, response_queue
-        )
-        pending = _dispatch_pending(
-            jobserver, pending, running, response_queue
-        )
-        _poll_running(running, response_queue)
+        shutdown = _drain_requests(requests, pending, running, responses)
+        pending = _dispatch_pending(jobserver, pending, running, responses)
+        _poll_running(running, responses)
         if not shutdown:
             shutdown = _poll_requests_briefly(
-                request_queue, pending, running, response_queue
+                requests, pending, running, responses
             )
 
-    _handle_shutdown(pending, running, response_queue)
+    _handle_shutdown(pending, running, responses)
     _LOG.debug("Dispatcher process exiting")
 
 
 def _handle_request(
     msg: object,
     pending: List[_request.Submit],
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> bool:
     """Handle a single request message.  Return True on Shutdown."""
     if isinstance(msg, _request.Shutdown):
         return True
     if isinstance(msg, _request.Cancel):
         for item in pending:
-            response_queue.put(_response.Cancelled(work_id=item.work_id))
+            responses.put(_response.Cancelled(work_id=item.work_id))
         pending.clear()
     elif isinstance(msg, _request.Submit):
         pending.append(msg)
@@ -265,22 +261,22 @@ def _handle_request(
 
 
 def _drain_requests(
-    request_queue: MinimalQueue,
+    requests: MinimalQueue,
     pending: List[_request.Submit],
     running: Dict[Future, int],
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> bool:
     """Drain the request queue.  Return True when shutdown requested."""
     while True:
         # Block only when there is nothing else to do
         block = (not pending) and (not running)
         try:
-            msg = request_queue.get(timeout=None if block else 0)
+            msg = requests.get(timeout=None if block else 0)
         except queue.Empty:
             return False
         except EOFError:
             return True  # Parent died, treat as shutdown
-        if _handle_request(msg, pending, response_queue):
+        if _handle_request(msg, pending, responses):
             return True
 
 
@@ -288,7 +284,7 @@ def _dispatch_pending(
     jobserver: Jobserver,
     pending: List[_request.Submit],
     running: Dict[Future, int],
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> List[_request.Submit]:
     """Try to dispatch pending work; return items still pending.
 
@@ -316,19 +312,19 @@ def _dispatch_pending(
         except Exception as exc:
             # Dispatch itself failed (e.g. pickling error).
             # Transition PENDING -> RUNNING -> FINISHED(exc).
-            response_queue.put(_response.Started(work_id=item.work_id))
-            response_queue.put(_response.Failed(work_id=item.work_id, exc=exc))
+            responses.put(_response.Started(work_id=item.work_id))
+            responses.put(_response.Failed(work_id=item.work_id, exc=exc))
             continue
 
         # Dispatch succeeded -- inform receiver and track
-        response_queue.put(_response.Started(work_id=item.work_id))
+        responses.put(_response.Started(work_id=item.work_id))
         running[f] = item.work_id
     return still_pending
 
 
 def _poll_running(
     running: Dict[Future, int],
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> None:
     """Poll running Futures and bridge completed results."""
     completed: List[Future] = []
@@ -342,30 +338,30 @@ def _poll_running(
 
     for f in completed:
         work_id = running.pop(f)
-        _bridge_result(f, work_id, response_queue)
+        _bridge_result(f, work_id, responses)
 
 
 def _bridge_result(
     f: Future,
     work_id: int,
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> None:
     """Transfer a completed jobserver Future's outcome to response queue."""
     try:
         value = f.result(timeout=0)
-        response_queue.put(_response.Completed(work_id=work_id, value=value))
+        responses.put(_response.Completed(work_id=work_id, value=value))
     except Exception as exc:
-        response_queue.put(_response.Failed(work_id=work_id, exc=exc))
+        responses.put(_response.Failed(work_id=work_id, exc=exc))
 
 
 def _handle_shutdown(
     pending: List[_request.Submit],
     running: Dict[Future, int],
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain running futures, signal completion."""
     for item in pending:
-        response_queue.put(_response.Cancelled(work_id=item.work_id))
+        responses.put(_response.Cancelled(work_id=item.work_id))
     for f, work_id in running.items():
         while True:
             try:
@@ -373,15 +369,15 @@ def _handle_shutdown(
                 break
             except CallbackRaised:
                 continue
-        _bridge_result(f, work_id, response_queue)
-    response_queue.put(_response.Shutdown())
+        _bridge_result(f, work_id, responses)
+    responses.put(_response.Shutdown())
 
 
 def _poll_requests_briefly(
-    request_queue: MinimalQueue,
+    requests: MinimalQueue,
     pending: List[_request.Submit],
     running: Dict[Future, int],
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> bool:
     """Brief blocking poll to pick up new work without busy-spinning.
 
@@ -390,7 +386,7 @@ def _poll_requests_briefly(
     if not (running or pending):
         return False
     try:
-        msg = request_queue.get(timeout=0.005)
+        msg = requests.get(timeout=0.005)
     except (queue.Empty, EOFError):
         return False
-    return _handle_request(msg, pending, response_queue)
+    return _handle_request(msg, pending, responses)
