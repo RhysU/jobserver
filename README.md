@@ -7,7 +7,7 @@ type-hinting
 Purpose
 -------
 
-This Jobserver is similar in spirit to multiprocessing.Pool or
+A Jobserver is similar in spirit to multiprocessing.Pool or
 concurrent.futures.Executor with a few differences:
 
  * First, the [implementation](jobserver/_jobserver.py) choices are based upon the [GNU Make
@@ -22,6 +22,17 @@ concurrent.futures.Executor with a few differences:
  * Sixth, the user can specify additional work acceptance criteria.
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
+
+The Jobserver does not inherit from concurrent.futures.Executor because that
+Executor API fundamentally requires a background thread for asynchronously
+issuing concurrent.futures.Future callbacks.  Jobserver, eschewing threads,
+consequently is both somehow less-than and more-than a standard Executor.
+
+In contrast, [JobserverExecutor](jobserver/_executor.py) combines a Jobserver
+with a background thread to provide full concurrent.futures.Executor
+compatibility.  JobserverExecutor is a drop-in replacement for
+concurrent.futures.ProcessPoolExecutor that aims to provide more robustness
+at the expense of slower process launching.
 
 Examples
 --------
@@ -38,6 +49,6 @@ Examples
 Testing
 -------
 
-Tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.<br>
+All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.<br>
 Implementation passes both PEP 8 (per flake8) and type-hinting (per mypy).<br>
 [![Build Status](https://circleci.com/gh/RhysU/jobserver.svg?style=shield)](https://app.circleci.com/pipelines/github/RhysU/jobserver)

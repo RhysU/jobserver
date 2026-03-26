@@ -6,7 +6,7 @@
 """
 A nestable Jobserver with futures, callbacks, and complete type-hinting
 
-This Jobserver is similar in spirit to multiprocessing.Pool or
+A Jobserver is similar in spirit to multiprocessing.Pool or
 concurrent.futures.Executor with a few differences:
 
  * First, the implementation choices are based upon
@@ -22,7 +22,17 @@ concurrent.futures.Executor with a few differences:
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
 
-Tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.
+The Jobserver does not inherit from concurrent.futures.Executor because that
+Executor API fundamentally requires a background thread for asynchronously
+issuing concurrent.futures.Future callbacks.  Jobserver, eschewing threads,
+consequently is both somehow less-than and more-than a standard Executor.
+
+In contrast, JobserverExecutor combines a Jobserver with a background thread
+to provide full concurrent.futures.Executor compatibility.  JobserverExecutor
+is a drop-in replacement for concurrent.futures.ProcessPoolExecutor that aims
+to provide more robustness at the expense of slower process launching.
+
+All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.
 Implementation passes both PEP 8 (per flake8) and type-hinting (per mypy).
 Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
