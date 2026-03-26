@@ -16,15 +16,15 @@ def main() -> None:
 
     with JobserverExecutor(jobserver) as executor:
         # map() applies a function to every item and yields results in order
-        squares = list(executor.map(task_square, [1, 2, 3, 4, 5]))
-        info("squares via map: %s", squares)
+        lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
+        info("lengths via map: %s", lengths)
 
         # Submit a slow task that holds the only available slot
-        future_slow = executor.submit(task_slow, 0.5)
+        future_slow = executor.submit(time.sleep, 0.5)
         time.sleep(0.2)  # let the slow task start and claim the slot
 
         # With no slot free, this future queues as PENDING and is cancellable
-        future_pending = executor.submit(task_square, 99)
+        future_pending = executor.submit(len, "pending")
         time.sleep(0.1)  # let the request reach the dispatcher
 
         # Cancel the PENDING future before it is dispatched to a worker
@@ -33,17 +33,6 @@ def main() -> None:
 
         # Collect the slow task's result; executor shuts down cleanly on exit
         info("slow task: %s", future_slow.result())
-
-
-def task_square(n: int) -> int:
-    """Return n squared."""
-    return n * n
-
-
-def task_slow(seconds: float) -> str:
-    """Sleep then return a confirmation."""
-    time.sleep(seconds)
-    return "done after %.2fs" % seconds
 
 
 if __name__ == "__main__":
