@@ -13,10 +13,10 @@ import typing
 from ._jobserver import (
     Blocked,
     CallbackRaised,
+    Future,
     Jobserver,
     MinimalQueue,
 )
-from ._jobserver import Future as JobserverFuture
 
 from . import _request
 from . import _response
@@ -192,7 +192,7 @@ def _dispatch_loop(
     response_queue._reader.close()
 
     pending: typing.List[_request.Submit] = []
-    in_flight: typing.Dict[JobserverFuture, int] = {}
+    in_flight: typing.Dict[Future, int] = {}
 
     while True:
         shutdown = _drain_requests(
@@ -215,7 +215,7 @@ def _dispatch_loop(
 def _drain_requests(
     request_queue: MinimalQueue,
     pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
+    in_flight: typing.Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> bool:
     """Drain the request queue.  Return True when shutdown requested."""
@@ -243,7 +243,7 @@ def _drain_requests(
 def _dispatch_pending(
     jobserver: Jobserver,
     pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
+    in_flight: typing.Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> typing.List[_request.Submit]:
     """Try to dispatch pending work; return items still pending.
@@ -283,11 +283,11 @@ def _dispatch_pending(
 
 
 def _poll_in_flight(
-    in_flight: typing.Dict[JobserverFuture, int],
+    in_flight: typing.Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> None:
     """Poll in-flight Futures and bridge completed results."""
-    completed: typing.List[JobserverFuture] = []
+    completed: typing.List[Future] = []
     for js_future in in_flight:
         try:
             if js_future.done(timeout=0):
@@ -302,7 +302,7 @@ def _poll_in_flight(
 
 
 def _bridge_result(
-    js_future: JobserverFuture,
+    js_future: Future,
     work_id: int,
     response_queue: MinimalQueue,
 ) -> None:
@@ -316,7 +316,7 @@ def _bridge_result(
 
 def _handle_shutdown(
     pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
+    in_flight: typing.Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain in-flight futures, signal completion."""
@@ -336,7 +336,7 @@ def _handle_shutdown(
 def _poll_requests_briefly(
     request_queue: MinimalQueue,
     pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
+    in_flight: typing.Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> bool:
     """Brief blocking poll to pick up new work without busy-spinning.
