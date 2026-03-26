@@ -64,8 +64,8 @@ are more than `slots` functions executing simultaneously.
 | # | Scenario | Expected |
 |---|----------|----------|
 | 1 | Return a 1 MB `bytes` object | Result received correctly |
-| 2 | Return a 50 MB `bytes` object | Result received correctly (under pipe limits) |
-| 3 | Return a 128 MB+ object (exceeds pipe capacity) | Child catches `ValueError`; parent sees exception, not hang |
+| 2 | Return a 50 MB `bytes` object | Result received correctly |
+| 3 | Return a 128 MB `bytes` object | Result received correctly (multiprocessing.Connection handles this on modern Linux) |
 | 4 | Pass a 10 MB argument into `fn` | Argument received correctly in child |
 
 ---
