@@ -23,10 +23,8 @@ import weakref
 
 from multiprocessing import get_all_start_methods
 
-from ._executor import JobserverExecutor
-from ._request import Submit
-from ._jobserver import Jobserver
-from ._queue import MinimalQueue
+from jobserver import JobserverExecutor, Jobserver, MinimalQueue
+from jobserver._request import Submit
 
 # Most tests use the fastest start method.  On Python 3.12+ "fork" is
 # deprecated when the process is multi-threaded, so fall back to

@@ -331,7 +331,7 @@ class Jobserver:
         env: Iterable = (),  # Iterable[Tuple[str,str]] breaks!
         preexec_fn: Callable[[], None] = noop,
         sleep_fn: Callable[[], Optional[float]] = noop,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -454,7 +454,7 @@ class Jobserver:
         sleep_fn: Callable[[], Optional[float]],
         slots: MinimalQueue[int],
         *,
-        resolution: float = 1.0e-2
+        resolution: float = 1.0e-2,
     ) -> list[int]:
         """Either retrieve requested tokens or raise Blocked while trying."""
         # Defensively check arguments

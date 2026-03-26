@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobserver"
+dynamic = ["version"]
+authors = [
+    {name = "Rhys Ulerich", email = "rhys.ulerich@gmail.com"},
+]
+description = "A nestable Jobserver with thread-safe futures, callbacks, and complete type-hinting"
+readme = "README.md"
+license = "MPL-2.0"
+requires-python = ">=3.9"
+keywords = [
+    "concurrency",
+    "futures",
+    "jobserver",
+    "multiprocessing",
+    "parallel",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/RhysU/jobserver"
+Repository = "https://github.com/RhysU/jobserver"
+Issues = "https://github.com/RhysU/jobserver/issues"
+
+[tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jobserver*"]
