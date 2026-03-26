@@ -38,6 +38,11 @@ class JobserverExecutor(concurrent.futures.Executor):
     """
 
     def __init__(self, jobserver: Jobserver) -> None:
+        """Initialize the executor with a configured Jobserver.
+
+        Slot count, start method, and other execution parameters are
+        controlled by the Jobserver instance passed here.
+        """
         # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
         self._shutdown = False
@@ -75,6 +80,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         *args: typing.Any,
         **kwargs: typing.Any,
     ) -> concurrent.futures.Future[T]:
+        """Submit a callable for execution and return a Future."""
         with self._lock:
             if self._shutdown:
                 raise RuntimeError("cannot submit after shutdown")
@@ -105,6 +111,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
+        """Shut down the executor, optionally cancelling pending futures."""
         with self._lock:
             already = self._shutdown
             self._shutdown = True
