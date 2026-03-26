@@ -20,6 +20,15 @@ from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from multiprocessing.reduction import ForkingPickler  # type: ignore
 
+__all__ = (
+    "Blocked",
+    "CallbackRaised",
+    "Future",
+    "Jobserver",
+    "MinimalQueue",
+    "SubmissionDied",
+)
+
 T = typing.TypeVar("T")
 
 
