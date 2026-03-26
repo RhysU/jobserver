@@ -232,6 +232,12 @@ class Future(Generic[T]):
                 try:
                     fn(*args, **kwargs)
                 except Exception as e:
+                    # A re-entrant when_done() on an already-done future
+                    # triggers a nested _issue_callbacks(); without this
+                    # guard the caller sees CallbackRaised wrapping another
+                    # CallbackRaised instead of one layer around the cause.
+                    if isinstance(e, CallbackRaised):
+                        raise
                     raise CallbackRaised() from e
 
     def result(self, timeout: Optional[float] = None) -> T:
