@@ -6,8 +6,9 @@
 """JobserverExecutor request messages (main process -> dispatcher process).
 
 Imperative verbs: commands sent to the dispatcher.
-Using NamedTuple for pre-3.10 compatibility (dataclass slots require 3.10+).
+Using NamedTuple (dataclass slots require 3.10+).
 """
+from collections.abc import Callable
 import typing
 
 __all__ = ["Submit", "Cancel", "Shutdown"]
@@ -17,7 +18,7 @@ class Submit(typing.NamedTuple):
     """Submit work for execution."""
 
     work_id: int
-    fn: typing.Callable
+    fn: Callable
     args: tuple
     kwargs: dict
 

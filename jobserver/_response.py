@@ -6,9 +6,10 @@
 """JobserverExecutor response messages (dispatcher process -> main process).
 
 Past participles: events reporting what happened.
-Using NamedTuple for pre-3.10 compatibility (dataclass slots require 3.10+).
+Using NamedTuple (dataclass slots require 3.10+).
 """
 import typing
+from typing import Any
 
 __all__ = ["Started", "Completed", "Failed", "Cancelled", "Shutdown"]
 
@@ -23,7 +24,7 @@ class Completed(typing.NamedTuple):
     """Work finished successfully with a value."""
 
     work_id: int
-    value: typing.Any
+    value: Any
 
 
 class Failed(typing.NamedTuple):

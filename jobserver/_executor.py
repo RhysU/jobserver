@@ -5,13 +5,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 
-import collections
+from collections import deque
+from collections.abc import Callable, Iterator
 import concurrent.futures
 import itertools
 import logging
 import queue
 import threading
-from typing import Any, Callable, Deque, Dict, Iterator, List, TypeVar
+from typing import Any, TypeVar
 
 from ._jobserver import (
     Blocked,
@@ -52,7 +53,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         self._lock = threading.Lock()
         self._shutdown = False
         self._work_ids: Iterator[int] = itertools.count()
-        self._futures: Dict[int, concurrent.futures.Future] = {}
+        self._futures: dict[int, concurrent.futures.Future] = {}
 
         context = jobserver._context
         self._requests: MinimalQueue = MinimalQueue(context)
@@ -224,8 +225,8 @@ def _dispatch_loop(
     requests._writer.close()
     responses._reader.close()
 
-    pending: Deque[_request.Submit] = collections.deque()
-    running: Dict[Future, int] = {}
+    pending: deque[_request.Submit] = deque()
+    running: dict[Future, int] = {}
 
     shutdown = False
     while not shutdown:
@@ -243,7 +244,7 @@ def _dispatch_loop(
 
 def _handle_request(
     msg: object,
-    pending: Deque[_request.Submit],
+    pending: deque[_request.Submit],
     responses: MinimalQueue,
 ) -> bool:
     """Handle a single request message.  Return True on Shutdown."""
@@ -262,8 +263,8 @@ def _handle_request(
 
 def _drain_requests(
     requests: MinimalQueue,
-    pending: Deque[_request.Submit],
-    running: Dict[Future, int],
+    pending: deque[_request.Submit],
+    running: dict[Future, int],
     responses: MinimalQueue,
 ) -> bool:
     """Drain the request queue.  Return True when shutdown requested."""
@@ -282,8 +283,8 @@ def _drain_requests(
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: Deque[_request.Submit],
-    running: Dict[Future, int],
+    pending: deque[_request.Submit],
+    running: dict[Future, int],
     responses: MinimalQueue,
 ) -> None:
     """Dispatch pending work in place via popleft().
@@ -318,11 +319,11 @@ def _dispatch_pending(
 
 
 def _poll_running(
-    running: Dict[Future, int],
+    running: dict[Future, int],
     responses: MinimalQueue,
 ) -> None:
     """Poll running Futures and bridge completed results."""
-    completed: List[Future] = []
+    completed: list[Future] = []
     for f in running:
         try:
             if f.done(timeout=0):
@@ -350,8 +351,8 @@ def _bridge_result(
 
 
 def _handle_shutdown(
-    pending: Deque[_request.Submit],
-    running: Dict[Future, int],
+    pending: deque[_request.Submit],
+    running: dict[Future, int],
     responses: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain running futures, signal completion."""
@@ -370,8 +371,8 @@ def _handle_shutdown(
 
 def _poll_requests_briefly(
     requests: MinimalQueue,
-    pending: Deque[_request.Submit],
-    running: Dict[Future, int],
+    pending: deque[_request.Submit],
+    running: dict[Future, int],
     responses: MinimalQueue,
 ) -> bool:
     """Brief blocking poll to pick up new work without busy-spinning.
