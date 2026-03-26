@@ -48,8 +48,9 @@ def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
 
 class MinimalQueue(Generic[T]):
     """
-    An unbounded SimpleQueue-variant with minimal function needed by Jobserver.
+    An unbounded SimpleQueue-variant with minimal functionality.
 
+    Specifically, only functionality needed by Jobserver and JobserverExecutor.
     Vanilla multiprocessing.SimpleQueue lacks timeout on get(...).
     Vanilla multiprocessing.Queue has wildly undesired threading machinery.
     Both get(...) and put(...) detect and report when one end hangs up.
