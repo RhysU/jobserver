@@ -840,3 +840,22 @@ class JobserverTest(unittest.TestCase):
         # Now the future can complete normally
         f.done(timeout=10)
         self.assertIsNone(f.result())
+
+    def test_reentrant_callback_raised_no_double_wrap(self) -> None:
+        """Re-entrant when_done() with a raising inner callback must not double-wrap.
+
+        If a callback calls when_done() on an already-done future and that inner
+        callback raises, the caller must see CallbackRaised(cause=<original>),
+        not CallbackRaised(cause=CallbackRaised(cause=<original>)).
+        """
+        js = Jobserver(slots=1)
+        f = js.submit(fn=len, args=((1,),), timeout=5)
+        f.done(timeout=5)
+
+        def outer() -> None:
+            f.when_done(lambda: 1 / 0)  # raises ZeroDivisionError immediately
+
+        with self.assertRaises(CallbackRaised) as c:
+            f.when_done(outer)
+        self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
+        self.assertNotIsInstance(c.exception.__cause__, CallbackRaised)
