@@ -5,14 +5,48 @@
 # Usage:
 #   ./acceptance/run.sh                  # run all tests
 #   ACCEPTANCE_SOAK_MINUTES=0.5 ./acceptance/run.sh  # shorter soak test
+#   ACCEPTANCE_TIMEOUT=120 ./acceptance/run.sh       # 2-minute per-test limit
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Per-test wall-time limit in seconds (default: 5 minutes).
+ACCEPTANCE_TIMEOUT="${ACCEPTANCE_TIMEOUT:-300}"
+
 PASS=0
 FAIL=0
+INTERRUPTED=0
 FAILED_TESTS=()
+
+# Treat Ctrl-C as a test failure, not a silent exit.
+trap 'on_interrupt' INT
+
+on_interrupt() {
+    set +x 2>/dev/null
+    INTERRUPTED=1
+}
+
+print_summary() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║                        SUMMARY                                 ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "Finished at: $(date)"
+    echo "Passed: $PASS"
+    echo "Failed: $FAIL"
+    echo "Total:  $((PASS + FAIL))"
+    echo ""
+
+    if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
+        echo "Failed tests:"
+        for t in "${FAILED_TESTS[@]}"; do
+            echo "  - $t"
+        done
+        echo ""
+    fi
+}
 
 run_test() {
     local module="$1"
@@ -32,16 +66,42 @@ run_test() {
     echo ""
     echo "----------------------------------------------------------------"
 
+    # Run the test in its own process group (setsid) so that timeout,
+    # Ctrl-C, or failure can kill the entire tree -- no leaked children.
+    # --kill-after=5: if SIGTERM doesn't work, SIGKILL the group after 5s.
+    # --foreground: let the test inherit our terminal for Ctrl-C delivery.
+    INTERRUPTED=0
     set -x
-    if python -m unittest "$module" -v; then
+    if timeout --foreground --signal=TERM --kill-after=5 "${ACCEPTANCE_TIMEOUT}" \
+         setsid --wait uv run python -m unittest "$module" -v; then
         set +x
+        if [ "$INTERRUPTED" -eq 1 ]; then
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("$title")
+            echo ">>> INTERRUPTED: $title (Ctrl-C)"
+            echo "----------------------------------------------------------------"
+            echo ""
+            print_summary
+            exit 1
+        fi
         PASS=$((PASS + 1))
         echo ">>> PASSED: $title"
     else
+        local rc=$?
         set +x
         FAIL=$((FAIL + 1))
         FAILED_TESTS+=("$title")
-        echo ">>> FAILED: $title"
+        if [ "$INTERRUPTED" -eq 1 ]; then
+            echo ">>> INTERRUPTED: $title (Ctrl-C)"
+        elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo ">>> KILLED: $title (exceeded ${ACCEPTANCE_TIMEOUT}s wall-time limit)"
+        else
+            echo ">>> FAILED: $title (exit code $rc)"
+        fi
+        echo "----------------------------------------------------------------"
+        echo ""
+        print_summary
+        exit 1
     fi
 
     echo "----------------------------------------------------------------"
@@ -252,26 +312,7 @@ run_test "acceptance.test_27_soak" \
 
 # ── Summary ─────────────────────────────────────────────────────────
 
+print_summary
+echo "All acceptance tests passed."
 echo ""
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║                        SUMMARY                                 ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
-echo "Finished at: $(date)"
-echo "Passed: $PASS"
-echo "Failed: $FAIL"
-echo "Total:  $((PASS + FAIL))"
-echo ""
-
-if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
-    echo "Failed tests:"
-    for t in "${FAILED_TESTS[@]}"; do
-        echo "  - $t"
-    done
-    echo ""
-    exit 1
-else
-    echo "All acceptance tests passed."
-    echo ""
-    exit 0
-fi
+exit 0
