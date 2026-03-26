@@ -24,6 +24,9 @@ jobs:
       version: <<parameters.version>>
     steps:
       - checkout
+      - run:
+          name: Install git
+          command: apt-get update -qq && apt-get install -yqq git
       - restore_cache:
           keys:
             - uv-cache-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
