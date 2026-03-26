@@ -10,7 +10,7 @@ Purpose
 This Jobserver is similar in spirit to multiprocessing.Pool or
 concurrent.futures.Executor with a few differences:
 
- * First, the [implementation](jobserver/impl.py) choices are based upon the [GNU Make
+ * First, the [implementation](jobserver/_jobserver.py) choices are based upon the [GNU Make
    Jobserver](https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html).
  * Second, as a result, the Jobserver is "nestable" meaning that resource
    constraints will be shared with work submitted by other work.
