@@ -55,14 +55,10 @@ class JobserverExecutor(concurrent.futures.Executor):
         self._work_ids: Iterator[int] = itertools.count()
         self._futures: dict[int, concurrent.futures.Future] = {}
 
-        # Keep a reference so the Jobserver (and its slot semaphores) outlives
-        # the dispatcher Process, which drops _args after start() in 3.11+.
-        self._jobserver = jobserver
+        self._requests: MinimalQueue = MinimalQueue(jobserver.context)
+        self._responses: MinimalQueue = MinimalQueue(jobserver.context)
 
-        self._requests: MinimalQueue = MinimalQueue(self._jobserver.context)
-        self._responses: MinimalQueue = MinimalQueue(self._jobserver.context)
-
-        self._dispatcher = self._jobserver.context.Process(  # type: ignore
+        self._dispatcher = jobserver.context.Process(  # type: ignore
             target=_dispatch_loop,
             args=(jobserver, self._requests, self._responses),
             daemon=False,
@@ -70,17 +66,22 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
         self._dispatcher.start()
 
-        # Close unused pipe ends so EOF propagates on crash.
-        # Parent only writes to requests and reads responses.
-        self._requests.close_get()
-        self._responses.close_put()
-
         self._receiver = threading.Thread(
             target=self._receive_loop,
             daemon=True,
             name="JobserverExecutor-receiver",
         )
         self._receiver.start()
+
+        # Close unused pipe ends so EOF propagates on crash.
+        # Parent only writes to requests and reads responses.
+        self._requests.close_get()
+        self._responses.close_put()
+
+        # Keep a reference so the Jobserver (and its slot semaphores) outlives
+        # the dispatcher Process, which drops _args after start() in 3.11+.
+        self._jobserver = jobserver
+
         _LOG.debug(
             "Executor started (dispatcher pid=%d)",
             self._dispatcher.pid,
@@ -223,8 +224,8 @@ def _dispatch_loop(
 ) -> None:
     """Main loop for the dispatcher process."""
     _LOG.debug("Dispatcher process started")
-    # Close unused pipe ends so EOF propagates on crash.
-    # Child only reads from requests and writes responses.
+
+    # Child only reads from requests and writes responses
     requests.close_put()
     responses.close_get()
 
