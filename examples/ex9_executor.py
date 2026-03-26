@@ -12,9 +12,7 @@ from jobserver import Jobserver, JobserverExecutor
 
 def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
-    jobserver = Jobserver(context="spawn", slots=1)
-
-    with JobserverExecutor(jobserver) as executor:
+    with JobserverExecutor(Jobserver(context="spawn", slots=1)) as executor:
         # map() applies a function to every item and yields results in order
         lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
         info("lengths via map: %s", lengths)

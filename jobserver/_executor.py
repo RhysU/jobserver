@@ -55,6 +55,10 @@ class JobserverExecutor(concurrent.futures.Executor):
         self._work_ids: Iterator[int] = itertools.count()
         self._futures: dict[int, concurrent.futures.Future] = {}
 
+        # Keep a reference so the Jobserver (and its slot semaphores) outlives
+        # the dispatcher Process, which drops _args after start() in 3.11+.
+        self._jobserver = jobserver
+
         context = jobserver._context
         self._requests: MinimalQueue = MinimalQueue(context)
         self._responses: MinimalQueue = MinimalQueue(context)
