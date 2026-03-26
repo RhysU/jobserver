@@ -7,10 +7,10 @@ type-hinting
 Purpose
 -------
 
-A Jobserver is similar in spirit to multiprocessing.Pool or
-concurrent.futures.Executor with a few differences:
+[Jobserver](jobserver/_jobserver.py) is similar in spirit to
+multiprocessing.Pool or concurrent.futures.Executor with a few differences:
 
- * First, the [implementation](jobserver/_jobserver.py) choices are based upon the [GNU Make
+ * First, the implementation choices are based upon the [GNU Make
    Jobserver](https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html).
  * Second, as a result, the Jobserver is "nestable" meaning that resource
    constraints will be shared with work submitted by other work.
@@ -23,10 +23,11 @@ concurrent.futures.Executor with a few differences:
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
 
-The Jobserver does not inherit from concurrent.futures.Executor because that
-Executor API fundamentally requires a background thread for asynchronously
-issuing concurrent.futures.Future callbacks.  Jobserver, eschewing threads,
-consequently is both somehow less-than and more-than a standard Executor.
+In particular, Jobserver does not inherit from concurrent.futures.Executor
+because that Executor API fundamentally requires a background thread for
+asynchronously issuing concurrent.futures.Future callbacks.  Jobserver,
+eschewing threads, consequently is both somehow less-than and more-than a
+standard Executor.
 
 In contrast, [JobserverExecutor](jobserver/_executor.py) combines a Jobserver
 with a background thread to provide full concurrent.futures.Executor

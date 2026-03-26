@@ -6,7 +6,7 @@
 """
 A nestable Jobserver with futures, callbacks, and complete type-hinting
 
-A Jobserver is similar in spirit to multiprocessing.Pool or
+Jobserver is similar in spirit to multiprocessing.Pool or
 concurrent.futures.Executor with a few differences:
 
  * First, the implementation choices are based upon
@@ -22,10 +22,11 @@ concurrent.futures.Executor with a few differences:
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
 
-The Jobserver does not inherit from concurrent.futures.Executor because that
-Executor API fundamentally requires a background thread for asynchronously
-issuing concurrent.futures.Future callbacks.  Jobserver, eschewing threads,
-consequently is both somehow less-than and more-than a standard Executor.
+In particular, Jobserver does not inherit from concurrent.futures.Executor
+because that Executor API fundamentally requires a background thread for
+asynchronously issuing concurrent.futures.Future callbacks.  Jobserver,
+eschewing threads, consequently is both somehow less-than and more-than a
+standard Executor.
 
 In contrast, JobserverExecutor combines a Jobserver with a background thread
 to provide full concurrent.futures.Executor compatibility.  JobserverExecutor
