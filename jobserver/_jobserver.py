@@ -307,7 +307,10 @@ class MinimalQueue(Generic[T]):
         return self._reader.fileno()
 
     def close_get(self) -> None:
-        """Close the receiving end; get() may no longer be called."""
+        """Close the receiving end; get() may no longer be called.
+
+        Closes the underlying pipe end so EOF propagates on crash.
+        """
         if self._reader is not None:
             self._reader.close()
             self._reader = None
@@ -318,7 +321,10 @@ class MinimalQueue(Generic[T]):
             # producing FileNotFoundError during the child's unpickling.
 
     def close_put(self) -> None:
-        """Close the sending end; put() may no longer be called."""
+        """Close the sending end; put() may no longer be called.
+
+        Closes the underlying pipe end so EOF propagates on crash.
+        """
         if self._writer is not None:
             self._writer.close()
             self._writer = None
