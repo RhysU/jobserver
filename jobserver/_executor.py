@@ -227,7 +227,8 @@ def _dispatch_loop(
     pending: typing.List[_request.Submit] = []
     in_flight: typing.Dict[Future, int] = {}
 
-    while True:
+    shutdown = False
+    while not shutdown:
         shutdown = _drain_requests(
             request_queue, pending, in_flight, response_queue
         )
@@ -235,12 +236,10 @@ def _dispatch_loop(
             jobserver, pending, in_flight, response_queue
         )
         _poll_in_flight(in_flight, response_queue)
-        if shutdown:
-            break
-        if _poll_requests_briefly(
-            request_queue, pending, in_flight, response_queue
-        ):
-            break
+        if not shutdown:
+            shutdown = _poll_requests_briefly(
+                request_queue, pending, in_flight, response_queue
+            )
 
     _handle_shutdown(pending, in_flight, response_queue)
     _LOG.debug("Dispatcher process exiting")
