@@ -59,10 +59,10 @@ class JobserverExecutor(concurrent.futures.Executor):
         # the dispatcher Process, which drops _args after start() in 3.11+.
         self._jobserver = jobserver
 
-        self._requests: MinimalQueue = MinimalQueue(self._jobserver.context())
-        self._responses: MinimalQueue = MinimalQueue(self._jobserver.context())
+        self._requests: MinimalQueue = MinimalQueue(self._jobserver.context)
+        self._responses: MinimalQueue = MinimalQueue(self._jobserver.context)
 
-        self._dispatcher = self._jobserver.context().Process(  # type: ignore
+        self._dispatcher = self._jobserver.context.Process(  # type: ignore
             target=_dispatch_loop,
             args=(jobserver, self._requests, self._responses),
             daemon=False,
