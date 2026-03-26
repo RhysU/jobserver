@@ -131,7 +131,7 @@ def _executor_in_child(method: str) -> int:
     """Create an executor inside a child process and run work."""
     js = Jobserver(context=method, slots=1)
     with JobserverExecutor(js) as exe:
-        return exe.submit(len, (1, 2, 3)).result(timeout=10)  # type: ignore
+        return exe.submit(len, (1, 2, 3)).result(timeout=10)
 
 
 def _executor_in_child_via_queue(

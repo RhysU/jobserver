@@ -364,7 +364,7 @@ class Jobserver:
         tokens = self._obtain_tokens(
             consume=consume,
             deadline=absolute_deadline(relative_timeout=timeout),
-            reclaim_tokens_fn=reclaim_tokens_fn,  # type: ignore
+            reclaim_tokens_fn=reclaim_tokens_fn,
             sentinels_fn=self._future_sentinels.values,
             sleep_fn=sleep_fn,
             slots=self._slots,

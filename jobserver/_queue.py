@@ -13,7 +13,7 @@ from typing import Any, Generic, Optional, TypeVar, Union
 from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
-from multiprocessing.reduction import ForkingPickler  # type: ignore
+from multiprocessing.reduction import ForkingPickler
 
 __all__ = (
     "MinimalQueue",

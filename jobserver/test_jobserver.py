@@ -221,7 +221,7 @@ class JobserverTest(unittest.TestCase):
                         self.assertEqual(len(x), size)
 
     @contextlib.contextmanager
-    def assert_elapsed(self, minimum: float):  # type: ignore
+    def assert_elapsed(self, minimum: float):
         """Asserts a 'with' block required at least minimum seconds to run."""
         start = time.monotonic()
         yield
@@ -400,7 +400,7 @@ class JobserverTest(unittest.TestCase):
                 e = Exception("Returned by method {}".format(method))
                 f = js.submit(fn=self.helper_return, args=(e,), timeout=None)
                 self.assertEqual(type(e), type(f.result()))
-                self.assertEqual(e.args, f.result().args)  # type: ignore
+                self.assertEqual(e.args, f.result().args)
 
     @staticmethod
     def helper_raise(klass: type, *args) -> typing.NoReturn:
