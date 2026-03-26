@@ -4,26 +4,31 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
+
+import collections
 import concurrent.futures
 import itertools
+import logging
 import queue
 import threading
-import typing
+from typing import Any, Callable, Deque, Dict, Iterator, List, TypeVar
 
 from ._jobserver import (
     Blocked,
     CallbackRaised,
+    Future,
     Jobserver,
     MinimalQueue,
 )
-from ._jobserver import Future as JobserverFuture
 
 from . import _request
 from . import _response
 
 __all__ = ("JobserverExecutor",)
 
-T = typing.TypeVar("T")
+_LOG = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class JobserverExecutor(concurrent.futures.Executor):
@@ -38,28 +43,33 @@ class JobserverExecutor(concurrent.futures.Executor):
     """
 
     def __init__(self, jobserver: Jobserver) -> None:
+        """Initialize the executor with a configured Jobserver.
+
+        Slot count, start method, and other execution parameters are
+        controlled by the Jobserver instance passed here.
+        """
         # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
         self._shutdown = False
-        self._work_ids: typing.Iterator[int] = itertools.count()
-        self._futures: typing.Dict[int, concurrent.futures.Future] = {}
+        self._work_ids: Iterator[int] = itertools.count()
+        self._futures: Dict[int, concurrent.futures.Future] = {}
 
         context = jobserver._context
-        self._request_queue: MinimalQueue = MinimalQueue(context)
-        self._response_queue: MinimalQueue = MinimalQueue(context)
+        self._requests: MinimalQueue = MinimalQueue(context)
+        self._responses: MinimalQueue = MinimalQueue(context)
 
         self._dispatcher = context.Process(  # type: ignore
             target=_dispatch_loop,
-            args=(jobserver, self._request_queue, self._response_queue),
+            args=(jobserver, self._requests, self._responses),
             daemon=False,
             name="JobserverExecutor-dispatcher",
         )
         self._dispatcher.start()
 
         # Close unused pipe ends so EOF propagates on crash.
-        # Parent only writes to request_queue and reads response_queue.
-        self._request_queue._reader.close()
-        self._response_queue._writer.close()
+        # Parent only writes to requests and reads responses.
+        self._requests._reader.close()
+        self._responses._writer.close()
 
         self._receiver = threading.Thread(
             target=self._receive_loop,
@@ -67,24 +77,29 @@ class JobserverExecutor(concurrent.futures.Executor):
             name="JobserverExecutor-receiver",
         )
         self._receiver.start()
+        _LOG.debug(
+            "Executor started (dispatcher pid=%d)",
+            self._dispatcher.pid,
+        )
 
     def submit(  # type: ignore[override]
         self,
-        fn: typing.Callable[..., T],
+        fn: Callable[..., T],
         /,
-        *args: typing.Any,
-        **kwargs: typing.Any,
-    ) -> "concurrent.futures.Future[T]":
+        *args: Any,
+        **kwargs: Any,
+    ) -> concurrent.futures.Future[T]:
+        """Submit a callable for execution and return a Future."""
         with self._lock:
             if self._shutdown:
-                raise RuntimeError("cannot submit after shutdown")
+                raise RuntimeError("Cannot submit: executor is shut down")
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
         # Lock is released before put() to avoid holding it across
         # potentially-slow pickling and IPC.
         try:
-            self._request_queue.put(
+            self._requests.put(
                 _request.Submit(
                     work_id=work_id, fn=fn, args=args, kwargs=kwargs
                 )
@@ -95,7 +110,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             # submit() that observed the flag in time.
             with self._lock:
                 self._futures.pop(work_id, None)
-            raise RuntimeError("cannot submit after shutdown")
+            raise RuntimeError("Cannot submit: executor is shut down")
         except Exception:
             with self._lock:
                 self._futures.pop(work_id, None)
@@ -105,16 +120,23 @@ class JobserverExecutor(concurrent.futures.Executor):
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
+        """Shut down the executor, optionally cancelling pending futures."""
         with self._lock:
             already = self._shutdown
             self._shutdown = True
         if not already:
+            _LOG.debug(
+                "Shutdown requested (wait=%s, cancel_futures=%s)",
+                wait,
+                cancel_futures,
+            )
             try:
                 if cancel_futures:
-                    self._request_queue.put(_request.Cancel())
-                self._request_queue.put(_request.Shutdown())
+                    self._requests.put(_request.Cancel())
+                self._requests.put(_request.Shutdown())
             except BrokenPipeError:
-                pass  # Dispatcher already exited
+                _LOG.debug("Dispatcher already exited before shutdown message")
+
         if wait:
             self._dispatcher.join()
             self._receiver.join()
@@ -125,7 +147,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         """Drain response queue, completing c.f.Futures as results arrive."""
         while True:
             try:
-                msg = self._response_queue.get(timeout=None)
+                msg = self._responses.get(timeout=None)
             except EOFError:
                 break
 
@@ -136,7 +158,7 @@ class JobserverExecutor(concurrent.futures.Executor):
                     future = self._futures.get(msg.work_id)
                 if future is not None:
                     # Returns False when the future was cancelled before this
-                    # Started message arrived.  The work is already in flight
+                    # Started message arrived.  The work is already running
                     # in the dispatcher; the eventual Completed or Failed
                     # will be silently discarded by the cancelled() check
                     # below, so no further action is needed here.
@@ -157,11 +179,18 @@ class JobserverExecutor(concurrent.futures.Executor):
                 if future is not None:
                     future.cancel()
                     future.set_running_or_notify_cancel()
+            else:
+                raise RuntimeError(f"Unexpected response type: {type(msg)!r}")
 
-        # Fail any futures still outstanding (dispatcher crash)
+        # Fail any futures still outstanding because the dispatcher
+        # exited without sending results for them (crash or unexpected exit).
         with self._lock:
             remaining = list(self._futures.values())
             self._futures.clear()
+        _LOG.debug(
+            "Dispatcher exited with %d outstanding futures",
+            len(remaining),
+        )
         for future in remaining:
             if future.done():
                 continue
@@ -171,7 +200,10 @@ class JobserverExecutor(concurrent.futures.Executor):
                 pass
             try:
                 future.set_exception(
-                    RuntimeError("dispatcher process terminated")
+                    RuntimeError(
+                        "Dispatcher process exited before"
+                        " delivering this future's result"
+                    )
                 )
             except concurrent.futures.InvalidStateError:
                 pass
@@ -182,83 +214,87 @@ class JobserverExecutor(concurrent.futures.Executor):
 
 def _dispatch_loop(
     jobserver: Jobserver,
-    request_queue: MinimalQueue,
-    response_queue: MinimalQueue,
+    requests: MinimalQueue,
+    responses: MinimalQueue,
 ) -> None:
     """Main loop for the dispatcher process."""
+    _LOG.debug("Dispatcher process started")
     # Close unused pipe ends so EOF propagates on crash.
-    # Child only reads from request_queue and writes response_queue.
-    request_queue._writer.close()
-    response_queue._reader.close()
+    # Child only reads from requests and writes responses.
+    requests._writer.close()
+    responses._reader.close()
 
-    pending: typing.List[_request.Submit] = []
-    in_flight: typing.Dict[JobserverFuture, int] = {}
+    pending: Deque[_request.Submit] = collections.deque()
+    running: Dict[Future, int] = {}
 
-    while True:
-        shutdown = _drain_requests(
-            request_queue, pending, in_flight, response_queue
-        )
-        pending = _dispatch_pending(
-            jobserver, pending, in_flight, response_queue
-        )
-        _poll_in_flight(in_flight, response_queue)
-        if shutdown:
-            break
-        if _poll_requests_briefly(
-            request_queue, pending, in_flight, response_queue
-        ):
-            break
+    shutdown = False
+    while not shutdown:
+        shutdown = _drain_requests(requests, pending, running, responses)
+        _dispatch_pending(jobserver, pending, running, responses)
+        _poll_running(running, responses)
+        if not shutdown:
+            shutdown = _poll_requests_briefly(
+                requests, pending, running, responses
+            )
 
-    _handle_shutdown(pending, in_flight, response_queue)
+    _handle_shutdown(pending, running, responses)
+    _LOG.debug("Dispatcher process exiting")
+
+
+def _handle_request(
+    msg: object,
+    pending: Deque[_request.Submit],
+    responses: MinimalQueue,
+) -> bool:
+    """Handle a single request message.  Return True on Shutdown."""
+    if isinstance(msg, _request.Shutdown):
+        return True
+    if isinstance(msg, _request.Cancel):
+        for item in pending:
+            responses.put(_response.Cancelled(work_id=item.work_id))
+        pending.clear()
+    elif isinstance(msg, _request.Submit):
+        pending.append(msg)
+    else:
+        raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
+    return False
 
 
 def _drain_requests(
-    request_queue: MinimalQueue,
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
-    response_queue: MinimalQueue,
+    requests: MinimalQueue,
+    pending: Deque[_request.Submit],
+    running: Dict[Future, int],
+    responses: MinimalQueue,
 ) -> bool:
     """Drain the request queue.  Return True when shutdown requested."""
     while True:
         # Block only when there is nothing else to do
-        block = (not pending) and (not in_flight)
+        block = (not pending) and (not running)
         try:
-            msg = request_queue.get(timeout=None if block else 0)
+            msg = requests.get(timeout=None if block else 0)
         except queue.Empty:
             return False
         except EOFError:
             return True  # Parent died, treat as shutdown
-
-        if isinstance(msg, _request.Shutdown):
+        if _handle_request(msg, pending, responses):
             return True
-        if isinstance(msg, _request.Cancel):
-            for item in pending:
-                response_queue.put(_response.Cancelled(work_id=item.work_id))
-            pending.clear()
-            continue
-        if isinstance(msg, _request.Submit):
-            pending.append(msg)
 
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
-    response_queue: MinimalQueue,
-) -> typing.List[_request.Submit]:
-    """Try to dispatch pending work; return items still pending.
+    pending: Deque[_request.Submit],
+    running: Dict[Future, int],
+    responses: MinimalQueue,
+) -> None:
+    """Dispatch pending work in place via popleft().
 
     Keeps c.f.Future in PENDING (cancellable) until a process is
-    spawned.  Once one item is Blocked, remaining will be too.
+    spawned.  Stops on first Blocked since remaining will be too.
     """
-    still_pending: typing.List[_request.Submit] = []
-    blocked = False
-    for item in pending:
-        if blocked:
-            still_pending.append(item)
-            continue
+    while pending:
+        item = pending[0]
         try:
-            js_future = jobserver.submit(
+            f = jobserver.submit(
                 fn=item.fn,
                 args=item.args,
                 kwargs=dict(item.kwargs),
@@ -266,96 +302,86 @@ def _dispatch_pending(
                 timeout=0,
             )
         except Blocked:
-            still_pending.append(item)
-            blocked = True
-            continue
+            return
         except Exception as exc:
             # Dispatch itself failed (e.g. pickling error).
             # Transition PENDING -> RUNNING -> FINISHED(exc).
-            response_queue.put(_response.Started(work_id=item.work_id))
-            response_queue.put(_response.Failed(work_id=item.work_id, exc=exc))
+            pending.popleft()
+            responses.put(_response.Started(work_id=item.work_id))
+            responses.put(_response.Failed(work_id=item.work_id, exc=exc))
             continue
 
         # Dispatch succeeded -- inform receiver and track
-        response_queue.put(_response.Started(work_id=item.work_id))
-        in_flight[js_future] = item.work_id
-    return still_pending
+        pending.popleft()
+        responses.put(_response.Started(work_id=item.work_id))
+        running[f] = item.work_id
 
 
-def _poll_in_flight(
-    in_flight: typing.Dict[JobserverFuture, int],
-    response_queue: MinimalQueue,
+def _poll_running(
+    running: Dict[Future, int],
+    responses: MinimalQueue,
 ) -> None:
-    """Poll in-flight Futures and bridge completed results."""
-    completed: typing.List[JobserverFuture] = []
-    for js_future in in_flight:
+    """Poll running Futures and bridge completed results."""
+    completed: List[Future] = []
+    for f in running:
         try:
-            if js_future.done(timeout=0):
-                completed.append(js_future)
+            if f.done(timeout=0):
+                completed.append(f)
         except CallbackRaised:
             # Internal callbacks should not raise, but recover
-            completed.append(js_future)
+            completed.append(f)
 
-    for js_future in completed:
-        work_id = in_flight.pop(js_future)
-        _bridge_result(js_future, work_id, response_queue)
+    for f in completed:
+        work_id = running.pop(f)
+        _bridge_result(f, work_id, responses)
 
 
 def _bridge_result(
-    js_future: JobserverFuture,
+    f: Future,
     work_id: int,
-    response_queue: MinimalQueue,
+    responses: MinimalQueue,
 ) -> None:
     """Transfer a completed jobserver Future's outcome to response queue."""
     try:
-        value = js_future.result(timeout=0)
-        response_queue.put(_response.Completed(work_id=work_id, value=value))
+        value = f.result(timeout=0)
+        responses.put(_response.Completed(work_id=work_id, value=value))
     except Exception as exc:
-        response_queue.put(_response.Failed(work_id=work_id, exc=exc))
+        responses.put(_response.Failed(work_id=work_id, exc=exc))
 
 
 def _handle_shutdown(
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
-    response_queue: MinimalQueue,
+    pending: Deque[_request.Submit],
+    running: Dict[Future, int],
+    responses: MinimalQueue,
 ) -> None:
-    """Cancel pending work, drain in-flight futures, signal completion."""
+    """Cancel pending work, drain running futures, signal completion."""
     for item in pending:
-        response_queue.put(_response.Cancelled(work_id=item.work_id))
-    for js_future, work_id in in_flight.items():
+        responses.put(_response.Cancelled(work_id=item.work_id))
+    for f, work_id in running.items():
         while True:
             try:
-                js_future.done(timeout=None)
+                f.done(timeout=None)
                 break
             except CallbackRaised:
                 continue
-        _bridge_result(js_future, work_id, response_queue)
-    response_queue.put(_response.Shutdown())
+        _bridge_result(f, work_id, responses)
+    responses.put(_response.Shutdown())
 
 
 def _poll_requests_briefly(
-    request_queue: MinimalQueue,
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[JobserverFuture, int],
-    response_queue: MinimalQueue,
+    requests: MinimalQueue,
+    pending: Deque[_request.Submit],
+    running: Dict[Future, int],
+    responses: MinimalQueue,
 ) -> bool:
     """Brief blocking poll to pick up new work without busy-spinning.
 
     Returns True when shutdown was requested.
     """
-    if not (in_flight or pending):
+    if not (running or pending):
         return False
     try:
-        msg = request_queue.get(timeout=0.005)
+        msg = requests.get(timeout=0.005)
     except (queue.Empty, EOFError):
         return False
-
-    if isinstance(msg, _request.Shutdown):
-        return True
-    if isinstance(msg, _request.Cancel):
-        for item in pending:
-            response_queue.put(_response.Cancelled(work_id=item.work_id))
-        pending.clear()
-    elif isinstance(msg, _request.Submit):
-        pending.append(msg)
-    return False
+    return _handle_request(msg, pending, responses)

@@ -1266,7 +1266,7 @@ class TestInternalInvariants(unittest.TestCase):
     """Internal invariants verified via mocking."""
 
     def test_lock_released_before_put(self) -> None:
-        """_lock must be free when _request_queue.put() is called.
+        """_lock must be free when _requests.put() is called.
 
         Verify the lock is released before each put() by spying on the call.
 
@@ -1279,7 +1279,7 @@ class TestInternalInvariants(unittest.TestCase):
         original_put = MinimalQueue.put
 
         def spy_put(self_q: MinimalQueue, *args: typing.Any) -> None:
-            if self_q is exe._request_queue:
+            if self_q is exe._requests:
                 lock_held.append(exe._lock.locked())
             return original_put(self_q, *args)
 
@@ -1309,7 +1309,7 @@ class TestInternalInvariants(unittest.TestCase):
         def failing_put(self_q: MinimalQueue, *args: typing.Any) -> None:
             if (
                 fail_once[0]
-                and self_q is exe._request_queue
+                and self_q is exe._requests
                 and args
                 and isinstance(args[0], Submit)
             ):
