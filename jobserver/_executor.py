@@ -69,8 +69,8 @@ class JobserverExecutor(concurrent.futures.Executor):
 
         # Close unused pipe ends so EOF propagates on crash.
         # Parent only writes to requests and reads responses.
-        self._requests._reader.close()
-        self._responses._writer.close()
+        self._requests.close_get()
+        self._responses.close_put()
 
         self._receiver = threading.Thread(
             target=self._receive_loop,
@@ -222,8 +222,8 @@ def _dispatch_loop(
     _LOG.debug("Dispatcher process started")
     # Close unused pipe ends so EOF propagates on crash.
     # Child only reads from requests and writes responses.
-    requests._writer.close()
-    responses._reader.close()
+    requests.close_put()
+    responses.close_get()
 
     pending: deque[_request.Submit] = deque()
     running: dict[Future, int] = {}
