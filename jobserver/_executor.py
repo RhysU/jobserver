@@ -186,11 +186,10 @@ class JobserverExecutor(concurrent.futures.Executor):
         with self._lock:
             remaining = list(self._futures.values())
             self._futures.clear()
-        if remaining:
-            _LOG.debug(
-                "Dispatcher exited with %d outstanding futures",
-                len(remaining),
-            )
+        _LOG.debug(
+            "Dispatcher exited with %d outstanding futures",
+            len(remaining),
+        )
         for future in remaining:
             if future.done():
                 continue
