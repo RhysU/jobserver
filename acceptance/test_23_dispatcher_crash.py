@@ -28,9 +28,10 @@ class TestDispatcherCrash(unittest.TestCase):
         """6.4.1: Kill dispatcher; outstanding futures get RuntimeError."""
         js = Jobserver(context=FAST_METHOD, slots=2)
         ex = JobserverExecutor(js)
-        # Submit long-running work
-        f = ex.submit(sleep_and_return, 30, "never")
-        time.sleep(0.5)  # Let dispatcher start
+        # Submit work that sleeps long enough for us to kill the dispatcher.
+        # Use a short sleep so the orphaned worker exits promptly.
+        f = ex.submit(sleep_and_return, 2, "never")
+        time.sleep(0.5)  # Let dispatcher start the work
         # Kill the dispatcher
         dispatcher_pid = ex._dispatcher.pid
         os.kill(dispatcher_pid, signal.SIGKILL)
@@ -40,7 +41,8 @@ class TestDispatcherCrash(unittest.TestCase):
         # New submissions should fail
         with self.assertRaises(RuntimeError):
             ex.submit(sleep_and_return, 0, "fail")
-        # Cleanup
+        # Cleanup: shutdown the executor and wait for the orphaned worker
+        # to finish its short sleep so no processes leak.
         ex.shutdown(wait=True)
 
 

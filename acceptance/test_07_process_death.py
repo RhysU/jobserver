@@ -6,6 +6,8 @@ Acceptance Criteria
 - done(timeout=T) returns False for an incomplete future (not killed).
 """
 
+import os
+import signal
 import unittest
 
 from jobserver import Jobserver, SubmissionDied
@@ -60,8 +62,12 @@ class TestProcessDeath(unittest.TestCase):
         js = Jobserver(context=FAST_METHOD, slots=2)
         f = js.submit(fn=infinite_loop, timeout=TIMEOUT)
         self.assertFalse(f.done(timeout=2))
-        # Note: the process is still running; this is by design.
         # The library does not kill children -- it reports they aren't done.
+        # Kill the child ourselves to prevent a process leak from the test.
+        # Uses _process (internal) only for cleanup, not to test behavior.
+        os.kill(f._process.pid, signal.SIGKILL)
+        with self.assertRaises(SubmissionDied):
+            f.result(timeout=TIMEOUT)
 
 
 if __name__ == "__main__":

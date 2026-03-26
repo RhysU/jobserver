@@ -40,11 +40,11 @@ class TestExecutorShutdown(unittest.TestCase):
         """6.2.2: shutdown(wait=False) returns promptly."""
         js = Jobserver(context=FAST_METHOD, slots=2)
         ex = JobserverExecutor(js)
-        ex.submit(sleep_and_return, 5, "slow")
+        ex.submit(sleep_and_return, 1, "slow")
         start = time.monotonic()
         ex.shutdown(wait=False)
         elapsed = time.monotonic() - start
-        self.assertLess(elapsed, 2.0)
+        self.assertLess(elapsed, 1.0)
         # Clean up: wait for actual completion
         ex.shutdown(wait=True)
 
