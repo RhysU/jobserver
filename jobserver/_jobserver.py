@@ -435,6 +435,7 @@ class Jobserver:
         """
         return self.submit(fn=fn, args=args, kwargs=kwargs)
 
+    @property
     def context(self) -> BaseContext:
         """Return the multiprocessing context used by this Jobserver."""
         return self._context
