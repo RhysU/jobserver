@@ -6,6 +6,7 @@
 """A concurrent.futures.Executor backed by a Jobserver."""
 import concurrent.futures
 import itertools
+import logging
 import queue
 import threading
 import typing
@@ -22,6 +23,8 @@ from . import _request
 from . import _response
 
 __all__ = ("JobserverExecutor",)
+
+_LOG = logging.getLogger(__name__)
 
 T = typing.TypeVar("T")
 
@@ -72,6 +75,10 @@ class JobserverExecutor(concurrent.futures.Executor):
             name="JobserverExecutor-receiver",
         )
         self._receiver.start()
+        _LOG.debug(
+            "Executor started (dispatcher pid=%d)",
+            self._dispatcher.pid,
+        )
 
     def submit(  # type: ignore[override]
         self,
@@ -116,12 +123,18 @@ class JobserverExecutor(concurrent.futures.Executor):
             already = self._shutdown
             self._shutdown = True
         if not already:
+            _LOG.debug(
+                "Shutdown requested (wait=%s, cancel_futures=%s)",
+                wait,
+                cancel_futures,
+            )
             try:
                 if cancel_futures:
                     self._request_queue.put(_request.Cancel())
                 self._request_queue.put(_request.Shutdown())
             except BrokenPipeError:
-                pass  # Dispatcher already exited
+                _LOG.debug("Dispatcher already exited before shutdown message")
+
         if wait:
             self._dispatcher.join()
             self._receiver.join()
@@ -165,10 +178,15 @@ class JobserverExecutor(concurrent.futures.Executor):
                     future.cancel()
                     future.set_running_or_notify_cancel()
 
-        # Fail any futures still outstanding (dispatcher crash)
+        # Fail any futures still outstanding because the dispatcher
+        # exited without sending results for them (crash or unexpected exit).
         with self._lock:
             remaining = list(self._futures.values())
             self._futures.clear()
+        if remaining:
+            _LOG.debug(
+                "Dispatcher exited with %d outstanding futures", len(remaining)
+            )
         for future in remaining:
             if future.done():
                 continue
@@ -193,6 +211,7 @@ def _dispatch_loop(
     response_queue: MinimalQueue,
 ) -> None:
     """Main loop for the dispatcher process."""
+    _LOG.debug("Dispatcher process started")
     # Close unused pipe ends so EOF propagates on crash.
     # Child only reads from request_queue and writes response_queue.
     request_queue._writer.close()
@@ -217,6 +236,7 @@ def _dispatch_loop(
             break
 
     _handle_shutdown(pending, in_flight, response_queue)
+    _LOG.debug("Dispatcher process exiting")
 
 
 def _drain_requests(
