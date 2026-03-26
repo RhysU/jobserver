@@ -54,7 +54,16 @@ class TestCallbacksReentrant(unittest.TestCase):
         self.assertEqual(results, ["A", "B", "C"])
 
     def test_reentrant_callback_raises(self):
-        """4.3.3: Re-entrant callback that raises -> CallbackRaised."""
+        """4.3.3: Re-entrant callback that raises -> CallbackRaised.
+
+        When callback_a calls when_done(bad_b) on an already-done future,
+        bad_b fires immediately inside when_done, raising CallbackRaised.
+        That exception propagates out of callback_a, which is itself a
+        non-internal callback being run by _issue_callbacks.  So
+        _issue_callbacks wraps callback_a's exception (the inner
+        CallbackRaised) in an outer CallbackRaised.  The original
+        RuntimeError is at __cause__.__cause__.
+        """
         js = Jobserver(context=FAST_METHOD, slots=2)
         f = js.submit(fn=return_value, args=(1,), timeout=TIMEOUT)
         results = []
@@ -68,7 +77,12 @@ class TestCallbacksReentrant(unittest.TestCase):
         f.when_done(callback_a)
         with self.assertRaises(CallbackRaised) as ctx:
             f.done(timeout=TIMEOUT)
-        self.assertIn("reentrant boom", str(ctx.exception.__cause__))
+        # Outer __cause__ is the inner CallbackRaised from when_done(bad_b)
+        inner = ctx.exception.__cause__
+        self.assertIsInstance(inner, CallbackRaised)
+        # Inner __cause__ is the original RuntimeError
+        self.assertIsInstance(inner.__cause__, RuntimeError)
+        self.assertIn("reentrant boom", str(inner.__cause__))
         self.assertEqual(results, ["A"])
         # Future should still report done
         self.assertTrue(f.done(timeout=0))
