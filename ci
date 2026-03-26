@@ -2,7 +2,7 @@
 # Run uv-based continuous integration tests for jobserver/
 
 # Unit testing runs the tests inside jobserver/test.py
-uv run -m unittest -v jobserver.test
+uv run -m unittest -v jobserver.test_jobserver
 
 # Run all examples to confirm they complete successfully
 for ex in examples/*.py; do
