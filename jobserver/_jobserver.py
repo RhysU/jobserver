@@ -4,14 +4,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Implementation of the Jobserver and related classes."""
+
 import abc
-import collections.abc
+from collections.abc import Callable, Iterable, Mapping
 import os
 import queue
 import threading
 import time
 import types
-import typing
+from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 
 # Implementation depends upon an explicit subset of multiprocessing
 from multiprocessing import get_context
@@ -29,7 +30,7 @@ __all__ = (
     "SubmissionDied",
 )
 
-T = typing.TypeVar("T")
+T = TypeVar("T")
 
 
 class Blocked(Exception):
@@ -68,7 +69,7 @@ class SubmissionDied(Exception):
     pass
 
 
-class Wrapper(abc.ABC, typing.Generic[T]):
+class Wrapper(abc.ABC, Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
     __slots__ = ()
@@ -105,11 +106,11 @@ class ExceptionWrapper(Wrapper[T]):
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
 
-    def unwrap(self) -> typing.NoReturn:
+    def unwrap(self) -> NoReturn:
         raise self._raised
 
 
-class Future(typing.Generic[T]):
+class Future(Generic[T]):
     """
     Future instances are obtained by submitting work to a Jobserver.
 
@@ -134,29 +135,29 @@ class Future(typing.Generic[T]):
         self._rlock = threading.RLock()
 
         assert process is not None  # Becomes None after BaseProcess.join()
-        self._process = process  # type: typing.Optional[BaseProcess]
+        self._process: Optional[BaseProcess] = process
 
         assert connection is not None  # Becomes None after Connection.close()
-        self._connection = connection  # type: typing.Optional[Connection]
+        self._connection: Optional[Connection] = connection
 
         # Becomes non-None after result is obtained
-        self._wrapper = None  # type: typing.Optional[Wrapper[T]]
+        self._wrapper: Optional[Wrapper[T]] = None
 
         # Populated by calls to when_done(...)
-        self._callbacks = []  # type: typing.List[typing.Tuple]
+        self._callbacks: list[tuple] = []
 
-    def __copy__(self) -> typing.NoReturn:
+    def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
         # In particular, which copy would call self._process.join()?
         raise NotImplementedError("Futures cannot be copied.")
 
-    def __reduce__(self) -> typing.NoReturn:
+    def __reduce__(self) -> NoReturn:
         """Disallow pickling as duplicates cannot sensibly share resources."""
         # In particular, because pickles create copies
         raise NotImplementedError("Futures cannot be pickled.")
 
     def when_done(
-        self, fn: typing.Callable, *args, __internal: bool = False, **kwargs
+        self, fn: Callable, *args, __internal: bool = False, **kwargs
     ) -> None:
         """
         Register a function for execution sometime after Future.done(...).
@@ -170,7 +171,7 @@ class Future(typing.Generic[T]):
             if self._connection is None:
                 self._issue_callbacks()
 
-    def done(self, timeout: typing.Optional[float] = None) -> bool:
+    def done(self, timeout: Optional[float] = None) -> bool:
         """
         Is result ready?  Never raises Blocked instead returning False.
 
@@ -233,7 +234,7 @@ class Future(typing.Generic[T]):
                 except Exception as e:
                     raise CallbackRaised() from e
 
-    def result(self, timeout: typing.Optional[float] = None) -> T:
+    def result(self, timeout: Optional[float] = None) -> T:
         """
         Obtain result when ready.  Raises Blocked if result unavailable.
 
@@ -248,7 +249,7 @@ class Future(typing.Generic[T]):
         return self._wrapper.unwrap()
 
 
-def absolute_deadline(relative_timeout: typing.Optional[float]) -> float:
+def absolute_deadline(relative_timeout: Optional[float]) -> float:
     """
     Convert relative_timeout in seconds into a monotonic, absolute deadline.
 
@@ -263,16 +264,14 @@ def absolute_deadline(relative_timeout: typing.Optional[float]) -> float:
     )
 
 
-def resolve_context(
-    context: typing.Union[None, str, BaseContext]
-) -> BaseContext:
+def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
     """Return a multiprocessing BaseContext, resolving None/str as needed."""
     if context is None or isinstance(context, str):
         return get_context(context)
     return context
 
 
-class MinimalQueue(typing.Generic[T]):
+class MinimalQueue(Generic[T]):
     """
     An unbounded SimpleQueue-variant with minimal function needed by Jobserver.
 
@@ -283,9 +282,7 @@ class MinimalQueue(typing.Generic[T]):
 
     __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
 
-    def __init__(
-        self, context: typing.Union[None, str, BaseContext] = None
-    ) -> None:
+    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
         """Use given context with default of multiprocessing.get_context()."""
         context = resolve_context(context)
         self._reader, self._writer = context.Pipe(duplex=False)
@@ -297,7 +294,7 @@ class MinimalQueue(typing.Generic[T]):
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
-    def __deepcopy__(self, _: typing.Any) -> "MinimalQueue":
+    def __deepcopy__(self, _: Any) -> "MinimalQueue":
         """Deep copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
@@ -306,7 +303,7 @@ class MinimalQueue(typing.Generic[T]):
         """The object on which to wait(...) to get(...) new data."""
         return self._reader.fileno()
 
-    def get(self, timeout: typing.Optional[float] = None) -> T:
+    def get(self, timeout: Optional[float] = None) -> T:
         """
         Get one object from the queue raising queue.Empty if unavailable.
 
@@ -355,8 +352,8 @@ class Jobserver:
 
     def __init__(
         self,
-        context: typing.Union[None, str, BaseContext] = None,
-        slots: typing.Optional[int] = None,
+        context: Union[None, str, BaseContext] = None,
+        slots: Optional[int] = None,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -367,7 +364,7 @@ class Jobserver:
         """
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
-        self._slots = MinimalQueue(self._context)  # type: MinimalQueue[int]
+        self._slots: MinimalQueue[int] = MinimalQueue(self._context)
 
         # Issue one token for each requested slot
         if slots is None:
@@ -376,16 +373,16 @@ class Jobserver:
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures (and wait-able sentinels)
-        self._future_sentinels = {}  # type: typing.Dict[Future, int]
+        self._future_sentinels: dict[Future, int] = {}
 
-    def __getstate__(self) -> typing.Tuple:
+    def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""
         # Required because Futures can be neither copied nor pickled
         # Without custom handling of Futures, submit(...) would fail
         # whenever an instance is part of an argument to a sub-Process
         return self._context, self._slots, {}
 
-    def __setstate__(self, state: typing.Tuple) -> None:
+    def __setstate__(self, state: tuple) -> None:
         """Set instance state."""
         assert isinstance(state, tuple) and len(state) == 3
         self._context, self._slots, self._future_sentinels = state
@@ -395,14 +392,12 @@ class Jobserver:
         # Because any "copy" should and can only mutate same slots/sentinels
         return self
 
-    def __deepcopy__(self, _: typing.Any) -> "Jobserver":
+    def __deepcopy__(self, _: Any) -> "Jobserver":
         """Deep copies return the original Jobserver unchanged."""
         # Because any "copy" should and can only mutate same slots/sentinels
         return self
 
-    def __call__(
-        self, fn: typing.Callable[..., T], *args, **kwargs
-    ) -> Future[T]:
+    def __call__(self, fn: Callable[..., T], *args, **kwargs) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
         Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
@@ -412,16 +407,16 @@ class Jobserver:
 
     def submit(
         self,
-        fn: typing.Callable[..., T],
+        fn: Callable[..., T],
         *,
-        args: typing.Iterable = (),
-        kwargs: typing.Mapping[str, typing.Any] = types.MappingProxyType({}),
+        args: Iterable = (),
+        kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
-        env: typing.Iterable = (),  # Iterable[Tuple[str,str]] breaks!
-        preexec_fn: typing.Callable[[], None] = noop,
-        sleep_fn: typing.Callable[[], typing.Optional[float]] = noop,
-        timeout: typing.Optional[float] = None
+        env: Iterable = (),  # Iterable[Tuple[str,str]] breaks!
+        preexec_fn: Callable[[], None] = noop,
+        sleep_fn: Callable[[], Optional[float]] = noop,
+        timeout: Optional[float] = None
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -442,10 +437,10 @@ class Jobserver:
         """
         # First, check any arguments not for _obtain_tokens(...) just below.
         assert fn is not None
-        assert isinstance(args, collections.abc.Iterable), type(args)
-        assert isinstance(kwargs, collections.abc.Mapping), type(kwargs)
+        assert isinstance(args, Iterable), type(args)
+        assert isinstance(kwargs, Mapping), type(kwargs)
         assert isinstance(callbacks, bool), type(callbacks)
-        assert isinstance(env, collections.abc.Iterable), type(env)
+        assert isinstance(env, Iterable), type(env)
         assert preexec_fn is not None
 
         # Next, either obtain requested tokens or else raise Blocked
@@ -471,7 +466,7 @@ class Jobserver:
                 kwargs=kwargs,
                 daemon=False,
             )
-            future = Future(process, recv)  # type: Future[T]
+            future: Future[T] = Future(process, recv)
             process.start()
 
             # Prepare to track the Future and the wait(...)-able sentinel
@@ -510,7 +505,7 @@ class Jobserver:
         """Entry point for workers to fun fn(...) due to some  submit(...)."""
         # Wrapper usage tracks whether a value was returned or raised
         # in degenerate case where client code returns an Exception
-        result = None  # type: typing.Optional[Wrapper[typing.Any]]
+        result: Optional[Wrapper[Any]] = None
         try:
             # None invalid in os.environ so interpret as sentinel for popping
             for key, value in env.items():
@@ -539,20 +534,20 @@ class Jobserver:
     def _obtain_tokens(
         consume: int,
         deadline: float,
-        reclaim_tokens_fn: typing.Callable[[], typing.Any],
-        sentinels_fn: typing.Callable[[], typing.Iterable[int]],
-        sleep_fn: typing.Callable[[], typing.Optional[float]],
+        reclaim_tokens_fn: Callable[[], Any],
+        sentinels_fn: Callable[[], Iterable[int]],
+        sleep_fn: Callable[[], Optional[float]],
         slots: MinimalQueue[int],
         *,
         resolution: float = 1.0e-2
-    ) -> typing.List[int]:
+    ) -> list[int]:
         """Either retrieve requested tokens or raise Blocked while trying."""
         # Defensively check arguments
         assert consume == 0 or consume == 1, "Invalid or deadlock possible"
         assert deadline > 0.0
 
         # Acquire the requested retval or raise Blocked when impossible
-        retval = []  # type: typing.List[int]
+        retval: list[int] = []
         while True:
 
             # (1) Eagerly clean up any completed work to avoid deadlocks
