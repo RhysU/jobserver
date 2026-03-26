@@ -74,7 +74,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         /,
         *args: typing.Any,
         **kwargs: typing.Any,
-    ) -> "concurrent.futures.Future[T]":
+    ) -> concurrent.futures.Future[T]:
         with self._lock:
             if self._shutdown:
                 raise RuntimeError("cannot submit after shutdown")
