@@ -1,25 +1,19 @@
 #!/bin/bash -eu
 # Run uv-based continuous integration tests for jobserver/
 
-# Unit testing runs the tests inside jobserver/test.py
-uv run -m unittest -v jobserver.test_jobserver
+# First, unit testing runs the included tests
+uv run -m unittest -v ./jobserver/test_*.py
 
-# Run all examples to confirm they complete successfully
+# Second, run examples to confirm they complete successfully
 for ex in examples/*.py; do
     PYTHONPATH=. uv run "$ex"
 done
 
-# Unit testing runs the queue tests
-uv run -m unittest -v jobserver.test_queue
-
-# Unit testing runs the executor tests
-uv run -m unittest -v jobserver.test_executor
-
-# PEP8 linting
+# Then, PEP8 linting
 uvx --from flake8 flake8 jobserver/ examples/
 
-# Typehint linting requires a new-enough mypy
+# Then, Typehint linting requires a new-enough mypy
 uvx --from "mypy>0.770" mypy jobserver/
 
-# Finally, check for formatting issues
+# Last, check for formatting issues
 uvx --from "black<25" black --check --line-length 79 --verbose jobserver/ examples/
