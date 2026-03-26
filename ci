@@ -15,5 +15,8 @@ uvx --from flake8 flake8 jobserver/ examples/
 # Then, Typehint linting requires a new-enough mypy
 uvx --from "mypy>0.770" mypy jobserver/
 
-# Last, check for formatting issues
+# Then, check for formatting issues
 uvx --from "black<25" black --check --line-length 79 --verbose jobserver/ examples/
+
+# Last, verify the source distribution builds correctly
+uvx --from build python -m build --sdist
