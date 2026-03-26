@@ -10,7 +10,7 @@ import itertools
 import logging
 import queue
 import threading
-import typing
+from typing import Any, Callable, Dict, Iterator, List, TypeVar
 
 from ._jobserver import (
     Blocked,
@@ -27,7 +27,7 @@ __all__ = ("JobserverExecutor",)
 
 _LOG = logging.getLogger(__name__)
 
-T = typing.TypeVar("T")
+T = TypeVar("T")
 
 
 class JobserverExecutor(concurrent.futures.Executor):
@@ -50,8 +50,8 @@ class JobserverExecutor(concurrent.futures.Executor):
         # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
         self._shutdown = False
-        self._work_ids: typing.Iterator[int] = itertools.count()
-        self._futures: typing.Dict[int, concurrent.futures.Future] = {}
+        self._work_ids: Iterator[int] = itertools.count()
+        self._futures: Dict[int, concurrent.futures.Future] = {}
 
         context = jobserver._context
         self._request_queue: MinimalQueue = MinimalQueue(context)
@@ -83,10 +83,10 @@ class JobserverExecutor(concurrent.futures.Executor):
 
     def submit(  # type: ignore[override]
         self,
-        fn: typing.Callable[..., T],
+        fn: Callable[..., T],
         /,
-        *args: typing.Any,
-        **kwargs: typing.Any,
+        *args: Any,
+        **kwargs: Any,
     ) -> concurrent.futures.Future[T]:
         """Submit a callable for execution and return a Future."""
         with self._lock:
@@ -224,8 +224,8 @@ def _dispatch_loop(
     request_queue._writer.close()
     response_queue._reader.close()
 
-    pending: typing.List[_request.Submit] = []
-    in_flight: typing.Dict[Future, int] = {}
+    pending: List[_request.Submit] = []
+    in_flight: Dict[Future, int] = {}
 
     shutdown = False
     while not shutdown:
@@ -247,8 +247,8 @@ def _dispatch_loop(
 
 def _drain_requests(
     request_queue: MinimalQueue,
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[Future, int],
+    pending: List[_request.Submit],
+    in_flight: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> bool:
     """Drain the request queue.  Return True when shutdown requested."""
@@ -277,16 +277,16 @@ def _drain_requests(
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[Future, int],
+    pending: List[_request.Submit],
+    in_flight: Dict[Future, int],
     response_queue: MinimalQueue,
-) -> typing.List[_request.Submit]:
+) -> List[_request.Submit]:
     """Try to dispatch pending work; return items still pending.
 
     Keeps c.f.Future in PENDING (cancellable) until a process is
     spawned.  Once one item is Blocked, remaining will be too.
     """
-    still_pending: typing.List[_request.Submit] = []
+    still_pending: List[_request.Submit] = []
     blocked = False
     for item in pending:
         if blocked:
@@ -318,11 +318,11 @@ def _dispatch_pending(
 
 
 def _poll_in_flight(
-    in_flight: typing.Dict[Future, int],
+    in_flight: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> None:
     """Poll in-flight Futures and bridge completed results."""
-    completed: typing.List[Future] = []
+    completed: List[Future] = []
     for js_future in in_flight:
         try:
             if js_future.done(timeout=0):
@@ -350,8 +350,8 @@ def _bridge_result(
 
 
 def _handle_shutdown(
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[Future, int],
+    pending: List[_request.Submit],
+    in_flight: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain in-flight futures, signal completion."""
@@ -370,8 +370,8 @@ def _handle_shutdown(
 
 def _poll_requests_briefly(
     request_queue: MinimalQueue,
-    pending: typing.List[_request.Submit],
-    in_flight: typing.Dict[Future, int],
+    pending: List[_request.Submit],
+    in_flight: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> bool:
     """Brief blocking poll to pick up new work without busy-spinning.
