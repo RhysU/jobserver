@@ -50,6 +50,6 @@ def preexec_set_pdeathsig() -> None:
 if __name__ == "__main__":
     basicConfig(
         level=INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     main()
