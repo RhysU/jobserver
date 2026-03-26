@@ -18,7 +18,7 @@ import unittest
 
 from multiprocessing import get_all_start_methods, get_context
 
-from .impl import (
+from ._jobserver import (
     Blocked,
     CallbackRaised,
     Future,

@@ -10,8 +10,13 @@ import queue
 import threading
 import typing
 
-from jobserver.impl import Blocked, CallbackRaised, Jobserver, MinimalQueue
-from jobserver.impl import Future as JobserverFuture
+from jobserver._jobserver import (
+    Blocked,
+    CallbackRaised,
+    Jobserver,
+    MinimalQueue,
+)
+from jobserver._jobserver import Future as JobserverFuture
 
 from . import _request
 from . import _response
