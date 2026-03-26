@@ -21,6 +21,8 @@ from ._jobserver import Future as JobserverFuture
 from . import _request
 from . import _response
 
+__all__ = ("JobserverExecutor",)
+
 T = typing.TypeVar("T")
 
 
