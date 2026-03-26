@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 
-import collections
+from collections import deque
 from collections.abc import Callable, Iterator
 import concurrent.futures
 import itertools
@@ -225,7 +225,7 @@ def _dispatch_loop(
     requests._writer.close()
     responses._reader.close()
 
-    pending: collections.deque[_request.Submit] = collections.deque()
+    pending: deque[_request.Submit] = deque()
     running: dict[Future, int] = {}
 
     shutdown = False
@@ -244,7 +244,7 @@ def _dispatch_loop(
 
 def _handle_request(
     msg: object,
-    pending: collections.deque[_request.Submit],
+    pending: deque[_request.Submit],
     responses: MinimalQueue,
 ) -> bool:
     """Handle a single request message.  Return True on Shutdown."""
@@ -263,7 +263,7 @@ def _handle_request(
 
 def _drain_requests(
     requests: MinimalQueue,
-    pending: collections.deque[_request.Submit],
+    pending: deque[_request.Submit],
     running: dict[Future, int],
     responses: MinimalQueue,
 ) -> bool:
@@ -283,7 +283,7 @@ def _drain_requests(
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: collections.deque[_request.Submit],
+    pending: deque[_request.Submit],
     running: dict[Future, int],
     responses: MinimalQueue,
 ) -> None:
@@ -351,7 +351,7 @@ def _bridge_result(
 
 
 def _handle_shutdown(
-    pending: collections.deque[_request.Submit],
+    pending: deque[_request.Submit],
     running: dict[Future, int],
     responses: MinimalQueue,
 ) -> None:
@@ -371,7 +371,7 @@ def _handle_shutdown(
 
 def _poll_requests_briefly(
     requests: MinimalQueue,
-    pending: collections.deque[_request.Submit],
+    pending: deque[_request.Submit],
     running: dict[Future, int],
     responses: MinimalQueue,
 ) -> bool:
