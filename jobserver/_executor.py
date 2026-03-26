@@ -293,7 +293,7 @@ def _dispatch_pending(
             still_pending.append(item)
             continue
         try:
-            js_future = jobserver.submit(
+            jsf = jobserver.submit(
                 fn=item.fn,
                 args=item.args,
                 kwargs=dict(item.kwargs),
@@ -313,7 +313,7 @@ def _dispatch_pending(
 
         # Dispatch succeeded -- inform receiver and track
         response_queue.put(_response.Started(work_id=item.work_id))
-        in_flight[js_future] = item.work_id
+        in_flight[jsf] = item.work_id
     return still_pending
 
 
@@ -323,27 +323,27 @@ def _poll_in_flight(
 ) -> None:
     """Poll in-flight Futures and bridge completed results."""
     completed: List[Future] = []
-    for js_future in in_flight:
+    for jsf in in_flight:
         try:
-            if js_future.done(timeout=0):
-                completed.append(js_future)
+            if jsf.done(timeout=0):
+                completed.append(jsf)
         except CallbackRaised:
             # Internal callbacks should not raise, but recover
-            completed.append(js_future)
+            completed.append(jsf)
 
-    for js_future in completed:
-        work_id = in_flight.pop(js_future)
-        _bridge_result(js_future, work_id, response_queue)
+    for jsf in completed:
+        work_id = in_flight.pop(jsf)
+        _bridge_result(jsf, work_id, response_queue)
 
 
 def _bridge_result(
-    js_future: Future,
+    jsf: Future,
     work_id: int,
     response_queue: MinimalQueue,
 ) -> None:
     """Transfer a completed jobserver Future's outcome to response queue."""
     try:
-        value = js_future.result(timeout=0)
+        value = jsf.result(timeout=0)
         response_queue.put(_response.Completed(work_id=work_id, value=value))
     except Exception as exc:
         response_queue.put(_response.Failed(work_id=work_id, exc=exc))
@@ -357,14 +357,14 @@ def _handle_shutdown(
     """Cancel pending work, drain in-flight futures, signal completion."""
     for item in pending:
         response_queue.put(_response.Cancelled(work_id=item.work_id))
-    for js_future, work_id in in_flight.items():
+    for jsf, work_id in in_flight.items():
         while True:
             try:
-                js_future.done(timeout=None)
+                jsf.done(timeout=None)
                 break
             except CallbackRaised:
                 continue
-        _bridge_result(js_future, work_id, response_queue)
+        _bridge_result(jsf, work_id, response_queue)
     response_queue.put(_response.Shutdown())
 
 
