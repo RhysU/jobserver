@@ -245,6 +245,25 @@ def _dispatch_loop(
     _LOG.debug("Dispatcher process exiting")
 
 
+def _handle_request(
+    msg: object,
+    pending: List[_request.Submit],
+    response_queue: MinimalQueue,
+) -> bool:
+    """Handle a single request message.  Return True on Shutdown."""
+    if isinstance(msg, _request.Shutdown):
+        return True
+    if isinstance(msg, _request.Cancel):
+        for item in pending:
+            response_queue.put(_response.Cancelled(work_id=item.work_id))
+        pending.clear()
+    elif isinstance(msg, _request.Submit):
+        pending.append(msg)
+    else:
+        raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
+    return False
+
+
 def _drain_requests(
     request_queue: MinimalQueue,
     pending: List[_request.Submit],
@@ -261,18 +280,8 @@ def _drain_requests(
             return False
         except EOFError:
             return True  # Parent died, treat as shutdown
-
-        if isinstance(msg, _request.Shutdown):
+        if _handle_request(msg, pending, response_queue):
             return True
-        if isinstance(msg, _request.Cancel):
-            for item in pending:
-                response_queue.put(_response.Cancelled(work_id=item.work_id))
-            pending.clear()
-            continue
-        if isinstance(msg, _request.Submit):
-            pending.append(msg)
-            continue
-        raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
 
 
 def _dispatch_pending(
@@ -384,15 +393,4 @@ def _poll_requests_briefly(
         msg = request_queue.get(timeout=0.005)
     except (queue.Empty, EOFError):
         return False
-
-    if isinstance(msg, _request.Shutdown):
-        return True
-    if isinstance(msg, _request.Cancel):
-        for item in pending:
-            response_queue.put(_response.Cancelled(work_id=item.work_id))
-        pending.clear()
-    elif isinstance(msg, _request.Submit):
-        pending.append(msg)
-    else:
-        raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
-    return False
+    return _handle_request(msg, pending, response_queue)
