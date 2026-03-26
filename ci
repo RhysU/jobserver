@@ -9,14 +9,14 @@ for ex in examples/*.py; do
     PYTHONPATH=. uv run "$ex"
 done
 
-# Unit testing runs the draft hardening tests
-uv run -m unittest -v draft.test
+# Unit testing runs the executor hardening tests
+uv run -m unittest -v jobserver.test_executor
 
 # PEP8 linting
-uvx --from flake8 flake8 jobserver/ draft/ examples/
+uvx --from flake8 flake8 jobserver/ examples/
 
 # Typehint linting requires a new-enough mypy
-uvx --from "mypy>0.770" mypy jobserver/ draft/
+uvx --from "mypy>0.770" mypy jobserver/
 
 # Finally, check for formatting issues
-uvx --from "black<25" black --check --line-length 79 --verbose jobserver/ draft/ examples/
+uvx --from "black<25" black --check --line-length 79 --verbose jobserver/ examples/
