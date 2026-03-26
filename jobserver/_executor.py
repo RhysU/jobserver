@@ -91,7 +91,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         """Submit a callable for execution and return a Future."""
         with self._lock:
             if self._shutdown:
-                raise RuntimeError("cannot submit after shutdown")
+                raise RuntimeError("Cannot submit: executor is shut down")
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
@@ -109,7 +109,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             # submit() that observed the flag in time.
             with self._lock:
                 self._futures.pop(work_id, None)
-            raise RuntimeError("cannot submit after shutdown")
+            raise RuntimeError("Cannot submit: executor is shut down")
         except Exception:
             with self._lock:
                 self._futures.pop(work_id, None)
@@ -200,7 +200,10 @@ class JobserverExecutor(concurrent.futures.Executor):
                 pass
             try:
                 future.set_exception(
-                    RuntimeError("dispatcher process terminated")
+                    RuntimeError(
+                        "Dispatcher process exited before"
+                        " delivering this future's result"
+                    )
                 )
             except concurrent.futures.InvalidStateError:
                 pass
