@@ -46,7 +46,7 @@ Examples
  * [ex6_environment](examples/ex6_environment.py) — Setting and unsetting environment variables in child processes via `env=`.
  * [ex7_timeouts](examples/ex7_timeouts.py) — Non-blocking polling, finite deadlines, and `Blocked` on `done()`, `result()`, and `submit()`.
  * [ex8_pdeathsig](examples/ex8_pdeathsig.py) — Using `preexec_fn` to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
- * [ex9_executor](examples/ex9_executor.py) — Using `JobserverExecutor` as a context manager with `map()`, `submit()`, and cancelling a pending `Future`.
+ * [ex9_executor](examples/ex9_executor.py) — `JobserverExecutor` as a context manager supporting `map()` and `c.f.Future` cancellation.
 
 Testing
 -------
