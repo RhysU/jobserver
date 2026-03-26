@@ -19,11 +19,11 @@ def main() -> None:
 
         # Submit a slow task that holds the only available slot
         future_slow = executor.submit(time.sleep, 0.5)
-        time.sleep(0.2)  # let the slow task start and claim the slot
+        time.sleep(0.5)  # let the slow task start and claim the slot
 
         # With no slot free, this future queues as PENDING and is cancellable
         future_pending = executor.submit(len, "pending")
-        time.sleep(0.1)  # let the request reach the dispatcher
+        time.sleep(0.2)  # let the request reach the dispatcher
 
         # Cancel the PENDING future before it is dispatched to a worker
         cancelled = future_pending.cancel()
