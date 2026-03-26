@@ -43,14 +43,13 @@ class TestExecutorExceptions(unittest.TestCase):
         """3.4.3: Unpicklable fn fails with an exception, not a hang.
 
         This test uses 'spawn' context where lambdas are not picklable.
-        On 'fork' context, lambdas work, so we skip.
+        The pickling error surfaces at submit() (during serialization of
+        the request into the dispatcher queue), not at result().
         """
         js = Jobserver(context="spawn", slots=2)
         with JobserverExecutor(js) as ex:
-            # lambdas are not picklable under spawn
-            f = ex.submit(lambda: 42)
             with self.assertRaises(Exception):
-                f.result(timeout=TIMEOUT)
+                ex.submit(lambda: 42)
 
 
 if __name__ == "__main__":
