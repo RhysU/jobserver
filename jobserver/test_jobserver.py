@@ -228,6 +228,14 @@ class JobserverTest(unittest.TestCase):
                 self.assertIs(mq1, mq2)
                 self.assertIs(mq1, mq3)
 
+    def test_close_get_and_close_put_are_idempotent(self) -> None:
+        """close_get() and close_put() are safe to call more than once."""
+        mq: MinimalQueue[int] = MinimalQueue()
+        mq.close_get()
+        mq.close_get()  # second call must not raise
+        mq.close_put()
+        mq.close_put()  # second call must not raise
+
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
         """Confirm increasingly large objects can be processed."""
