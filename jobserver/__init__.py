@@ -34,12 +34,14 @@ from ._jobserver import (
     MinimalQueue,
     SubmissionDied,
 )
+from ._executor import JobserverExecutor
 
 __all__ = [
     "Blocked",
     "CallbackRaised",
     "Future",
     "Jobserver",
+    "JobserverExecutor",
     "MinimalQueue",
     "SubmissionDied",
 ]
