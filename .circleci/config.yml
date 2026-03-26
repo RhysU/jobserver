@@ -9,7 +9,7 @@ executors:
         default: "3.9"
         type: string
     docker:
-      - image: ghcr.io/astral-sh/uv:python<<parameters.version>>-bookworm-slim
+      - image: ghcr.io/astral-sh/uv:python<<parameters.version>>-bookworm
     resource_class: small
 
 jobs:
@@ -24,9 +24,6 @@ jobs:
       version: <<parameters.version>>
     steps:
       - checkout
-      - run:
-          name: Install git
-          command: apt-get update -qq && apt-get install -yqq git
       - restore_cache:
           keys:
             - uv-cache-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
