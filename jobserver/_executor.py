@@ -87,7 +87,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._dispatcher.pid,
         )
 
-    def submit(  # type: ignore[override]
+    def submit(
         self,
         fn: Callable[..., T],
         /,
