@@ -45,6 +45,7 @@ from ._jobserver import (
     MinimalQueue,
     SubmissionDied,
 )
+from ._queue import absolute_deadline, resolve_context
 from ._executor import JobserverExecutor
 
 __all__ = (
@@ -55,4 +56,6 @@ __all__ = (
     "JobserverExecutor",
     "MinimalQueue",
     "SubmissionDied",
+    "absolute_deadline",
+    "resolve_context",
 )
