@@ -14,7 +14,7 @@ def main() -> None:
     jobserver = Jobserver(context="fork", slots=2)
 
     # Register callbacks that fire when the future completes
-    results = []  # type: list
+    results: list = []
     future = jobserver.submit(fn=len, args=("hello",))
     future.when_done(callback_record, results, "first")
     future.when_done(callback_record, results, "second")

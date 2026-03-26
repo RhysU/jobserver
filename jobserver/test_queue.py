@@ -25,7 +25,7 @@ class MinimalQueueTest(unittest.TestCase):
         """Copying of MinimalQueue is explicitly allowed."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
-                mq1 = MinimalQueue(context=method)  # type: MinimalQueue[int]
+                mq1: MinimalQueue[int] = MinimalQueue(context=method)
                 mq2 = copy.copy(mq1)
                 mq3 = copy.deepcopy(mq1)
                 mq1.put(1)
