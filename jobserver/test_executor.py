@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Hardening tests for JobserverExecutor.
+"""Tests for JobserverExecutor.
 
 Tests the public API of JobserverExecutor as a concurrent.futures.Executor,
 informed by CPython's own test suite, known bug reports, and common pitfalls.

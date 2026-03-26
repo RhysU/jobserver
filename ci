@@ -9,7 +9,7 @@ for ex in examples/*.py; do
     PYTHONPATH=. uv run "$ex"
 done
 
-# Unit testing runs the executor hardening tests
+# Unit testing runs the executor tests
 uv run -m unittest -v jobserver.test_executor
 
 # PEP8 linting

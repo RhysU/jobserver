@@ -36,7 +36,7 @@ from ._jobserver import (
 )
 from ._executor import JobserverExecutor
 
-__all__ = [
+__all__ = (
     "Blocked",
     "CallbackRaised",
     "Future",
@@ -44,4 +44,4 @@ __all__ = [
     "JobserverExecutor",
     "MinimalQueue",
     "SubmissionDied",
-]
+)
