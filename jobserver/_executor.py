@@ -5,12 +5,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 
+import collections
 import concurrent.futures
 import itertools
 import logging
 import queue
 import threading
-from typing import Any, Callable, Dict, Iterator, List, TypeVar
+from typing import Any, Callable, Deque, Dict, Iterator, List, TypeVar
 
 from ._jobserver import (
     Blocked,
@@ -223,13 +224,13 @@ def _dispatch_loop(
     requests._writer.close()
     responses._reader.close()
 
-    pending: List[_request.Submit] = []
+    pending: Deque[_request.Submit] = collections.deque()
     running: Dict[Future, int] = {}
 
     shutdown = False
     while not shutdown:
         shutdown = _drain_requests(requests, pending, running, responses)
-        pending = _dispatch_pending(jobserver, pending, running, responses)
+        _dispatch_pending(jobserver, pending, running, responses)
         _poll_running(running, responses)
         if not shutdown:
             shutdown = _poll_requests_briefly(
@@ -242,7 +243,7 @@ def _dispatch_loop(
 
 def _handle_request(
     msg: object,
-    pending: List[_request.Submit],
+    pending: Deque[_request.Submit],
     responses: MinimalQueue,
 ) -> bool:
     """Handle a single request message.  Return True on Shutdown."""
@@ -261,7 +262,7 @@ def _handle_request(
 
 def _drain_requests(
     requests: MinimalQueue,
-    pending: List[_request.Submit],
+    pending: Deque[_request.Submit],
     running: Dict[Future, int],
     responses: MinimalQueue,
 ) -> bool:
@@ -281,21 +282,17 @@ def _drain_requests(
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: List[_request.Submit],
+    pending: Deque[_request.Submit],
     running: Dict[Future, int],
     responses: MinimalQueue,
-) -> List[_request.Submit]:
-    """Try to dispatch pending work; return items still pending.
+) -> None:
+    """Dispatch pending work in place via popleft().
 
     Keeps c.f.Future in PENDING (cancellable) until a process is
-    spawned.  Once one item is Blocked, remaining will be too.
+    spawned.  Stops on first Blocked since remaining will be too.
     """
-    still_pending: List[_request.Submit] = []
-    blocked = False
-    for item in pending:
-        if blocked:
-            still_pending.append(item)
-            continue
+    while pending:
+        item = pending[0]
         try:
             f = jobserver.submit(
                 fn=item.fn,
@@ -305,20 +302,19 @@ def _dispatch_pending(
                 timeout=0,
             )
         except Blocked:
-            still_pending.append(item)
-            blocked = True
-            continue
+            return
         except Exception as exc:
             # Dispatch itself failed (e.g. pickling error).
             # Transition PENDING -> RUNNING -> FINISHED(exc).
+            pending.popleft()
             responses.put(_response.Started(work_id=item.work_id))
             responses.put(_response.Failed(work_id=item.work_id, exc=exc))
             continue
 
         # Dispatch succeeded -- inform receiver and track
+        pending.popleft()
         responses.put(_response.Started(work_id=item.work_id))
         running[f] = item.work_id
-    return still_pending
 
 
 def _poll_running(
@@ -354,7 +350,7 @@ def _bridge_result(
 
 
 def _handle_shutdown(
-    pending: List[_request.Submit],
+    pending: Deque[_request.Submit],
     running: Dict[Future, int],
     responses: MinimalQueue,
 ) -> None:
@@ -374,7 +370,7 @@ def _handle_shutdown(
 
 def _poll_requests_briefly(
     requests: MinimalQueue,
-    pending: List[_request.Submit],
+    pending: Deque[_request.Submit],
     running: Dict[Future, int],
     responses: MinimalQueue,
 ) -> bool:
