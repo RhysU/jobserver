@@ -157,7 +157,7 @@ class JobserverExecutor(concurrent.futures.Executor):
                     future = self._futures.get(msg.work_id)
                 if future is not None:
                     # Returns False when the future was cancelled before this
-                    # Started message arrived.  The work is already in flight
+                    # Started message arrived.  The work is already running
                     # in the dispatcher; the eventual Completed or Failed
                     # will be silently discarded by the cancelled() check
                     # below, so no further action is needed here.
@@ -225,23 +225,23 @@ def _dispatch_loop(
     response_queue._reader.close()
 
     pending: List[_request.Submit] = []
-    in_flight: Dict[Future, int] = {}
+    running: Dict[Future, int] = {}
 
     shutdown = False
     while not shutdown:
         shutdown = _drain_requests(
-            request_queue, pending, in_flight, response_queue
+            request_queue, pending, running, response_queue
         )
         pending = _dispatch_pending(
-            jobserver, pending, in_flight, response_queue
+            jobserver, pending, running, response_queue
         )
-        _poll_in_flight(in_flight, response_queue)
+        _poll_running(running, response_queue)
         if not shutdown:
             shutdown = _poll_requests_briefly(
-                request_queue, pending, in_flight, response_queue
+                request_queue, pending, running, response_queue
             )
 
-    _handle_shutdown(pending, in_flight, response_queue)
+    _handle_shutdown(pending, running, response_queue)
     _LOG.debug("Dispatcher process exiting")
 
 
@@ -267,13 +267,13 @@ def _handle_request(
 def _drain_requests(
     request_queue: MinimalQueue,
     pending: List[_request.Submit],
-    in_flight: Dict[Future, int],
+    running: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> bool:
     """Drain the request queue.  Return True when shutdown requested."""
     while True:
         # Block only when there is nothing else to do
-        block = (not pending) and (not in_flight)
+        block = (not pending) and (not running)
         try:
             msg = request_queue.get(timeout=None if block else 0)
         except queue.Empty:
@@ -287,7 +287,7 @@ def _drain_requests(
 def _dispatch_pending(
     jobserver: Jobserver,
     pending: List[_request.Submit],
-    in_flight: Dict[Future, int],
+    running: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> List[_request.Submit]:
     """Try to dispatch pending work; return items still pending.
@@ -322,17 +322,17 @@ def _dispatch_pending(
 
         # Dispatch succeeded -- inform receiver and track
         response_queue.put(_response.Started(work_id=item.work_id))
-        in_flight[jsf] = item.work_id
+        running[jsf] = item.work_id
     return still_pending
 
 
-def _poll_in_flight(
-    in_flight: Dict[Future, int],
+def _poll_running(
+    running: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> None:
-    """Poll in-flight Futures and bridge completed results."""
+    """Poll running Futures and bridge completed results."""
     completed: List[Future] = []
-    for jsf in in_flight:
+    for jsf in running:
         try:
             if jsf.done(timeout=0):
                 completed.append(jsf)
@@ -341,7 +341,7 @@ def _poll_in_flight(
             completed.append(jsf)
 
     for jsf in completed:
-        work_id = in_flight.pop(jsf)
+        work_id = running.pop(jsf)
         _bridge_result(jsf, work_id, response_queue)
 
 
@@ -360,13 +360,13 @@ def _bridge_result(
 
 def _handle_shutdown(
     pending: List[_request.Submit],
-    in_flight: Dict[Future, int],
+    running: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> None:
-    """Cancel pending work, drain in-flight futures, signal completion."""
+    """Cancel pending work, drain running futures, signal completion."""
     for item in pending:
         response_queue.put(_response.Cancelled(work_id=item.work_id))
-    for jsf, work_id in in_flight.items():
+    for jsf, work_id in running.items():
         while True:
             try:
                 jsf.done(timeout=None)
@@ -380,14 +380,14 @@ def _handle_shutdown(
 def _poll_requests_briefly(
     request_queue: MinimalQueue,
     pending: List[_request.Submit],
-    in_flight: Dict[Future, int],
+    running: Dict[Future, int],
     response_queue: MinimalQueue,
 ) -> bool:
     """Brief blocking poll to pick up new work without busy-spinning.
 
     Returns True when shutdown was requested.
     """
-    if not (in_flight or pending):
+    if not (running or pending):
         return False
     try:
         msg = request_queue.get(timeout=0.005)
