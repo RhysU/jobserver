@@ -18,14 +18,14 @@ import unittest
 
 from multiprocessing import get_all_start_methods, get_context
 
-from jobserver._jobserver import (
+from jobserver import (
     Blocked,
     CallbackRaised,
     Future,
     Jobserver,
+    MinimalQueue,
     SubmissionDied,
 )
-from jobserver._queue import MinimalQueue
 
 T = typing.TypeVar("T")
 
