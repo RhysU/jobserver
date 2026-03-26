@@ -241,7 +241,7 @@ class JobserverTest(unittest.TestCase):
         ):
             with self.subTest(method=method, check_done=check_done):
                 context = get_context(method)
-                mq = MinimalQueue(context=context)  # type: MinimalQueue[str]
+                mq: MinimalQueue[str] = MinimalQueue(context=context)
                 js = Jobserver(context=context, slots=1)
                 delay = 0.05  # Impacts test runtime on the success path
 
@@ -362,10 +362,10 @@ class JobserverTest(unittest.TestCase):
                 js = Jobserver(context=context, slots=slots)
 
                 # Alternate between submissions with and without timeouts
-                kwargs = [
+                kwargs: list[dict[str, typing.Any]] = [
                     dict(callbacks=True, timeout=None),
                     dict(callbacks=True, timeout=1000),
-                ]  # type: typing.List[typing.Dict[str, typing.Any]]
+                ]
                 fs = [
                     js.submit(fn=len, args=("x" * i,), **(kwargs[i % 2]))
                     for i in range(10 * slots)
@@ -604,7 +604,7 @@ class JobserverTest(unittest.TestCase):
         submit() with callbacks=True.
         """
         js = Jobserver(slots=4)
-        errors = []  # type: typing.List[Exception]
+        errors: list[Exception] = []
 
         def call_done(future: Future, barrier: threading.Barrier) -> None:
             """Wait at the barrier then count exceptions from done()."""
@@ -638,7 +638,7 @@ class JobserverTest(unittest.TestCase):
 
         for _ in range(20):
             f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
-            results = [None, None]  # type: typing.List
+            results: list = [None, None]
 
             def call_done(idx: int, barrier: threading.Barrier) -> None:
                 barrier.wait()
@@ -702,7 +702,7 @@ class JobserverTest(unittest.TestCase):
         Future had no explicit locking.
         """
         js = Jobserver(slots=4)
-        fired = []  # type: typing.List[str]
+        fired: list[str] = []
 
         for trial in range(20):
             fired.clear()
@@ -754,7 +754,7 @@ class JobserverTest(unittest.TestCase):
             f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
             f.when_done(self.helper_raise, ValueError, "boom")
 
-            raised_in = []  # type: typing.List[str]
+            raised_in: list[str] = []
 
             def call_done(name: str, barrier: threading.Barrier) -> None:
                 barrier.wait()
@@ -788,7 +788,7 @@ class JobserverTest(unittest.TestCase):
         """
         js = Jobserver(slots=1)
         f = js.submit(fn=len, args=((1, 2),), timeout=5)
-        order = []  # type: typing.List[str]
+        order: list[str] = []
 
         def first_cb() -> None:
             order.append("first")
