@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 9 shows JobserverExecutor as a context manager."""
 import time
+from concurrent.futures import CancelledError
 from logging import DEBUG, INFO, basicConfig, getLogger, info
 
 from jobserver import Jobserver, JobserverExecutor
@@ -18,19 +19,23 @@ def main() -> None:
         info("lengths via map: %s", lengths)
 
         # Submit a slow task that holds the only available slot
-        future_slow = executor.submit(time.sleep, 0.5)
-        time.sleep(0.5)  # let the slow task start and claim the slot
+        slow = executor.submit(time.sleep, 0.5)
 
-        # With no slot free, this future queues as PENDING and is cancellable
-        future_pending = executor.submit(len, "pending")
-        time.sleep(0.2)  # let the request reach the dispatcher
+        # Because of slow, this future queues as PENDING and is cancellable
+        pending = executor.submit(len, "pending")
 
-        # Cancel the PENDING future before it is dispatched to a worker
-        cancelled = future_pending.cancel()
-        info("future_pending cancelled: %s", cancelled)
+        # Cancel PENDING future before it is dispatched to a worker
+        cancelled = pending.cancel()
+        info("pending cancelled: %s", cancelled)
+        try:
+            pending.result()
+            assert False, "Unexpected"
+        except CancelledError:
+            pass
 
         # Collect the slow task's result; executor shuts down cleanly on exit
-        info("slow task: %s", future_slow.result())
+        info("slow task complete: %s", slow.done())
+        assert slow.result() is None
 
 
 if __name__ == "__main__":
