@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 9 shows JobserverExecutor as a context manager."""
 import time
-from logging import INFO, basicConfig, info
+from logging import DEBUG, INFO, basicConfig, getLogger, info
 
 from jobserver import Jobserver, JobserverExecutor
 
@@ -34,11 +34,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import logging
-
     basicConfig(
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    logging.getLogger("jobserver").setLevel(logging.DEBUG)
+    # Show JobserverExecutor lifecycle messages
+    getLogger("jobserver").setLevel(DEBUG)
     main()
