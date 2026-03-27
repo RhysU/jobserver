@@ -197,7 +197,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """Exception raised in callable surfaces via result()."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_raise, ValueError, "boom")
+            f = exe.submit(_raise, ValueError, "raised")
             with self.assertRaises(ValueError):
                 f.result(timeout=_TIMEOUT)
 
@@ -205,7 +205,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """exception() returns the raised exception."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_raise, ValueError, "boom")
+            f = exe.submit(_raise, ValueError, "raised")
             exc = f.exception(timeout=_TIMEOUT)
             self.assertIsInstance(exc, ValueError)
 
@@ -437,7 +437,7 @@ class TestCallbacks(unittest.TestCase):
         results: typing.List[typing.Any] = []
         event = threading.Event()
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_raise, ValueError, "boom")
+            f = exe.submit(_raise, ValueError, "raised")
 
             def cb(fut: concurrent.futures.Future) -> None:
                 results.append(type(fut.exception()))
@@ -930,7 +930,7 @@ class TestConcurrencyStress(unittest.TestCase):
             time.sleep(0.15)
 
             f_ok = exe.submit(len, (1, 2, 3))
-            f_err = exe.submit(_raise, ValueError, "boom")
+            f_err = exe.submit(_raise, ValueError, "raised")
             f_cancel = exe.submit(len, (1,))
             f_cancel.cancel()
 
