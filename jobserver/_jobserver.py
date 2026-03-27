@@ -528,12 +528,17 @@ class Jobserver:
         else:
             pairs = zip_longest(argses or (), (), fillvalue={})
 
+        collected = list(pairs) if buffersize is None else None
         return _map_generate(
             submit=self.submit,
             fn=fn,
-            pairs=iter(list(pairs)) if buffersize is None else pairs,
+            pairs=iter(collected) if collected is not None else pairs,
             chunksize=chunksize,
-            buffersize=buffersize,
+            buffersize=(
+                len(collected)
+                if collected is not None
+                else buffersize  # type: ignore[arg-type]
+            ),
             deadline=deadline,
         )
 
@@ -659,16 +664,15 @@ def _map_generate(
     fn: Callable[..., T],
     pairs: Iterator,
     chunksize: int,
-    buffersize: Optional[int],
+    buffersize: int,
     deadline: float,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
     futures: list[Future] = []
     exhausted = False
 
-    # Initial fill: everything when unbuffered, up to limit otherwise
-    limit = float("inf") if buffersize is None else buffersize
-    while len(futures) < limit:
+    # Initial fill up to buffersize
+    while len(futures) < buffersize:
         chunk = list(islice(pairs, chunksize))
         if not chunk:
             exhausted = True
