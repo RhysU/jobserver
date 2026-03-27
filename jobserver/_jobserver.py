@@ -7,7 +7,7 @@
 
 import abc
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from itertools import islice
+from itertools import islice, zip_longest
 import os
 import queue
 import signal
@@ -521,14 +521,12 @@ class Jobserver:
 
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]
-        if argses is None and kwargses is None:
-            pairs = ()
-        elif argses is None:
-            pairs = (((), k) for k in kwargses)  # type: ignore
-        elif kwargses is None:
-            pairs = ((a, {}) for a in argses)
-        else:
+        if argses is not None and kwargses is not None:
             pairs = _strict_zip(argses, kwargses)
+        elif kwargses is not None:
+            pairs = zip_longest((), kwargses, fillvalue=())
+        else:
+            pairs = zip_longest(argses or (), (), fillvalue={})
 
         # Collect eagerly unless buffersize limits submission
         if buffersize is None:
