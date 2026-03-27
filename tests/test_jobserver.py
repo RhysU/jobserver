@@ -17,6 +17,7 @@ import time
 import typing
 import unittest
 
+import multiprocessing
 from multiprocessing import get_all_start_methods, get_context
 
 from jobserver import (
@@ -356,8 +357,6 @@ class JobserverTest(unittest.TestCase):
     @staticmethod
     def helper_current_process_name() -> str:
         """Return the name of the current process."""
-        import multiprocessing
-
         return multiprocessing.current_process().name
 
     def test_worker_process_name(self) -> None:
