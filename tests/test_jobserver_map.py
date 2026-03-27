@@ -34,6 +34,11 @@ def _kw_sum(a, b=0, c=0):
     return a + b + c
 
 
+def _kw_only(*, x=0, y=0):
+    """Return x + y (keyword-only picklable helper)."""
+    return x + y
+
+
 def _slow_identity(x, delay=0.0):
     """Return x after sleeping for delay seconds."""
     time.sleep(delay)
@@ -49,6 +54,18 @@ class TestJobserverMap(unittest.TestCase):
 
     # ---- Basic functionality ----
 
+    def test_none_argses(self) -> None:
+        """map() with argses=None yields nothing."""
+        js = Jobserver(context=FAST, slots=2)
+        results = list(js.map(fn=len))
+        self.assertEqual(results, [])
+
+    def test_none_both(self) -> None:
+        """map() with both None yields nothing."""
+        js = Jobserver(context=FAST, slots=2)
+        results = list(js.map(fn=len, argses=None, kwargses=None))
+        self.assertEqual(results, [])
+
     def test_empty_argses(self) -> None:
         """map() over empty argses yields nothing."""
         js = Jobserver(context=FAST, slots=2)
@@ -60,6 +77,20 @@ class TestJobserverMap(unittest.TestCase):
         js = Jobserver(context=FAST, slots=2)
         results = list(js.map(fn=len, argses=[], kwargses=[]))
         self.assertEqual(results, [])
+
+    def test_none_argses_with_kwargses(self) -> None:
+        """map() with argses=None and kwargses provided uses empty args."""
+        js = Jobserver(context=FAST, slots=2)
+        kwargses = [{"x": 1, "y": 2}, {"x": 10, "y": 20}]
+        results = list(
+            js.map(
+                fn=_kw_only,
+                argses=None,
+                kwargses=kwargses,
+                timeout=TIMEOUT,
+            )
+        )
+        self.assertEqual(results, [3, 30])
 
     def test_basic_argses_only(self) -> None:
         """map() with argses only works like builtin map."""

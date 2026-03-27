@@ -7,6 +7,7 @@
 
 import abc
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from itertools import islice
 import os
 import queue
 import signal
@@ -282,11 +283,6 @@ def noop(*args, **kwargs) -> None:
     return None
 
 
-def _map_chunk(fn: Callable, chunk: list) -> list:
-    """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
-    return [fn(*args, **kwargs) for args, kwargs in chunk]
-
-
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
@@ -494,7 +490,7 @@ class Jobserver:
     def map(
         self,
         fn: Callable[..., T],
-        argses: Iterable = (),
+        argses: Optional[Iterable] = None,
         kwargses: Optional[Iterable] = None,
         *,
         timeout: Optional[float] = None,
@@ -508,16 +504,19 @@ class Jobserver:
 
         Each element of argses provides positional arguments and each
         element of kwargses provides keyword arguments for one call
-        to fn.  When kwargses is None, empty keyword arguments are
-        used for every call.  When both are provided, they must
-        have equal length or ValueError is raised.
+        to fn.  When argses is None, empty positional arguments are
+        used.  When kwargses is None, empty keyword arguments are
+        used.  When both are provided, they must have equal length
+        or ValueError is raised.
 
         Timeout is given in seconds from this call; if a result is
         not available by the deadline, the iterator raises
         TimeoutError.  When chunksize > 1, calls are grouped and
         dispatched together via an auxiliary worker function.
-        When buffersize is not None, at most that many submissions
-        are outstanding at any time.
+
+        Inputs are collected immediately unless buffersize limits
+        the number of outstanding submissions, in which case inputs
+        are consumed lazily as results are yielded.
         """
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
@@ -526,18 +525,23 @@ class Jobserver:
 
         deadline = absolute_deadline(relative_timeout=timeout)
 
-        # Collect inputs eagerly per Executor.map contract
-        if kwargses is None:
-            pairs: list[tuple] = [(a, {}) for a in argses]
+        # Build a (possibly lazy) iterator of (args, kwargs) pairs
+        pairs: Iterable[tuple]
+        if argses is None and kwargses is None:
+            pairs = ()
+        elif argses is None:
+            pairs = (((), k) for k in kwargses)  # type: ignore
+        elif kwargses is None:
+            pairs = ((a, {}) for a in argses)
         else:
-            as_list = list(argses)
-            ks_list = list(kwargses)
-            if len(as_list) != len(ks_list):
-                raise ValueError("argses and kwargses must have equal length")
-            pairs = list(zip(as_list, ks_list))
+            pairs = _strict_zip(argses, kwargses)
+
+        # Collect eagerly unless buffersize limits submission
+        if buffersize is None:
+            pairs = list(pairs)
 
         return _map_generate(
-            self.submit, fn, pairs, chunksize, buffersize, deadline
+            self.submit, fn, iter(pairs), chunksize, buffersize, deadline
         )
 
     def reclaim_resources(self) -> None:
@@ -639,27 +643,37 @@ class Jobserver:
         return retval
 
 
+def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
+    """Zip raising ValueError when the two iterables differ in length."""
+    a_it, b_it = iter(a), iter(b)
+    sentinel = object()
+    for a_val in a_it:
+        b_val = next(b_it, sentinel)
+        if b_val is sentinel:
+            raise ValueError("argses and kwargses must have equal length")
+        yield (a_val, b_val)
+    if next(b_it, sentinel) is not sentinel:
+        raise ValueError("argses and kwargses must have equal length")
+
+
+def _map_chunk(fn: Callable, chunk: list) -> list:
+    """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
+    return [fn(*args, **kwargs) for args, kwargs in chunk]
+
+
 def _map_generate(
     submit: Callable[..., Future[T]],
     fn: Callable[..., T],
-    pairs: list,
+    pairs: Iterator,
     chunksize: int,
     buffersize: Optional[int],
     deadline: float,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
-    if not pairs:
-        return
 
-    # Group all pairs into chunks, even when chunksize == 1
-    end = chunksize
-    chunks: list = []
-    for i in range(0, len(pairs), chunksize):
-        chunks.append(pairs[i:end])
-        end += chunksize
-
-    n = len(chunks)
-    futures: list[Optional[Future]] = [None] * n
+    def _next_chunk() -> Optional[list]:
+        chunk = list(islice(pairs, chunksize))
+        return chunk if chunk else None
 
     def _submit(chunk: list) -> Future:
         remaining = deadline - time.monotonic()
@@ -679,16 +693,30 @@ def _map_generate(
         except Blocked:
             raise TimeoutError()
 
-    # Fill initial buffer
-    window = n if buffersize is None else buffersize
-    head = min(window, n)
-    for i in range(head):
-        futures[i] = _submit(chunks[i])
+    # Initial fill: everything when unbuffered, up to limit otherwise
+    futures: list[Future] = []
+    if buffersize is None:
+        while True:
+            chunk = _next_chunk()
+            if chunk is None:
+                break
+            futures.append(_submit(chunk))
+    else:
+        for _ in range(buffersize):
+            chunk = _next_chunk()
+            if chunk is None:
+                break
+            futures.append(_submit(chunk))
 
-    # Yield results, submitting replacements as we go
-    for i in range(n):
-        nxt = i + window
-        if nxt < n:
-            futures[nxt] = _submit(chunks[nxt])
-        yield from _result(futures[i])  # type: ignore[arg-type]
-        futures[i] = None  # Allow GC
+    # Yield results
+    if buffersize is None:
+        # All work already submitted; iterate without modification
+        for future in futures:
+            yield from _result(future)
+    else:
+        # Sliding window: submit a replacement before each yield
+        while futures:
+            chunk = _next_chunk()
+            if chunk is not None:
+                futures.append(_submit(chunk))
+            yield from _result(futures.pop(0))
