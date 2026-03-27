@@ -299,36 +299,24 @@ def _map_generate(
     if not pairs:
         return
 
-    # Build submission units (single pairs or chunks)
-    if chunksize == 1:
-        units: list = pairs
-    else:
-        end = chunksize
-        units = []
-        for i in range(0, len(pairs), chunksize):
-            units.append(pairs[i:end])
-            end += chunksize
+    # Group all pairs into chunks, even when chunksize == 1
+    end = chunksize
+    chunks: list = []
+    for i in range(0, len(pairs), chunksize):
+        chunks.append(pairs[i:end])
+        end += chunksize
 
-    n = len(units)
+    n = len(chunks)
     futures: list[Optional["Future"]] = [None] * n
 
-    def _submit(unit: Any) -> "Future":
+    def _submit(chunk: list) -> "Future":
         remaining = deadline - time.monotonic()
         try:
-            if chunksize == 1:
-                args, kwargs = unit
-                return submit(
-                    fn=fn,
-                    args=args,
-                    kwargs=kwargs,
-                    timeout=remaining,
-                )
-            else:
-                return submit(
-                    fn=_map_chunk,
-                    args=(fn, unit),
-                    timeout=remaining,
-                )
+            return submit(
+                fn=_map_chunk,
+                args=(fn, chunk),
+                timeout=remaining,
+            )
         except Blocked:
             raise TimeoutError()
 
@@ -343,19 +331,15 @@ def _map_generate(
     window = n if buffersize is None else buffersize
     head = min(window, n)
     for i in range(head):
-        futures[i] = _submit(units[i])
+        futures[i] = _submit(chunks[i])
 
     # Yield results, submitting replacements as we go
     for i in range(n):
         nxt = i + window
         if nxt < n:
-            futures[nxt] = _submit(units[nxt])
-        value = _result(futures[i])  # type: ignore[arg-type]
+            futures[nxt] = _submit(chunks[nxt])
+        yield from _result(futures[i])  # type: ignore[arg-type]
         futures[i] = None  # Allow GC
-        if chunksize == 1:
-            yield value
-        else:
-            yield from value
 
 
 class Jobserver:
