@@ -97,9 +97,7 @@ def helper_nonblocking(mq: MinimalQueue[str]) -> str:
     return mq.get(timeout=60.0)
 
 
-def helper_callback(
-    lizt: typing.List, index: int, increment: int
-) -> None:
+def helper_callback(lizt: typing.List, index: int, increment: int) -> None:
     """Helper permitting tests to observe callbacks firing."""
     lizt[index] += increment
 
@@ -141,9 +139,7 @@ def helper_recurse(js: Jobserver, max_depth: int) -> int:
     if max_depth < 1:
         return 0
     try:
-        f = js.submit(
-            fn=helper_recurse, args=(js, max_depth - 1), timeout=0
-        )
+        f = js.submit(fn=helper_recurse, args=(js, max_depth - 1), timeout=0)
     except Blocked:
         return 0
     return 1 + f.result(timeout=None)

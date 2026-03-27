@@ -344,8 +344,7 @@ class TestResourceLeaks(unittest.TestCase):
             # Wait for the dispatcher to be alive
             deadline = time.monotonic() + 5
             while (
-                not exe._dispatcher.is_alive()
-                and time.monotonic() < deadline
+                not exe._dispatcher.is_alive() and time.monotonic() < deadline
             ):
                 time.sleep(0.01)
             self.assertTrue(exe._dispatcher.is_alive())
