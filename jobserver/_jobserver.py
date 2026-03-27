@@ -407,6 +407,7 @@ class Jobserver:
                 args=((send, dict(env), preexec_fn, fn) + tuple(args)),
                 kwargs=kwargs,
                 daemon=False,
+                name="Jobserver-worker",
             )
             future: Future[T] = Future(process, recv)
             process.start()

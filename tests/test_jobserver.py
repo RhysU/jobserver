@@ -353,6 +353,21 @@ class JobserverTest(unittest.TestCase):
                 self.assertEqual("5678", f.result())
                 self.assertEqual("SENTINEL", k.result())
 
+    @staticmethod
+    def helper_current_process_name() -> str:
+        """Return the name of the current process."""
+        import multiprocessing
+
+        return multiprocessing.current_process().name
+
+    def test_worker_process_name(self) -> None:
+        """Worker process name is 'Jobserver-worker'."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=self.helper_current_process_name)
+                self.assertEqual("Jobserver-worker", f.result())
+
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
         for method in get_all_start_methods():
