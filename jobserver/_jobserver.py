@@ -299,7 +299,10 @@ class Jobserver:
         context: Union[None, str, BaseContext] = None,
         slots: Optional[int] = None,
         *,
-        env: Iterable[tuple[str, Optional[str]]] = (),
+        env: Union[
+            Mapping[str, Optional[str]],
+            Iterable[tuple[str, Optional[str]]],
+        ] = (),
         preexec_fn: Callable[[], None] = noop,
         sleep_fn: Callable[[], Optional[float]] = noop,
     ) -> None:
@@ -392,7 +395,10 @@ class Jobserver:
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
-        env: Iterable[tuple[str, Optional[str]]] | None = None,
+        env: Optional[Union[
+            Mapping[str, Optional[str]],
+            Iterable[tuple[str, Optional[str]]],
+        ]] = None,
         preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
         sleep_fn: Optional[  # None uses instance default
             Callable[[], Optional[float]]
