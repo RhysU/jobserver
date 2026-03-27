@@ -6,14 +6,22 @@
 """Example 9 shows JobserverExecutor as a context manager."""
 import time
 from concurrent.futures import CancelledError
+import os
 from logging import DEBUG, INFO, basicConfig, getLogger, info
 
 from jobserver import Jobserver, JobserverExecutor
 
 
+def worker_start() -> None:
+    """Log a message from each worker process at startup."""
+    info("worker started (pid=%d)", os.getpid())
+
+
 def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
-    with JobserverExecutor(Jobserver(context="spawn", slots=1)) as executor:
+    # Jobserver configuration applies to any JobserverExecutor backed by it.
+    js = Jobserver(context="spawn", slots=1, preexec_fn=worker_start)
+    with JobserverExecutor(js) as executor:
         # map() applies a function to every item and yields results in order
         lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
         info("lengths via map: %s", lengths)

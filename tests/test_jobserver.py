@@ -297,6 +297,10 @@ class JobserverTest(unittest.TestCase):
         return os.environ.get(key, "SENTINEL")
 
     @staticmethod
+    def helper_noop() -> None:
+        """A do-nothing callable picklable for spawn/forkserver contexts."""
+
+    @staticmethod
     def helper_preexec_fn() -> None:
         """Mutates os.environ so that the change can be observed."""
         os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
@@ -941,6 +945,74 @@ class JobserverTest(unittest.TestCase):
                     self.assertIn(f"cb-{i}", str(c.exception.__cause__))
                 self.assertTrue(f.done(timeout=0))
                 self.assertEqual(f.result(), 1)
+
+    def test_init_defaults_used_by_submit(self) -> None:
+        """env, preexec_fn, sleep_fn defaults set in __init__ apply in submit."""
+        key = "JOBSERVER_TEST_ENVIRON"
+        self.assertIsNone(os.environ.get(key, None))
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                # env default: child sees the key without submit() specifying it
+                js = Jobserver(
+                    context=method, slots=1, env={key: "FROM_INIT"}
+                )
+                f = js.submit(fn=self.helper_envget, args=(key,))
+                self.assertEqual("FROM_INIT", f.result())
+
+                # preexec_fn default: helper sets key; submit() need not repeat it
+                js = Jobserver(
+                    context=method,
+                    slots=1,
+                    preexec_fn=self.helper_preexec_fn,
+                )
+                g = js.submit(fn=self.helper_envget, args=(key,))
+                self.assertEqual("PREEXEC_FN", g.result())
+
+                # sleep_fn default: a permanently-vetoing fn blocks every submit()
+                js = Jobserver(
+                    context=method, slots=1, sleep_fn=lambda: 99.0
+                )
+                with self.assertRaises(Blocked):
+                    js.submit(fn=len, timeout=0.0)
+
+    def test_submit_overrides_init_defaults(self) -> None:
+        """submit() kwargs override the instance defaults set in __init__."""
+        key = "JOBSERVER_TEST_ENVIRON"
+        self.assertIsNone(os.environ.get(key, None))
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                # env override: submit-level value replaces the init default
+                js = Jobserver(
+                    context=method, slots=1, env={key: "FROM_INIT"}
+                )
+                f = js.submit(
+                    fn=self.helper_envget,
+                    args=(key,),
+                    env={key: "FROM_SUBMIT"},
+                )
+                self.assertEqual("FROM_SUBMIT", f.result())
+
+                # preexec_fn override: submit-level noop suppresses the helper
+                js = Jobserver(
+                    context=method,
+                    slots=1,
+                    preexec_fn=self.helper_preexec_fn,
+                )
+                g = js.submit(
+                    fn=self.helper_envget,
+                    args=(key,),
+                    preexec_fn=self.helper_noop,
+                )
+                self.assertEqual("SENTINEL", g.result())
+
+                # sleep_fn override: submit-level permissive fn unblocks work
+                js = Jobserver(
+                    context=method, slots=1, sleep_fn=lambda: 99.0
+                )
+                h = js.submit(
+                    fn=len, args=((1,),), sleep_fn=lambda: None
+                )
+                self.assertEqual(1, h.result())
 
     def test_sleep_fn_raises_propagates(self) -> None:
         """Exception from sleep_fn propagates out of submit()."""
