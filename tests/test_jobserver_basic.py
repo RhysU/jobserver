@@ -321,6 +321,13 @@ class TestJobserverBasic(unittest.TestCase):
                 # copy.copy(...) and copy.deepcopy(...) return the original.
                 self.assertIs(js1, js2)
                 self.assertIs(js1, js3)
+                # Round-trip through __getstate__/__setstate__
+                # (bare pickle.dumps fails because Semaphores only
+                # allow pickling during process spawning)
+                js4 = Jobserver.__new__(Jobserver)
+                js4.__setstate__(js1.__getstate__())
+                i = js4.submit(fn=len, args=((1, 2),))
+                self.assertEqual(2, i.result())
 
     def test_jobserver_as_submit_argument(self) -> None:
         """Ensure instances with in-flight Futures passable as arguments."""
