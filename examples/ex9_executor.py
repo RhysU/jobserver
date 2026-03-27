@@ -19,8 +19,7 @@ def worker_start() -> None:
 
 def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
-    # Jobserver configuration—slots, start method, preexec_fn, etc.—applies
-    # to the JobserverExecutor backed by it.
+    # Jobserver configuration applies to any JobserverExecutor backed by it.
     js = Jobserver(context="spawn", slots=1, preexec_fn=worker_start)
     with JobserverExecutor(js) as executor:
         # map() applies a function to every item and yields results in order
