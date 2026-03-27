@@ -64,7 +64,7 @@ class TestJobserverMap(unittest.TestCase):
     def test_empty_argses(self) -> None:
         """map() over empty argses yields nothing."""
         js = Jobserver(context=FAST, slots=2)
-        results = list(js.map(fn=len, argses=[]))
+        results = list(js.map(fn=len, argses=[], buffersize=None))
         self.assertEqual(results, [])
 
     def test_empty_both(self) -> None:
@@ -149,24 +149,15 @@ class TestJobserverMap(unittest.TestCase):
     def test_single_element(self) -> None:
         """map() over a single element works."""
         js = Jobserver(context=FAST, slots=1)
-        results = list(js.map(fn=len, argses=[((1, 2),)], timeout=TIMEOUT))
-        self.assertEqual(results, [2])
-
-    def test_empty_default_buffersize(self) -> None:
-        """Empty input with default buffersize=None yields nothing."""
-        js = Jobserver(context=FAST, slots=2)
-        results = list(js.map(fn=len, argses=[], buffersize=None))
-        self.assertEqual(results, [])
-
-    def test_single_element_default_buffersize(self) -> None:
-        """Length-1 input with default buffersize=None works."""
-        js = Jobserver(context=FAST, slots=1)
         results = list(
             js.map(
-                fn=len, argses=[((1, 2, 3),)], buffersize=None, timeout=TIMEOUT
+                fn=len,
+                argses=[((1, 2),)],
+                buffersize=None,
+                timeout=TIMEOUT,
             )
         )
-        self.assertEqual(results, [3])
+        self.assertEqual(results, [2])
 
     # ---- Iterator semantics ----
 
