@@ -287,19 +287,19 @@ class TestJobserverWorker(unittest.TestCase):
                 f.done(timeout=5)
 
     def test_init_defaults_used_by_submit(self) -> None:
-        """env, preexec_fn, sleep_fn defaults set in __init__ apply in submit."""
+        """Defaults set in __init__ apply in submit."""
         key = "JOBSERVER_TEST_ENVIRON"
         self.assertIsNone(os.environ.get(key, None))
         for method in get_all_start_methods():
             with self.subTest(method=method):
-                # env default: child sees the key without submit() specifying it
+                # env: child sees key without submit() specifying it
                 js = Jobserver(
                     context=method, slots=1, env={key: "FROM_INIT"}
                 )
                 f = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                 self.assertEqual("FROM_INIT", f.result())
 
-                # preexec_fn default: helper sets key; submit() need not repeat it
+                # preexec_fn: helper sets key; no repeat needed
                 js = Jobserver(
                     context=method,
                     slots=1,
@@ -308,7 +308,7 @@ class TestJobserverWorker(unittest.TestCase):
                 g = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                 self.assertEqual("PREEXEC_FN", g.result())
 
-                # sleep_fn default: a permanently-vetoing fn blocks every submit()
+                # sleep_fn: a vetoing fn blocks every submit()
                 js = Jobserver(
                     context=method, slots=1, sleep_fn=lambda: 99.0
                 )
@@ -353,4 +353,3 @@ class TestJobserverWorker(unittest.TestCase):
                     fn=len, args=((1,),), sleep_fn=lambda: None
                 )
                 self.assertEqual(1, h.result())
-
