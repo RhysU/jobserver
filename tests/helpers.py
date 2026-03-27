@@ -56,40 +56,6 @@ def silence_forkserver() -> None:
 # ---- Module-level helpers (must be picklable for spawn) ----
 
 
-def raise_(klass: type, *args: typing.Any) -> typing.Any:
-    raise klass(*args)
-
-
-def return_value(x: typing.Any) -> typing.Any:
-    return x
-
-
-def return_exception() -> ValueError:
-    return ValueError("not raised")
-
-
-def self_kill() -> None:
-    os.kill(os.getpid(), signal.SIGKILL)
-
-
-def sys_exit(code: int) -> None:
-    sys.exit(code)
-
-
-def sleep(secs: float) -> str:
-    time.sleep(secs)
-    return "done"
-
-
-def sleep_return(secs: float, val: typing.Any) -> typing.Any:
-    time.sleep(secs)
-    return val
-
-
-def add(a: int, b: int) -> int:
-    return a + b
-
-
 def round_trip_bytes(n: int) -> bytes:
     """Create and return n bytes."""
     return b"x" * n
@@ -152,11 +118,6 @@ def helper_signal(sig: signal.Signals) -> typing.NoReturn:
     """Helper sending the given signal to the current process."""
     os.kill(os.getpid(), sig)
     assert False, "Unreachable"
-
-
-def helper_envget(key: str) -> str:
-    """Retrieve os.environ.get(key, "SENTINEL")."""
-    return os.environ.get(key, "SENTINEL")
 
 
 def helper_noop() -> None:

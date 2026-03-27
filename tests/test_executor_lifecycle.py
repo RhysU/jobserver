@@ -11,6 +11,7 @@ import concurrent.futures
 import gc
 import multiprocessing
 import os
+import signal
 import threading
 import time
 import typing
@@ -21,9 +22,7 @@ from jobserver import JobserverExecutor, Jobserver
 from .helpers import (
     FAST,
     TIMEOUT,
-    self_kill,
     silence_forkserver,
-    sleep,
 )
 
 
@@ -44,7 +43,7 @@ class TestCancellation(unittest.TestCase):
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            exe.submit(sleep, 0.4)
+            exe.submit(time.sleep,0.4)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -60,7 +59,7 @@ class TestCancellation(unittest.TestCase):
         """A RUNNING future cannot be cancelled."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(sleep, 0.3)
+            f = exe.submit(time.sleep,0.3)
             deadline = time.monotonic() + 5
             while not f.running() and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -90,7 +89,7 @@ class TestCancellation(unittest.TestCase):
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            blocker = exe.submit(sleep, 1.0)
+            blocker = exe.submit(time.sleep,1.0)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -124,7 +123,7 @@ class TestShutdown(unittest.TestCase):
         """shutdown(wait=False) returns immediately."""
         js = Jobserver(context=FAST, slots=2)
         exe = JobserverExecutor(js)
-        f = exe.submit(sleep, 1.0)
+        f = exe.submit(time.sleep,1.0)
         t0 = time.monotonic()
         exe.shutdown(wait=False)
         elapsed = time.monotonic() - t0
@@ -136,7 +135,7 @@ class TestShutdown(unittest.TestCase):
         """shutdown(cancel_futures=True) cancels pending."""
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
-        blocker = exe.submit(sleep, 1.0)
+        blocker = exe.submit(time.sleep,1.0)
         time.sleep(0.2)
         pending = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=True, cancel_futures=True)
@@ -154,7 +153,7 @@ class TestShutdown(unittest.TestCase):
         """shutdown(wait=False, cancel_futures=True)."""
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
-        exe.submit(sleep, 0.3)
+        exe.submit(time.sleep,0.3)
         time.sleep(0.1)
         pending = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=False, cancel_futures=True)
@@ -232,7 +231,7 @@ class TestShutdown(unittest.TestCase):
         """wait() does not hang after cancel_futures."""
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
-        exe.submit(sleep, 0.3)
+        exe.submit(time.sleep,0.3)
         time.sleep(0.1)
         futures = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=True, cancel_futures=True)
@@ -326,7 +325,7 @@ class TestResourceLeaks(unittest.TestCase):
         baseline = len(multiprocessing.active_children())
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(self_kill)
+            f = exe.submit(signal.raise_signal, signal.SIGKILL)
             with self.assertRaises(Exception):
                 f.result(timeout=TIMEOUT)
         time.sleep(0.5)

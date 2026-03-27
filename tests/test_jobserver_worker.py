@@ -29,7 +29,6 @@ from jobserver import (
 from .helpers import (
     helper_callback,
     helper_current_process_name,
-    helper_envget,
     helper_noop,
     helper_nonblocking,
     helper_preexec_fn,
@@ -174,36 +173,36 @@ class TestJobserverWorker(unittest.TestCase):
                 js = Jobserver(context=method, slots=1)
                 # Notice f sets, g confirms unset, and h re-sets they key.
                 f = js.submit(
-                    fn=helper_envget, args=(key,), env={key: "5678"}
+                    fn=os.getenv, args=(key, "SENTINEL"), env={key: "5678"}
                 )
-                g = js.submit(fn=helper_envget, args=(key,), env={})
+                g = js.submit(fn=os.getenv, args=(key, "SENTINEL"), env={})
                 h = js.submit(
-                    fn=helper_envget, args=(key,), env={key: "1234"}
+                    fn=os.getenv, args=(key, "SENTINEL"), env={key: "1234"}
                 )
                 # Notice that i then uses preexec_fn, not env, to set the key.
                 i = js.submit(
-                    fn=helper_envget,
-                    args=(key,),
+                    fn=os.getenv,
+                    args=(key, "SENTINEL"),
                     preexec_fn=helper_preexec_fn,
                 )
                 # Then j uses both to confirm env updated before preexec_fn.
                 j = js.submit(
-                    fn=helper_envget,
-                    args=(key,),
+                    fn=os.getenv,
+                    args=(key, "SENTINEL"),
                     preexec_fn=helper_preexec_fn,
                     env={key: "OVERWRITTEN"},
                 )
                 # Next, k sets then unsets to check unsetting and Iterables.
                 k = js.submit(
-                    fn=helper_envget,
-                    args=(key,),
+                    fn=os.getenv,
+                    args=(key, "SENTINEL"),
                     env=((key, "OVERWRITTEN"), (key, None)),
                 )
                 # Variable l is skipped because flake8 complains otherwise
                 # Lastly, m confirms removal of a possibly pre-existing key
                 m = js.submit(
-                    fn=helper_envget,
-                    args=(key,),
+                    fn=os.getenv,
+                    args=(key, "SENTINEL"),
                     env=((key, None),),
                 )
                 # Checking the various results in an arbitrary order
@@ -297,7 +296,7 @@ class TestJobserverWorker(unittest.TestCase):
                 js = Jobserver(
                     context=method, slots=1, env={key: "FROM_INIT"}
                 )
-                f = js.submit(fn=helper_envget, args=(key,))
+                f = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                 self.assertEqual("FROM_INIT", f.result())
 
                 # preexec_fn default: helper sets key; submit() need not repeat it
@@ -306,7 +305,7 @@ class TestJobserverWorker(unittest.TestCase):
                     slots=1,
                     preexec_fn=helper_preexec_fn,
                 )
-                g = js.submit(fn=helper_envget, args=(key,))
+                g = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                 self.assertEqual("PREEXEC_FN", g.result())
 
                 # sleep_fn default: a permanently-vetoing fn blocks every submit()
@@ -327,8 +326,8 @@ class TestJobserverWorker(unittest.TestCase):
                     context=method, slots=1, env={key: "FROM_INIT"}
                 )
                 f = js.submit(
-                    fn=helper_envget,
-                    args=(key,),
+                    fn=os.getenv,
+                    args=(key, "SENTINEL"),
                     env={key: "FROM_SUBMIT"},
                 )
                 self.assertEqual("FROM_SUBMIT", f.result())
@@ -340,8 +339,8 @@ class TestJobserverWorker(unittest.TestCase):
                     preexec_fn=helper_preexec_fn,
                 )
                 g = js.submit(
-                    fn=helper_envget,
-                    args=(key,),
+                    fn=os.getenv,
+                    args=(key, "SENTINEL"),
                     preexec_fn=helper_noop,
                 )
                 self.assertEqual("SENTINEL", g.result())

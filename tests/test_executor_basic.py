@@ -9,6 +9,9 @@ Tests the fundamental data-flow and single-future behaviour of
 JobserverExecutor as a concurrent.futures.Executor.
 """
 import concurrent.futures
+import operator
+import signal
+import sys
 import threading
 import time
 import typing
@@ -19,18 +22,11 @@ from jobserver import JobserverExecutor, Jobserver
 from .helpers import (
     FAST,
     TIMEOUT,
-    add,
     barrier_wait,
-    raise_,
+    helper_raise,
     raising_at_position,
-    return_exception,
-    return_value,
     round_trip_bytes,
-    self_kill,
     silence_forkserver,
-    sleep,
-    sleep_return,
-    sys_exit,
 )
 
 
@@ -96,7 +92,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """Exception raised in callable surfaces via result()."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(raise_, ValueError, "raised")
+            f = exe.submit(helper_raise, ValueError, "raised")
             with self.assertRaises(ValueError):
                 f.result(timeout=TIMEOUT)
 
@@ -104,7 +100,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """exception() returns the raised exception."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(raise_, ValueError, "raised")
+            f = exe.submit(helper_raise, ValueError, "raised")
             exc = f.exception(timeout=TIMEOUT)
             self.assertIsInstance(exc, ValueError)
 
@@ -119,7 +115,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """An Exception can be returned (not raised)."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(return_exception)
+            f = exe.submit(ValueError, "not raised")
             result = f.result(timeout=TIMEOUT)
             self.assertIsInstance(result, ValueError)
             self.assertEqual(("not raised",), result.args)
@@ -128,7 +124,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """Worker killed by signal does not poison the executor."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(self_kill)
+            f = exe.submit(signal.raise_signal, signal.SIGKILL)
             with self.assertRaises(Exception):
                 f.result(timeout=TIMEOUT)
             # Executor must recover for multiple subsequent tasks
@@ -140,7 +136,7 @@ class TestExceptionPropagation(unittest.TestCase):
         """Worker exits via sys.exit()."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(sys_exit, 1)
+            f = exe.submit(sys.exit, 1)
             with self.assertRaises(Exception):
                 f.result(timeout=TIMEOUT)
             # Executor must remain usable
@@ -189,7 +185,7 @@ class TestFutureStateQueries(unittest.TestCase):
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            exe.submit(sleep, 0.4)
+            exe.submit(time.sleep,0.4)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -266,7 +262,7 @@ class TestCallbacks(unittest.TestCase):
         results: typing.List[typing.Any] = []
         event = threading.Event()
         with JobserverExecutor(js) as exe:
-            f = exe.submit(raise_, ValueError, "raised")
+            f = exe.submit(helper_raise, ValueError, "raised")
 
             def cb(fut: concurrent.futures.Future) -> None:
                 results.append(type(fut.exception()))
@@ -283,7 +279,7 @@ class TestCallbacks(unittest.TestCase):
         results: typing.List[bool] = []
         event = threading.Event()
         try:
-            exe.submit(sleep, 0.4)
+            exe.submit(time.sleep,0.4)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -446,7 +442,7 @@ class TestMap(unittest.TestCase):
         """Unequal-length iterables stop at shortest."""
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            result = list(exe.map(add, [1, 2, 3], [10, 20]))
+            result = list(exe.map(operator.add, [1, 2, 3], [10, 20]))
         self.assertEqual([11, 22], result)
 
     def test_partially_consumed_iterator(self) -> None:
