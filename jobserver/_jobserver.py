@@ -499,24 +499,18 @@ class Jobserver:
     ) -> Iterator[T]:
         """Map fn over argses and kwargses, yielding results in order.
 
-        Similar to concurrent.futures.Executor.map but adapted for
-        the Jobserver.submit() API that separates args from kwargs.
-
         Each element of argses provides positional arguments and each
         element of kwargses provides keyword arguments for one call
-        to fn.  When argses is None, empty positional arguments are
-        used.  When kwargses is None, empty keyword arguments are
-        used.  When both are provided, they must have equal length
-        or ValueError is raised.
-
-        Timeout is given in seconds from this call; if a result is
-        not available by the deadline, the iterator raises
-        TimeoutError.  When chunksize > 1, calls are grouped and
-        dispatched together via an auxiliary worker function.
+        to fn.  Non-None argses and kwargses must have equal length.
 
         Inputs are collected immediately unless buffersize limits
         the number of outstanding submissions, in which case inputs
         are consumed lazily as results are yielded.
+
+        Timeout is given in seconds from this call; if a result is
+        not available by the deadline, the iterator raises
+        TimeoutError.  Function calls are sent to workers in groups
+        of chunksize.
         """
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
