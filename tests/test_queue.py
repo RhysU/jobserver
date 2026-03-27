@@ -3,10 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Tests for MinimalQueue, resolve_context, and absolute_deadline.
+"""MinimalQueue and low-level utility tests.
 
-MinimalQueue is tested heavily via the Jobserver and JobserverExecutor
-tests hence this test file is brief.
+MinimalQueue receives heavy indirect coverage through the Jobserver and
+JobserverExecutor suites, so this file only covers its own API surface
+and the resolve_context / absolute_deadline helpers.
 """
 import copy
 import time
