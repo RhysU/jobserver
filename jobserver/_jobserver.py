@@ -670,31 +670,28 @@ def _map_generate(
     deadline: float,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
-    futures: deque[Future] = deque()
+    try:
+        futures: deque[Future] = deque()
 
-    def _submit(chunk: list) -> Future:
-        try:
+        def _submit(chunk: list) -> Future:
             return submit(
                 fn=_map_chunk,
                 args=(fn, chunk),
                 timeout=deadline - time.monotonic(),
             )
-        except Blocked:
-            raise TimeoutError()
 
-    # Initial fill up to buffersize
-    while len(futures) < buffersize and (
-        chunk := list(islice(pairs, chunksize))
-    ):
-        futures.append(_submit(chunk))
-
-    # Yield results, submitting replacements
-    while futures:
-        if chunk := list(islice(pairs, chunksize)):
+        # Initial fill up to buffersize
+        while len(futures) < buffersize and (
+            chunk := list(islice(pairs, chunksize))
+        ):
             futures.append(_submit(chunk))
-        try:
+
+        # Yield results, submitting replacements
+        while futures:
+            if chunk := list(islice(pairs, chunksize)):
+                futures.append(_submit(chunk))
             yield from futures.popleft().result(
                 timeout=deadline - time.monotonic()
             )
-        except Blocked:
-            raise TimeoutError()
+    except Blocked:
+        raise TimeoutError()
