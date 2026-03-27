@@ -663,53 +663,47 @@ def _map_generate(
     deadline: float,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
+    futures: list[Future] = []
+    exhausted = False
 
-    def _next_chunk() -> Optional[list]:
+    # Initial fill: everything when unbuffered, up to limit otherwise
+    limit = float("inf") if buffersize is None else buffersize
+    while len(futures) < limit:
         chunk = list(islice(pairs, chunksize))
-        return chunk if chunk else None
-
-    def _submit(chunk: list) -> Future:
-        remaining = deadline - time.monotonic()
+        if not chunk:
+            exhausted = True
+            break
         try:
-            return submit(
-                fn=_map_chunk,
-                args=(fn, chunk),
-                timeout=remaining,
+            futures.append(
+                submit(
+                    fn=_map_chunk,
+                    args=(fn, chunk),
+                    timeout=deadline - time.monotonic(),
+                )
             )
         except Blocked:
             raise TimeoutError()
 
-    def _result(future: Future) -> Any:
-        remaining = deadline - time.monotonic()
+    # Yield results, submitting replacements when buffered
+    while futures:
+        if not exhausted:
+            chunk = list(islice(pairs, chunksize))
+            if chunk:
+                try:
+                    futures.append(
+                        submit(
+                            fn=_map_chunk,
+                            args=(fn, chunk),
+                            timeout=deadline - time.monotonic(),
+                        )
+                    )
+                except Blocked:
+                    raise TimeoutError()
+            else:
+                exhausted = True
         try:
-            return future.result(timeout=remaining)
+            yield from futures.pop(0).result(
+                timeout=deadline - time.monotonic()
+            )
         except Blocked:
             raise TimeoutError()
-
-    # Initial fill: everything when unbuffered, up to limit otherwise
-    futures: list[Future] = []
-    if buffersize is None:
-        while True:
-            chunk = _next_chunk()
-            if chunk is None:
-                break
-            futures.append(_submit(chunk))
-    else:
-        for _ in range(buffersize):
-            chunk = _next_chunk()
-            if chunk is None:
-                break
-            futures.append(_submit(chunk))
-
-    # Yield results
-    if buffersize is None:
-        # All work already submitted; iterate without modification
-        for future in futures:
-            yield from _result(future)
-    else:
-        # Sliding window: submit a replacement before each yield
-        while futures:
-            chunk = _next_chunk()
-            if chunk is not None:
-                futures.append(_submit(chunk))
-            yield from _result(futures.pop(0))
