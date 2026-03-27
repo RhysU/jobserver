@@ -604,7 +604,7 @@ class TestShutdown(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
         blocker = exe.submit(_sleep, 1.0)
-        time.sleep(0.1)
+        time.sleep(0.2)
         pending = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=True, cancel_futures=True)
         # blocker was RUNNING so should complete normally
