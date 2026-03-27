@@ -5,8 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Jobserver Future callback machinery.
 
-Tests callback semantics, ordering, raising callbacks, draining,
-re-entrant registration, and double-wrap prevention.
+Verifies the when_done() contract on Jobserver Futures: registration
+ordering, error propagation via CallbackRaised, and correct behavior
+when callbacks are registered after the Future has already completed.
 """
 import unittest
 

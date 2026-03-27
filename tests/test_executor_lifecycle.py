@@ -3,9 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Lifecycle management: cancellation, shutdown semantics, resource cleanup.
+"""JobserverExecutor lifecycle management.
 
-Tests how the executor starts, stops, cancels work, and releases resources.
+Covers the executor's start-to-finish lifecycle: cancellation of pending
+and running futures, shutdown semantics (wait, cancel_futures), and
+verification that processes, threads, and file descriptors are released.
 """
 import concurrent.futures
 import gc

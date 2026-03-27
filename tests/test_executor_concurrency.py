@@ -3,10 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Concurrency stress, wait/as_completed, start methods, invariants, edge cases.
+"""JobserverExecutor under concurrency and stress.
 
-Tests that the executor holds up under pressure, works across all
-multiprocessing start methods, and handles corner cases correctly.
+Verifies the executor under heavy parallel load, confirms integration
+with concurrent.futures.wait() and as_completed(), exercises every
+multiprocessing start method, and checks internal invariants.
 """
 import concurrent.futures
 import gc

@@ -3,10 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Core Future API: submit, result, exceptions, state queries, callbacks, map.
+"""Core JobserverExecutor behavior as a concurrent.futures.Executor.
 
-Tests the fundamental data-flow and single-future behaviour of
-JobserverExecutor as a concurrent.futures.Executor.
+Exercises the single-future data flow through the executor: submitting
+work, retrieving results and exceptions, querying state transitions,
+receiving done callbacks, and iterating with map().
 """
 import concurrent.futures
 import operator

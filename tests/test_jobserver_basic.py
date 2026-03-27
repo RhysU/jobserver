@@ -5,8 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Core Jobserver submit/result behavior.
 
-Tests default construction, basic submission, result retrieval, timeouts,
-blocking, duplication, large objects, nested submissions, and heavy usage.
+Exercises the Jobserver API directly, without the JobserverExecutor
+wrapper, to verify the fundamental submit-then-result contract under
+normal operation, slot exhaustion, timeouts, and edge-case payloads.
 """
 import contextlib
 import copy

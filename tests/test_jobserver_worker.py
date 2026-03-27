@@ -3,11 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Worker death, signals, environment, preexec_fn, sleep_fn.
+"""Jobserver worker process behavior.
 
-Tests worker process lifecycle: signal handling, abnormal exits,
-environment variable management, preexec_fn hooks, sleep_fn control,
-and init/submit default overrides.
+Covers the per-submission child process: abnormal exits and signal
+delivery, environment customization via env and preexec_fn, sleep_fn
+scheduling control, and propagation of __init__ defaults to submit().
 """
 import functools
 import itertools
@@ -39,7 +39,7 @@ from .helpers import (
 
 
 class TestJobserverWorker(unittest.TestCase):
-    """Worker death, signals, environment, preexec_fn, sleep_fn."""
+    """Jobserver worker process behavior."""
 
     def test_submission_died(self) -> None:
         """Signal receipt by worker can be detected via Future?"""

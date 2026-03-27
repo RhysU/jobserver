@@ -3,11 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Threading races, contested locks, concurrent done().
+"""Thread-safety of Jobserver Futures.
 
-Tests that concurrent access to Futures from multiple threads is safe,
-that timeout budgets are respected under contention, and that
-reclaim_resources() tolerates contested locks.
+Verifies that concurrent access to a single Future from multiple
+threads is safe, that timeout budgets are respected under lock
+contention, and that reclaim_resources() tolerates contested locks.
 """
 import threading
 import time
