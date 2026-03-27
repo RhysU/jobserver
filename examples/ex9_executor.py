@@ -12,15 +12,19 @@ from logging import DEBUG, INFO, basicConfig, getLogger, info
 from jobserver import Jobserver, JobserverExecutor
 
 
-def worker_start() -> None:
-    """Log a message from each worker process at startup."""
-    info("worker started (pid=%d)", os.getpid())
+def process_start() -> None:
+    """Log message from processes at startup."""
+    basicConfig(
+        level=INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    info("started (pid=%d)", os.getpid())
 
 
 def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
     # Jobserver configuration applies to any JobserverExecutor backed by it.
-    js = Jobserver(context="spawn", slots=1, preexec_fn=worker_start)
+    js = Jobserver(context="spawn", slots=1, preexec_fn=process_start)
     with JobserverExecutor(js) as executor:
         # map() applies a function to every item and yields results in order
         lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
@@ -47,10 +51,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    basicConfig(
-        level=INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-    # Show JobserverExecutor lifecycle messages
+    # Configure logging, showing lifecycle messages, and announce startup
+    process_start()
     getLogger("jobserver").setLevel(DEBUG)
     main()
