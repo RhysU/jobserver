@@ -407,6 +407,21 @@ class JobserverTest(unittest.TestCase):
         """Helper raising the requested Exception class."""
         raise klass(*args)
 
+    @staticmethod
+    def helper_keyboard_interrupt() -> typing.NoReturn:
+        """Helper raising KeyboardInterrupt (a BaseException)."""
+        raise KeyboardInterrupt("from helper")
+
+    @staticmethod
+    def helper_os_exit(code: int) -> typing.NoReturn:
+        """Helper calling os._exit() to terminate without cleanup."""
+        os._exit(code)
+
+    @staticmethod
+    def helper_preexec_raise() -> typing.NoReturn:
+        """A preexec_fn that raises RuntimeError."""
+        raise RuntimeError("preexec boom")
+
     def test_raises(self) -> None:
         """Future.result() raises Exceptions thrown while processing work?"""
         for method in get_all_start_methods():
@@ -859,3 +874,79 @@ class JobserverTest(unittest.TestCase):
             f.when_done(outer)
         self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
         self.assertNotIsInstance(c.exception.__cause__, CallbackRaised)
+
+    def test_keyboard_interrupt_becomes_submission_died(self) -> None:
+        """KeyboardInterrupt (BaseException) surfaces as SubmissionDied."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=self.helper_keyboard_interrupt, timeout=5)
+                with self.assertRaises(SubmissionDied):
+                    f.result(timeout=5)
+
+    def test_preexec_fn_exception(self) -> None:
+        """Exception in preexec_fn propagates through result()."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(
+                    fn=self.helper_return,
+                    args=(1,),
+                    preexec_fn=self.helper_preexec_raise,
+                    timeout=5,
+                )
+                with self.assertRaises(Exception):
+                    f.result(timeout=5)
+
+    def test_os_exit_becomes_submission_died(self) -> None:
+        """os._exit() in worker produces SubmissionDied."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=self.helper_os_exit, args=(1,), timeout=5)
+                with self.assertRaises(SubmissionDied):
+                    f.result(timeout=5)
+
+    def test_100_callbacks_in_order(self) -> None:
+        """100 callbacks fire in registration order."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=len, args=((1,),), timeout=5)
+                order: list[int] = []
+                for i in range(100):
+                    f.when_done(lambda idx=i: order.append(idx))
+                f.done(timeout=5)
+                self.assertEqual(order, list(range(100)))
+
+    def test_five_raising_callbacks_drain(self) -> None:
+        """Five raising callbacks each require a done() call to drain."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                f = js.submit(fn=len, args=((1,),), timeout=5)
+                for i in range(5):
+                    f.when_done(self.helper_raise, ValueError, f"cb-{i}")
+                for i in range(5):
+                    with self.assertRaises(CallbackRaised) as c:
+                        f.done(timeout=5)
+                    self.assertIsInstance(c.exception.__cause__, ValueError)
+                    self.assertIn(f"cb-{i}", str(c.exception.__cause__))
+                self.assertTrue(f.done(timeout=0))
+                self.assertEqual(f.result(), 1)
+
+    def test_sleep_fn_raises_propagates(self) -> None:
+        """Exception from sleep_fn propagates out of submit()."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                js = Jobserver(context=method, slots=1)
+                # First submission fills the slot
+                f = js.submit(fn=time.sleep, args=(0.5,), timeout=5)
+
+                def bad_sleep() -> float:
+                    raise RuntimeError("sleep_fn boom")
+
+                with self.assertRaises(RuntimeError) as c:
+                    js.submit(fn=len, args=((),), sleep_fn=bad_sleep, timeout=5)
+                self.assertIn("sleep_fn boom", str(c.exception))
+                f.done(timeout=5)
