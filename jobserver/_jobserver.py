@@ -9,6 +9,7 @@ import abc
 from collections.abc import Callable, Iterable, Mapping
 import os
 import queue
+import signal
 import threading
 import time
 import types
@@ -171,12 +172,22 @@ class Future(Generic[T]):
             if self._connection is None:
                 self._issue_callbacks()
 
-    def done(self, timeout: Optional[float] = None) -> bool:
+    def done(
+        self,
+        timeout: Optional[float] = None,
+        *,
+        signal: Union[None, int, signal.Signals] = None,
+    ) -> bool:
         """
         Is result ready?  Never raises Blocked instead returning False.
 
-        Returns whether completion can be confirmed within the timeout.
+        First, sends any provided signal to any underlying, running process.
+        Second, returns whether completion can be confirmed within the timeout.
         Timeout is given in seconds with None meaning to block indefinitely.
+
+        Allows, e.g., a SIGTERM followed by waiting 1 second for termination.
+        A signal need not force termination, e.g. SIGUSR1 / SIGSTOP / SIGCONT.
+
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
@@ -194,7 +205,17 @@ class Future(Generic[T]):
                 self._issue_callbacks()
                 return True
 
+            # Optionally, send any provided signal to the underlying process
+            # Invalid signal numbers, e.g., manifest as general OSErrors
+            # so only silently ignore the race-driven ProcessLookupError.
+            if self._process and self._process.pid and signal is not None:
+                try:
+                    os.kill(self._process.pid, signal)
+                except ProcessLookupError:
+                    pass
+
             # Possibly wait until a result is available for reading
+            # (If we just sent SIGKILL then poll(...) now should see EOFError)
             remaining = max(0, deadline - time.monotonic())
             if not self._connection.poll(remaining):
                 return False
