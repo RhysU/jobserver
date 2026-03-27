@@ -673,23 +673,25 @@ def _map_generate(
     try:
         futures: deque[Future] = deque()
 
-        def _submit(chunk: list) -> Future:
-            return submit(
-                fn=_map_chunk,
-                args=(fn, chunk),
-                timeout=deadline - time.monotonic(),
+        def _futures_append_submit(chunk: list) -> None:
+            futures.append(
+                submit(
+                    fn=_map_chunk,
+                    args=(fn, chunk),
+                    timeout=deadline - time.monotonic(),
+                )
             )
 
         # Initial fill up to buffersize
         while len(futures) < buffersize and (
             chunk := list(islice(pairs, chunksize))
         ):
-            futures.append(_submit(chunk))
+            _futures_append_submit(chunk)
 
         # Yield results, submitting replacements
         while futures:
             if chunk := list(islice(pairs, chunksize)):
-                futures.append(_submit(chunk))
+                _futures_append_submit(chunk)
             yield from futures.popleft().result(
                 timeout=deadline - time.monotonic()
             )
