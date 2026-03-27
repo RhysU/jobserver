@@ -947,7 +947,6 @@ class JobserverTest(unittest.TestCase):
                 self.assertIn("sleep_fn failed", str(c.exception))
                 f.done(timeout=5)
 
-    @unittest.skipUnless(hasattr(signal, "SIGTERM"), "SIGTERM not available")
     def test_done_signal_terminates(self) -> None:
         """Future.done(..., signal=...) delivers signal, terminating a process.
 
@@ -990,7 +989,6 @@ class JobserverTest(unittest.TestCase):
                     mq.put("cleanup")
                     f.result(timeout=10)
 
-    @unittest.skipUnless(hasattr(signal, "SIGTERM"), "SIGTERM not available")
     def test_done_signal_after_done_is_safe(self) -> None:
         """Future.done(..., signal=...) after completion is silent.
 
@@ -1012,7 +1010,6 @@ class JobserverTest(unittest.TestCase):
                 self.assertTrue(f.done(timeout=None, signal=int(sigterm)))
                 self.assertTrue(f.done(timeout=0, signal=int(sigterm)))
 
-    @unittest.skipUnless(hasattr(signal, "SIGTERM"), "SIGTERM not available")
     def test_done_signal_very_short_timeout(self) -> None:
         """Future.done(timeout=tiny, signal=...) still delivers the signal.
 
