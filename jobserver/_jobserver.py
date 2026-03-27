@@ -147,7 +147,7 @@ class Future(Generic[T]):
         self._wrapper: Optional[Wrapper[T]] = None
 
         # Populated by calls to when_done(...)
-        self._callbacks: list[tuple] = []
+        self._callbacks: deque[tuple] = deque()
 
     def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
@@ -248,7 +248,7 @@ class Future(Generic[T]):
         # Otherwise, we might obfuscate bugs within this module's logic
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
-            internal, fn, args, kwargs = self._callbacks.pop(0)
+            internal, fn, args, kwargs = self._callbacks.popleft()
             if internal:
                 fn(*args, **kwargs)
             else:
@@ -474,7 +474,7 @@ class Jobserver:
         except Exception:
             # Unwinding any consumed slots on unexpected errors
             while tokens:
-                self._slots.put(tokens.pop(0))
+                self._slots.put(tokens.pop())
             raise
 
         # As above process.start() succeeded, now Future must restore tokens

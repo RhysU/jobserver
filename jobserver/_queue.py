@@ -141,5 +141,5 @@ class MinimalQueue(Generic[T]):
             # Serialize outside the critical section
             send = [ForkingPickler.dumps(arg) for arg in args]
             with self._write_lock:
-                while send:
-                    self._writer.send_bytes(send.pop(0))
+                for item in send:
+                    self._writer.send_bytes(item)
