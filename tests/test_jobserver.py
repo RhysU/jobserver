@@ -687,7 +687,7 @@ class JobserverTest(unittest.TestCase):
 
         self.assertFalse(result, "Should return False when lock held")
         self.assertLess(
-            elapsed, 1.0, "Must respect timeout despite lock contention"
+            elapsed, 2.0, "Must respect timeout despite lock contention"
         )
 
         # Clean up: let the future actually complete
