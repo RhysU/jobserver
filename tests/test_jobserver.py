@@ -767,7 +767,7 @@ class JobserverTest(unittest.TestCase):
 
         for _ in range(20):
             f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
-            f.when_done(self.helper_raise, ValueError, "boom")
+            f.when_done(self.helper_raise, ValueError, "raised")
 
             raised_in: list[str] = []
 
