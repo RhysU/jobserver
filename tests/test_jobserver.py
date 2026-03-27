@@ -420,7 +420,7 @@ class JobserverTest(unittest.TestCase):
     @staticmethod
     def helper_preexec_raise() -> typing.NoReturn:
         """A preexec_fn that raises RuntimeError."""
-        raise RuntimeError("preexec boom")
+        raise RuntimeError("preexec failed")
 
     def test_raises(self) -> None:
         """Future.result() raises Exceptions thrown while processing work?"""
@@ -943,10 +943,10 @@ class JobserverTest(unittest.TestCase):
                 # First submission fills the slot
                 f = js.submit(fn=time.sleep, args=(0.5,), timeout=5)
 
-                def bad_sleep() -> float:
-                    raise RuntimeError("sleep_fn boom")
+                def raises_error() -> float:
+                    raise RuntimeError("sleep_fn failed")
 
                 with self.assertRaises(RuntimeError) as c:
-                    js.submit(fn=len, args=((),), sleep_fn=bad_sleep, timeout=5)
-                self.assertIn("sleep_fn boom", str(c.exception))
+                    js.submit(fn=len, args=((),), sleep_fn=raises_error, timeout=5)
+                self.assertIn("sleep_fn failed", str(c.exception))
                 f.done(timeout=5)
