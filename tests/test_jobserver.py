@@ -6,6 +6,7 @@
 """Tests for the Jobserver and related classes."""
 import contextlib
 import copy
+import functools
 import itertools
 import os
 import pickle
@@ -406,21 +407,6 @@ class JobserverTest(unittest.TestCase):
     def helper_raise(klass: type, *args) -> typing.NoReturn:
         """Helper raising the requested Exception class."""
         raise klass(*args)
-
-    @staticmethod
-    def helper_keyboard_interrupt() -> typing.NoReturn:
-        """Helper raising KeyboardInterrupt (a BaseException)."""
-        raise KeyboardInterrupt("from helper")
-
-    @staticmethod
-    def helper_os_exit(code: int) -> typing.NoReturn:
-        """Helper calling os._exit() to terminate without cleanup."""
-        os._exit(code)
-
-    @staticmethod
-    def helper_preexec_raise() -> typing.NoReturn:
-        """A preexec_fn that raises RuntimeError."""
-        raise RuntimeError("preexec failed")
 
     def test_raises(self) -> None:
         """Future.result() raises Exceptions thrown while processing work?"""
@@ -857,11 +843,12 @@ class JobserverTest(unittest.TestCase):
         self.assertIsNone(f.result())
 
     def test_reentrant_callback_raised_no_double_wrap(self) -> None:
-        """Re-entrant when_done() with a raising inner callback must not double-wrap.
+        """Re-entrant raising inner callback must not double-wrap.
 
-        If a callback calls when_done() on an already-done future and that inner
-        callback raises, the caller must see CallbackRaised(cause=<original>),
-        not CallbackRaised(cause=CallbackRaised(cause=<original>)).
+        If a callback calls when_done() on an already-done future
+        and that inner callback raises, the caller must see
+        CallbackRaised(cause=<original>), not
+        CallbackRaised(cause=CallbackRaised(cause=<original>)).
         """
         js = Jobserver(slots=1)
         f = js.submit(fn=len, args=((1,),), timeout=5)
@@ -880,7 +867,11 @@ class JobserverTest(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
-                f = js.submit(fn=self.helper_keyboard_interrupt, timeout=5)
+                f = js.submit(
+                    fn=self.helper_raise,
+                    args=(KeyboardInterrupt,),
+                    timeout=5,
+                )
                 with self.assertRaises(SubmissionDied):
                     f.result(timeout=5)
 
@@ -892,7 +883,9 @@ class JobserverTest(unittest.TestCase):
                 f = js.submit(
                     fn=self.helper_return,
                     args=(1,),
-                    preexec_fn=self.helper_preexec_raise,
+                    preexec_fn=functools.partial(
+                        self.helper_raise, RuntimeError, "preexec failed"
+                    ),
                     timeout=5,
                 )
                 with self.assertRaises(Exception):
@@ -903,7 +896,7 @@ class JobserverTest(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
-                f = js.submit(fn=self.helper_os_exit, args=(1,), timeout=5)
+                f = js.submit(fn=os._exit, args=(1,), timeout=5)
                 with self.assertRaises(SubmissionDied):
                     f.result(timeout=5)
 
@@ -947,6 +940,9 @@ class JobserverTest(unittest.TestCase):
                     raise RuntimeError("sleep_fn failed")
 
                 with self.assertRaises(RuntimeError) as c:
-                    js.submit(fn=len, args=((),), sleep_fn=raises_error, timeout=5)
+                    js.submit(
+                        fn=len, args=((),),
+                        sleep_fn=raises_error, timeout=5,
+                    )
                 self.assertIn("sleep_fn failed", str(c.exception))
                 f.done(timeout=5)
