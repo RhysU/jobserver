@@ -669,42 +669,27 @@ def _map_generate(
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
     futures: list[Future] = []
-    exhausted = False
 
-    # Initial fill up to buffersize
-    while len(futures) < buffersize:
-        chunk = list(islice(pairs, chunksize))
-        if not chunk:
-            exhausted = True
-            break
+    def _submit(chunk: list) -> Future:
         try:
-            futures.append(
-                submit(
-                    fn=_map_chunk,
-                    args=(fn, chunk),
-                    timeout=deadline - time.monotonic(),
-                )
+            return submit(
+                fn=_map_chunk,
+                args=(fn, chunk),
+                timeout=deadline - time.monotonic(),
             )
         except Blocked:
             raise TimeoutError()
 
-    # Yield results, submitting replacements when buffered
+    # Initial fill up to buffersize
+    while len(futures) < buffersize and (
+        chunk := list(islice(pairs, chunksize))
+    ):
+        futures.append(_submit(chunk))
+
+    # Yield results, submitting replacements
     while futures:
-        if not exhausted:
-            chunk = list(islice(pairs, chunksize))
-            if chunk:
-                try:
-                    futures.append(
-                        submit(
-                            fn=_map_chunk,
-                            args=(fn, chunk),
-                            timeout=deadline - time.monotonic(),
-                        )
-                    )
-                except Blocked:
-                    raise TimeoutError()
-            else:
-                exhausted = True
+        if chunk := list(islice(pairs, chunksize)):
+            futures.append(_submit(chunk))
         try:
             yield from futures.pop(0).result(
                 timeout=deadline - time.monotonic()
