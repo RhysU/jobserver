@@ -948,85 +948,50 @@ class JobserverTest(unittest.TestCase):
                 f.done(timeout=5)
 
     def test_done_signal_terminates(self) -> None:
-        """Future.done(..., signal=...) delivers signal, terminating a process.
-
-        Exercises both the Signals enum form and its numeric int equivalent.
-        Also exercises timeout=None, which blocks until the process finishes.
-        """
-        sigterm = signal.SIGTERM
+        """Future.done(..., signal=...) accepts Signals enum and int forms."""
         for method, sig in itertools.product(
-            get_all_start_methods(), (sigterm, int(sigterm))
+            get_all_start_methods(), (signal.SIGTERM, int(signal.SIGTERM))
         ):
             with self.subTest(method=method, sig=sig):
-                context = get_context(method)
-                js = Jobserver(context=context, slots=1)
+                js = Jobserver(context=get_context(method), slots=1)
                 f = js.submit(fn=time.sleep, args=(60,))
-                # Send signal and block until the process is gone (timeout=None)
                 self.assertTrue(f.done(timeout=None, signal=sig))
                 with self.assertRaises(SubmissionDied):
                     f.result()
 
     def test_done_signal_invalid_raises(self) -> None:
-        """Future.done(..., signal=invalid) raises OSError from os.kill.
-
-        An out-of-range signal number must propagate as OSError (errno EINVAL).
-        ProcessLookupError is the only exception silently ignored; any other
-        OSError must bubble up to the caller.
-        """
+        """Future.done(..., signal=invalid) raises OSError from os.kill."""
         invalid_sig = max(signal.valid_signals()) + 1
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 context = get_context(method)
                 mq: MinimalQueue[str] = MinimalQueue(context=context)
                 js = Jobserver(context=context, slots=1)
-                # Stall the subprocess so it is alive when the bad signal fires
                 f = js.submit(fn=self.helper_nonblocking, args=(mq,))
                 try:
                     with self.assertRaises(OSError):
                         f.done(timeout=0, signal=invalid_sig)
                 finally:
-                    # Release the stalled process and wait for clean exit
                     mq.put("cleanup")
                     f.result(timeout=10)
 
     def test_done_signal_after_done_is_safe(self) -> None:
-        """Future.done(..., signal=...) after completion is silent.
-
-        Once _connection is None the kill is never attempted; signals sent
-        after a Future is already done must neither raise nor have side effects.
-        Covers both the Signals enum form and its numeric int equivalent, and
-        both timeout=None and timeout=0.
-        """
-        sigterm = signal.SIGTERM
+        """Future.done(..., signal=...) on an already-done Future is safe."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 f = js.submit(fn=len, args=((1, 2, 3),))
-                # Confirm completion before any signaling attempt
                 self.assertEqual(f.result(timeout=None), 3)
-                # All four combinations must return True without raising
-                self.assertTrue(f.done(timeout=None, signal=sigterm))
-                self.assertTrue(f.done(timeout=0, signal=sigterm))
-                self.assertTrue(f.done(timeout=None, signal=int(sigterm)))
-                self.assertTrue(f.done(timeout=0, signal=int(sigterm)))
+                self.assertTrue(f.done(timeout=None, signal=signal.SIGTERM))
+                self.assertTrue(f.done(timeout=0, signal=int(signal.SIGTERM)))
 
     def test_done_signal_very_short_timeout(self) -> None:
-        """Future.done(timeout=tiny, signal=...) still delivers the signal.
-
-        The signal is sent before poll(), so even a near-zero timeout causes
-        the process to terminate eventually.  A second done() with a generous
-        budget then confirms the termination and raises SubmissionDied.
-        """
-        sigterm = signal.SIGTERM
+        """Future.done(timeout=tiny, signal=...) still delivers the signal."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
-                js = Jobserver(context=context, slots=1)
+                js = Jobserver(context=get_context(method), slots=1)
                 f = js.submit(fn=time.sleep, args=(60,))
-                # Near-zero timeout: signal is sent but we may not wait
-                # long enough to observe the result in this single call.
-                f.done(timeout=1e-9, signal=sigterm)
-                # With a generous budget, the terminated process is now visible
+                f.done(timeout=1e-9, signal=signal.SIGTERM)
                 self.assertTrue(f.done(timeout=5))
                 with self.assertRaises(SubmissionDied):
                     f.result()
