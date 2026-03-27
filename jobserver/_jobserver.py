@@ -532,12 +532,12 @@ class Jobserver:
         return _map_generate(
             submit=self.submit,
             fn=fn,
-            pairs=iter(collected) if collected is not None else pairs,
+            pairs=pairs if collected is None else iter(collected),
             chunksize=chunksize,
             buffersize=(
-                len(collected)
-                if collected is not None
-                else buffersize  # type: ignore[arg-type]
+                buffersize  # type: ignore[arg-type]
+                if collected is None
+                else len(collected)
             ),
             deadline=deadline,
         )
