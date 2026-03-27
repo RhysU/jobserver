@@ -97,9 +97,6 @@ def _sleep_return(secs: float, val: typing.Any) -> typing.Any:
     return val
 
 
-_identity = _return_value
-
-
 def _add(a: int, b: int) -> int:
     return a + b
 
@@ -226,15 +223,16 @@ class TestExceptionPropagation(unittest.TestCase):
             self.assertEqual(("not raised",), result.args)
 
     def test_worker_killed_by_signal(self) -> None:
-        """Worker killed by signal."""
+        """Worker killed by signal does not poison the executor."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(_self_kill)
             with self.assertRaises(Exception):
                 f.result(timeout=_TIMEOUT)
-            # Executor must recover
-            g = exe.submit(len, (1, 2))
-            self.assertEqual(2, g.result(timeout=_TIMEOUT))
+            # Executor must recover for multiple subsequent tasks
+            for i in range(5):
+                g = exe.submit(len, "x" * i)
+                self.assertEqual(i, g.result(timeout=_TIMEOUT))
 
     def test_sys_exit(self) -> None:
         """Worker exits via sys.exit()."""
@@ -637,11 +635,13 @@ class TestShutdown(unittest.TestCase):
 
     def test_submit_after_shutdown(self) -> None:
         """submit() after shutdown() raises RuntimeError."""
-        js = Jobserver(context=_FAST, slots=2)
-        exe = JobserverExecutor(js)
-        exe.shutdown(wait=True)
-        with self.assertRaises(RuntimeError):
-            exe.submit(len, (1,))
+        for wait in (True, False):
+            with self.subTest(wait=wait):
+                js = Jobserver(context=_FAST, slots=2)
+                exe = JobserverExecutor(js)
+                exe.shutdown(wait=wait)
+                with self.assertRaises(RuntimeError):
+                    exe.submit(len, (1,))
 
     def test_double_shutdown(self) -> None:
         """Double shutdown() is safe."""
@@ -762,23 +762,6 @@ class TestMap(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             result = list(exe.map(_add, [1, 2, 3], [10, 20]))
         self.assertEqual([11, 22], result)
-
-    def test_gc_after_yield(self) -> None:
-        """Iterator does not retain completed futures."""
-        js = Jobserver(context=_FAST, slots=2)
-        with JobserverExecutor(js) as exe:
-            # Submit several tasks and track via weakrefs
-            futures = [exe.submit(_identity, i) for i in range(5)]
-            refs = [weakref.ref(f) for f in futures]
-            # Consume results to let map() release them
-            for f in futures:
-                f.result(timeout=_TIMEOUT)
-            del futures
-            gc.collect()
-            # At least some should be collected
-            alive = sum(1 for r in refs if r() is not None)
-            # We just verify the test runs; GC is best-effort
-            self.assertGreaterEqual(alive, 0)
 
     def test_partially_consumed_iterator(self) -> None:
         """Partially consumed iterator."""
@@ -942,31 +925,35 @@ class TestConcurrencyStress(unittest.TestCase):
         finally:
             exe.shutdown(wait=True)
 
+    def _threaded_submit_stress(self, exe: JobserverExecutor) -> None:
+        """Submit 200 tasks from 8 threads and verify all results."""
+        results: typing.List[concurrent.futures.Future] = []
+        lock = threading.Lock()
+
+        def worker(start: int, count: int) -> None:
+            local: typing.List[concurrent.futures.Future] = []
+            for i in range(start, start + count):
+                local.append(exe.submit(len, "x" * i))
+            with lock:
+                results.extend(local)
+
+        threads = []
+        for t_idx in range(8):
+            t = threading.Thread(target=worker, args=(t_idx * 25, 25))
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join(timeout=_TIMEOUT)
+
+        self.assertEqual(200, len(results))
+        vals = sorted(f.result(timeout=_TIMEOUT) for f in results)
+        self.assertEqual(sorted(range(200)), vals)
+
     def test_concurrent_submit_threads(self) -> None:
         """Concurrent submit() from multiple threads."""
         js = Jobserver(context=_FAST, slots=4)
         with JobserverExecutor(js) as exe:
-            results: typing.List[concurrent.futures.Future] = []
-            lock = threading.Lock()
-
-            def worker(start: int, count: int) -> None:
-                local: typing.List[concurrent.futures.Future] = []
-                for i in range(start, start + count):
-                    local.append(exe.submit(len, "x" * i))
-                with lock:
-                    results.extend(local)
-
-            threads = []
-            for t_idx in range(8):
-                t = threading.Thread(target=worker, args=(t_idx * 25, 25))
-                threads.append(t)
-                t.start()
-            for t in threads:
-                t.join(timeout=_TIMEOUT)
-
-            self.assertEqual(200, len(results))
-            vals = sorted(f.result(timeout=_TIMEOUT) for f in results)
-            self.assertEqual(sorted(range(200)), vals)
+            self._threaded_submit_stress(exe)
 
     def test_setswitchinterval_stress(self) -> None:
         """sys.setswitchinterval stress test."""
@@ -975,42 +962,9 @@ class TestConcurrencyStress(unittest.TestCase):
             sys.setswitchinterval(1e-6)
             js = Jobserver(context=_FAST, slots=4)
             with JobserverExecutor(js) as exe:
-                results: typing.List[concurrent.futures.Future] = []
-                lock = threading.Lock()
-
-                def worker(start: int, count: int) -> None:
-                    local: typing.List[concurrent.futures.Future] = []
-                    for i in range(start, start + count):
-                        local.append(exe.submit(len, "x" * i))
-                    with lock:
-                        results.extend(local)
-
-                threads = []
-                for t_idx in range(8):
-                    t = threading.Thread(
-                        target=worker,
-                        args=(t_idx * 25, 25),
-                    )
-                    threads.append(t)
-                    t.start()
-                for t in threads:
-                    t.join(timeout=_TIMEOUT)
-
-                self.assertEqual(200, len(results))
-                vals = sorted(f.result(timeout=_TIMEOUT) for f in results)
-                self.assertEqual(sorted(range(200)), vals)
+                self._threaded_submit_stress(exe)
         finally:
             sys.setswitchinterval(old)
-
-    def test_burst_submission(self) -> None:
-        """Burst submission (hundreds of tasks)."""
-        js = Jobserver(context=_FAST, slots=4)
-        n = 500
-        with JobserverExecutor(js) as exe:
-            futures = [exe.submit(len, "x" * (i % 50)) for i in range(n)]
-            results = [f.result(timeout=60) for f in futures]
-        expected = [i % 50 for i in range(n)]
-        self.assertEqual(expected, results)
 
 
 # ================================================================
@@ -1163,33 +1117,6 @@ class TestStartMethods(unittest.TestCase):
 class TestEdgeCases(unittest.TestCase):
     """Edge cases inspired by CPython bugs."""
 
-    def test_cancel_then_result(self) -> None:
-        """Cancel then result() on same future."""
-        js = Jobserver(context=_FAST, slots=1)
-        exe = JobserverExecutor(js)
-        try:
-            exe.submit(_sleep, 0.4)
-            time.sleep(0.1)
-            f = exe.submit(len, (1, 2, 3))
-            time.sleep(0.05)
-            f.cancel()
-            with self.assertRaises(concurrent.futures.CancelledError):
-                f.result(timeout=_TIMEOUT)
-        finally:
-            exe.shutdown(wait=False, cancel_futures=True)
-
-    def test_worker_death_not_poison(self) -> None:
-        """Worker death does not poison the executor."""
-        js = Jobserver(context=_FAST, slots=2)
-        with JobserverExecutor(js) as exe:
-            f = exe.submit(_self_kill)
-            with self.assertRaises(Exception):
-                f.result(timeout=_TIMEOUT)
-            # Must not be permanently broken
-            for i in range(5):
-                g = exe.submit(len, "x" * i)
-                self.assertEqual(i, g.result(timeout=_TIMEOUT))
-
     def test_executor_in_forked_child(self) -> None:
         """Executor created inside a forked child."""
         methods = get_all_start_methods()
@@ -1229,16 +1156,6 @@ class TestEdgeCases(unittest.TestCase):
             f = exe.submit(_sleep, 1.0)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 f.exception(timeout=0)
-
-    def test_submit_after_wait_false_shutdown(
-        self,
-    ) -> None:
-        """Submit after shutdown(wait=False) raises."""
-        js = Jobserver(context=_FAST, slots=2)
-        exe = JobserverExecutor(js)
-        exe.shutdown(wait=False)
-        with self.assertRaises(RuntimeError):
-            exe.submit(len, (1,))
 
     def test_cancel_many_then_shutdown(self) -> None:
         """Many futures cancelled then shutdown."""
