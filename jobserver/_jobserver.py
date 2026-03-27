@@ -6,6 +6,7 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from itertools import islice, zip_longest
 import os
@@ -668,7 +669,7 @@ def _map_generate(
     deadline: float,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
-    futures: list[Future] = []
+    futures: deque[Future] = deque()
 
     def _submit(chunk: list) -> Future:
         try:
@@ -691,7 +692,7 @@ def _map_generate(
         if chunk := list(islice(pairs, chunksize)):
             futures.append(_submit(chunk))
         try:
-            yield from futures.pop(0).result(
+            yield from futures.popleft().result(
                 timeout=deadline - time.monotonic()
             )
         except Blocked:
