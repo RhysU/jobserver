@@ -27,10 +27,6 @@ FAST = "forkserver" if sys.version_info >= (3, 12) else "fork"
 TIMEOUT = 30  # generous per-future timeout to avoid flakes
 
 
-def noop() -> None:
-    """Trivial target used only to trigger forkserver start."""
-
-
 def silence_forkserver() -> None:
     """Start the forkserver with stderr silenced.
 
@@ -49,7 +45,7 @@ def silence_forkserver() -> None:
     os.close(devnull_fd)
     try:
         ctx = multiprocessing.get_context("forkserver")
-        p = ctx.Process(target=noop)
+        p = ctx.Process(target=os.getpid)
         p.start()
         p.join()
     finally:

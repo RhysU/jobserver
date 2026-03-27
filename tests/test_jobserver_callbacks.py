@@ -162,6 +162,3 @@ class TestJobserverCallbacks(unittest.TestCase):
         self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
         self.assertNotIsInstance(c.exception.__cause__, CallbackRaised)
 
-
-if __name__ == "__main__":
-    unittest.main()

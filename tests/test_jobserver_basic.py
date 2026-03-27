@@ -362,6 +362,3 @@ class TestJobserverBasic(unittest.TestCase):
                     msg="Recursion is limited by number of available slots",
                 )
 
-
-if __name__ == "__main__":
-    unittest.main()

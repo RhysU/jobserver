@@ -241,6 +241,3 @@ class TestJobserverConcurrency(unittest.TestCase):
         f.done(timeout=10)
         self.assertIsNone(f.result())
 
-
-if __name__ == "__main__":
-    unittest.main()

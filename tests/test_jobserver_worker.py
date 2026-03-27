@@ -355,6 +355,3 @@ class TestJobserverWorker(unittest.TestCase):
                 )
                 self.assertEqual(1, h.result())
 
-
-if __name__ == "__main__":
-    unittest.main()

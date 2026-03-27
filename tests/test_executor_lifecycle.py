@@ -333,6 +333,3 @@ class TestResourceLeaks(unittest.TestCase):
         after = len(multiprocessing.active_children())
         self.assertEqual(baseline, after)
 
-
-if __name__ == "__main__":
-    unittest.main()

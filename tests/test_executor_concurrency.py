@@ -417,6 +417,3 @@ class TestInternalInvariants(unittest.TestCase):
         self.assertEqual(0, remaining)
         exe.shutdown(wait=True)
 
-
-if __name__ == "__main__":
-    unittest.main()

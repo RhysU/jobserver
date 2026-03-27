@@ -466,6 +466,3 @@ class TestMap(unittest.TestCase):
             result = list(exe.map(pow, [2, 3], [10, 10]))
         self.assertEqual([1024, 59049], result)
 
-
-if __name__ == "__main__":
-    unittest.main()
