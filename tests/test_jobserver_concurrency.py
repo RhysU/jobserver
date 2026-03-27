@@ -240,4 +240,3 @@ class TestJobserverConcurrency(unittest.TestCase):
         # Now the future can complete normally
         f.done(timeout=10)
         self.assertIsNone(f.result())
-

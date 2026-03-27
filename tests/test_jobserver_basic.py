@@ -22,7 +22,6 @@ from multiprocessing import get_all_start_methods, get_context
 
 from jobserver import (
     Blocked,
-    Future,
     Jobserver,
     MinimalQueue,
 )
@@ -369,4 +368,3 @@ class TestJobserverBasic(unittest.TestCase):
                     ),
                     msg="Recursion is limited by number of available slots",
                 )
-

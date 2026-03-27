@@ -162,4 +162,3 @@ class TestJobserverCallbacks(unittest.TestCase):
             f.when_done(outer)
         self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
         self.assertNotIsInstance(c.exception.__cause__, CallbackRaised)
-

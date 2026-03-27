@@ -186,7 +186,7 @@ class TestFutureStateQueries(unittest.TestCase):
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            exe.submit(time.sleep,0.4)
+            exe.submit(time.sleep, 0.4)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -280,7 +280,7 @@ class TestCallbacks(unittest.TestCase):
         results: typing.List[bool] = []
         event = threading.Event()
         try:
-            exe.submit(time.sleep,0.4)
+            exe.submit(time.sleep, 0.4)
             time.sleep(0.1)
             f = exe.submit(len, (1, 2, 3))
             time.sleep(0.05)
@@ -462,4 +462,3 @@ class TestMap(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             result = list(exe.map(pow, [2, 3], [10, 10]))
         self.assertEqual([1024, 59049], result)
-
