@@ -280,8 +280,10 @@ class TestJobserverWorker(unittest.TestCase):
 
                 with self.assertRaises(RuntimeError) as c:
                     js.submit(
-                        fn=len, args=((),),
-                        sleep_fn=raises_error, timeout=5,
+                        fn=len,
+                        args=((),),
+                        sleep_fn=raises_error,
+                        timeout=5,
                     )
                 self.assertIn("sleep_fn failed", str(c.exception))
                 f.done(timeout=5)
@@ -293,9 +295,7 @@ class TestJobserverWorker(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 # env: child sees key without submit() specifying it
-                js = Jobserver(
-                    context=method, slots=1, env={key: "FROM_INIT"}
-                )
+                js = Jobserver(context=method, slots=1, env={key: "FROM_INIT"})
                 f = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                 self.assertEqual("FROM_INIT", f.result())
 
@@ -309,9 +309,7 @@ class TestJobserverWorker(unittest.TestCase):
                 self.assertEqual("PREEXEC_FN", g.result())
 
                 # sleep_fn: a vetoing fn blocks every submit()
-                js = Jobserver(
-                    context=method, slots=1, sleep_fn=lambda: 99.0
-                )
+                js = Jobserver(context=method, slots=1, sleep_fn=lambda: 99.0)
                 with self.assertRaises(Blocked):
                     js.submit(fn=len, timeout=0.0)
 
@@ -322,9 +320,7 @@ class TestJobserverWorker(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 # env override: submit-level value replaces the init default
-                js = Jobserver(
-                    context=method, slots=1, env={key: "FROM_INIT"}
-                )
+                js = Jobserver(context=method, slots=1, env={key: "FROM_INIT"})
                 f = js.submit(
                     fn=os.getenv,
                     args=(key, "SENTINEL"),
@@ -346,10 +342,6 @@ class TestJobserverWorker(unittest.TestCase):
                 self.assertEqual("SENTINEL", g.result())
 
                 # sleep_fn override: submit-level permissive fn unblocks work
-                js = Jobserver(
-                    context=method, slots=1, sleep_fn=lambda: 99.0
-                )
-                h = js.submit(
-                    fn=len, args=((1,),), sleep_fn=lambda: None
-                )
+                js = Jobserver(context=method, slots=1, sleep_fn=lambda: 99.0)
+                h = js.submit(fn=len, args=((1,),), sleep_fn=lambda: None)
                 self.assertEqual(1, h.result())
