@@ -528,12 +528,13 @@ class Jobserver:
         else:
             pairs = zip_longest(argses or (), (), fillvalue={})
 
-        # Collect eagerly unless buffersize limits submission
-        if buffersize is None:
-            pairs = list(pairs)
-
         return _map_generate(
-            self.submit, fn, iter(pairs), chunksize, buffersize, deadline
+            submit=self.submit,
+            fn=fn,
+            pairs=iter(list(pairs)) if buffersize is None else pairs,
+            chunksize=chunksize,
+            buffersize=buffersize,
+            deadline=deadline,
         )
 
     def reclaim_resources(self) -> None:
