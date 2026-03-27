@@ -285,12 +285,23 @@ def noop(*args, **kwargs) -> None:
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
-    __slots__ = ("_context", "_slots", "_future_sentinels")
+    __slots__ = (
+        "_context",
+        "_slots",
+        "_future_sentinels",
+        "_env",
+        "_preexec_fn",
+        "_sleep_fn",
+    )
 
     def __init__(
         self,
         context: Union[None, str, BaseContext] = None,
         slots: Optional[int] = None,
+        *,
+        env: Iterable = (),  # Iterable[Tuple[str,str]] breaks!
+        preexec_fn: Callable[[], None] = noop,
+        sleep_fn: Callable[[], Optional[float]] = noop,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -298,6 +309,10 @@ class Jobserver:
         When not provided, context defaults to multiprocessing.get_context().
         When not provided, slots defaults to len(os.sched_getaffinity(0))
         which reports the number of usable CPUs for the current process.
+
+        The env, preexec_fn, and sleep_fn parameters set instance-level
+        defaults for submit(...).  Any of these passed directly to submit(...)
+        override the instance default for that call only.
         """
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
@@ -312,17 +327,36 @@ class Jobserver:
         # Tracks outstanding Futures (and wait-able sentinels)
         self._future_sentinels: dict[Future, int] = {}
 
+        # Instance-level defaults for submit(...)
+        self._env = env
+        self._preexec_fn = preexec_fn
+        self._sleep_fn = sleep_fn
+
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""
         # Required because Futures can be neither copied nor pickled
         # Without custom handling of Futures, submit(...) would fail
         # whenever an instance is part of an argument to a sub-Process
-        return self._context, self._slots, {}
+        return (
+            self._context,
+            self._slots,
+            {},
+            self._env,
+            self._preexec_fn,
+            self._sleep_fn,
+        )
 
     def __setstate__(self, state: tuple) -> None:
         """Set instance state."""
-        assert isinstance(state, tuple) and len(state) == 3
-        self._context, self._slots, self._future_sentinels = state
+        assert isinstance(state, tuple) and len(state) == 6
+        (
+            self._context,
+            self._slots,
+            self._future_sentinels,
+            self._env,
+            self._preexec_fn,
+            self._sleep_fn,
+        ) = state
 
     def __copy__(self) -> "Jobserver":
         """Shallow copies return the original Jobserver unchanged."""
@@ -355,9 +389,11 @@ class Jobserver:
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
-        env: Iterable = (),  # Iterable[Tuple[str,str]] breaks!
-        preexec_fn: Callable[[], None] = noop,
-        sleep_fn: Callable[[], Optional[float]] = noop,
+        env: Optional[Iterable] = None,  # None uses instance default
+        preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
+        sleep_fn: Optional[  # None uses instance default
+            Callable[[], Optional[float]]
+        ] = None,
         timeout: Optional[float] = None,
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
@@ -376,12 +412,25 @@ class Jobserver:
         only when sufficient RAM is available.  Function sleep_fn()
         should either return None when work is acceptable or return the
         non-negative number of seconds for which this process should sleep.
+
+        For env, preexec_fn, and sleep_fn: when None (the default), the
+        instance-level default set in __init__ is used.  Pass an explicit
+        value to override the instance default for this call only.
         """
         # First, check any arguments not for _obtain_tokens(...) just below.
         assert fn is not None
         assert isinstance(args, Iterable), type(args)
         assert isinstance(kwargs, Mapping), type(kwargs)
         assert isinstance(callbacks, bool), type(callbacks)
+
+        # Resolve None to the instance-level default for each optional param
+        if env is None:
+            env = self._env
+        if preexec_fn is None:
+            preexec_fn = self._preexec_fn
+        if sleep_fn is None:
+            sleep_fn = self._sleep_fn
+
         assert isinstance(env, Iterable), type(env)
         assert preexec_fn is not None
 
