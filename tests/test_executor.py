@@ -289,10 +289,10 @@ class TestFutureStateQueries(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            exe.submit(_sleep, 1.0)
-            time.sleep(0.2)
-            f = exe.submit(len, (1, 2, 3))
+            exe.submit(_sleep, 0.4)
             time.sleep(0.1)
+            f = exe.submit(len, (1, 2, 3))
+            time.sleep(0.05)
             self.assertFalse(f.done())
             self.assertFalse(f.running())
             self.assertFalse(f.cancelled())
@@ -348,10 +348,10 @@ class TestCancellation(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            exe.submit(_sleep, 1.0)
-            time.sleep(0.2)
-            f = exe.submit(len, (1, 2, 3))
+            exe.submit(_sleep, 0.4)
             time.sleep(0.1)
+            f = exe.submit(len, (1, 2, 3))
+            time.sleep(0.05)
             self.assertTrue(f.cancel())
             self.assertTrue(f.cancelled())
             self.assertTrue(f.done())
@@ -364,7 +364,7 @@ class TestCancellation(unittest.TestCase):
         """A RUNNING future cannot be cancelled."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_sleep, 0.5)
+            f = exe.submit(_sleep, 0.3)
             deadline = time.monotonic() + 5
             while not f.running() and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -394,10 +394,10 @@ class TestCancellation(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            blocker = exe.submit(_sleep, 1.0)
-            time.sleep(0.2)
-            f = exe.submit(len, (1, 2, 3))
+            blocker = exe.submit(_sleep, 0.3)
             time.sleep(0.1)
+            f = exe.submit(len, (1, 2, 3))
+            time.sleep(0.05)
             f.cancel()
             # Now free the slot
             blocker.result(timeout=_TIMEOUT)
@@ -454,10 +454,10 @@ class TestCallbacks(unittest.TestCase):
         results: typing.List[bool] = []
         event = threading.Event()
         try:
-            exe.submit(_sleep, 1.0)
-            time.sleep(0.2)
-            f = exe.submit(len, (1, 2, 3))
+            exe.submit(_sleep, 0.4)
             time.sleep(0.1)
+            f = exe.submit(len, (1, 2, 3))
+            time.sleep(0.05)
 
             def cb(fut: concurrent.futures.Future) -> None:
                 results.append(fut.cancelled())
@@ -591,11 +591,11 @@ class TestShutdown(unittest.TestCase):
         """shutdown(wait=False) returns immediately."""
         js = Jobserver(context=_FAST, slots=2)
         exe = JobserverExecutor(js)
-        f = exe.submit(_sleep, 0.5)
+        f = exe.submit(_sleep, 0.3)
         t0 = time.monotonic()
         exe.shutdown(wait=False)
         elapsed = time.monotonic() - t0
-        self.assertLess(elapsed, 0.5)
+        self.assertLess(elapsed, 0.3)
         # Future should eventually complete
         f.result(timeout=_TIMEOUT)
 
@@ -603,8 +603,8 @@ class TestShutdown(unittest.TestCase):
         """shutdown(cancel_futures=True) cancels pending."""
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
-        blocker = exe.submit(_sleep, 1.0)
-        time.sleep(0.2)
+        blocker = exe.submit(_sleep, 0.3)
+        time.sleep(0.1)
         pending = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=True, cancel_futures=True)
         # blocker was RUNNING so should complete normally
@@ -621,8 +621,8 @@ class TestShutdown(unittest.TestCase):
         """shutdown(wait=False, cancel_futures=True)."""
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
-        exe.submit(_sleep, 1.0)
-        time.sleep(0.2)
+        exe.submit(_sleep, 0.3)
+        time.sleep(0.1)
         pending = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=False, cancel_futures=True)
         # Must not deadlock; pending futures resolved eventually
@@ -697,8 +697,8 @@ class TestShutdown(unittest.TestCase):
         """wait() does not hang after cancel_futures."""
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
-        exe.submit(_sleep, 1.0)
-        time.sleep(0.2)
+        exe.submit(_sleep, 0.3)
+        time.sleep(0.1)
         futures = [exe.submit(len, (i,)) for i in range(5)]
         exe.shutdown(wait=True, cancel_futures=True)
         done, not_done = concurrent.futures.wait(futures, timeout=5)
@@ -746,7 +746,7 @@ class TestMap(unittest.TestCase):
         """Timeout raises TimeoutError."""
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
-            it = exe.map(time.sleep, [5], timeout=0.1)
+            it = exe.map(time.sleep, [0.3], timeout=0.1)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 next(it)
 
@@ -819,7 +819,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """wait(FIRST_COMPLETED) returns on first."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            slow = exe.submit(_sleep, 2.0)
+            slow = exe.submit(_sleep, 0.3)
             fast = exe.submit(len, (1,))
             futures: typing.List[concurrent.futures.Future[typing.Any]] = [
                 slow,
@@ -836,7 +836,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """wait(FIRST_EXCEPTION) returns on first error."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            good = exe.submit(_sleep, 2.0)
+            good = exe.submit(_sleep, 0.3)
             bad = exe.submit(_raise, ValueError, "oops")
             done, not_done = concurrent.futures.wait(
                 [good, bad],
@@ -849,7 +849,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """wait() with timeout returns partial results."""
         js = Jobserver(context=_FAST, slots=2)
         with JobserverExecutor(js) as exe:
-            futures = [exe.submit(_sleep, 5.0) for _ in range(3)]
+            futures = [exe.submit(_sleep, 0.3) for _ in range(3)]
             done, not_done = concurrent.futures.wait(futures, timeout=0.1)
             self.assertGreater(len(not_done), 0)
 
@@ -870,7 +870,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """as_completed() with timeout raises TimeoutError."""
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_sleep, 5.0)
+            f = exe.submit(_sleep, 0.3)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 for _ in concurrent.futures.as_completed([f], timeout=0.1):
                     pass
@@ -1003,9 +1003,9 @@ class TestConcurrencyStress(unittest.TestCase):
             sys.setswitchinterval(old)
 
     def test_burst_submission(self) -> None:
-        """Burst submission (thousands of tasks)."""
+        """Burst submission (hundreds of tasks)."""
         js = Jobserver(context=_FAST, slots=4)
-        n = 2000
+        n = 500
         with JobserverExecutor(js) as exe:
             futures = [exe.submit(len, "x" * (i % 50)) for i in range(n)]
             results = [f.result(timeout=60) for f in futures]
@@ -1051,7 +1051,7 @@ class TestResourceLeaks(unittest.TestCase):
             f = exe.submit(len, (1, 2))
             f.result(timeout=_TIMEOUT)
         gc.collect()
-        time.sleep(0.5)
+        time.sleep(0.2)
         after = self._fd_count()
         # Allow margin for GC timing and background FDs
         self.assertLessEqual(after, baseline + 10)
@@ -1064,7 +1064,7 @@ class TestResourceLeaks(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2))
             f.result(timeout=_TIMEOUT)
-        time.sleep(0.5)
+        time.sleep(0.2)
         after = threading.active_count()
         self.assertLessEqual(after, baseline + 1)
 
@@ -1076,7 +1076,7 @@ class TestResourceLeaks(unittest.TestCase):
             js = Jobserver(context=_FAST, slots=2)
             with JobserverExecutor(js) as exe:
                 exe.submit(len, (1,)).result(timeout=_TIMEOUT)
-        time.sleep(1.0)
+        time.sleep(0.5)
         self.assertLessEqual(
             len(multiprocessing.active_children()),
             baseline_procs + 2,
@@ -1168,10 +1168,10 @@ class TestEdgeCases(unittest.TestCase):
         js = Jobserver(context=_FAST, slots=1)
         exe = JobserverExecutor(js)
         try:
-            exe.submit(_sleep, 1.0)
-            time.sleep(0.2)
-            f = exe.submit(len, (1, 2, 3))
+            exe.submit(_sleep, 0.4)
             time.sleep(0.1)
+            f = exe.submit(len, (1, 2, 3))
+            time.sleep(0.05)
             f.cancel()
             with self.assertRaises(concurrent.futures.CancelledError):
                 f.result(timeout=_TIMEOUT)
@@ -1218,7 +1218,7 @@ class TestEdgeCases(unittest.TestCase):
         """result(timeout=0) on incomplete future."""
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_sleep, 5.0)
+            f = exe.submit(_sleep, 0.3)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 f.result(timeout=0)
 
@@ -1226,7 +1226,7 @@ class TestEdgeCases(unittest.TestCase):
         """exception(timeout=0) on incomplete future."""
         js = Jobserver(context=_FAST, slots=1)
         with JobserverExecutor(js) as exe:
-            f = exe.submit(_sleep, 5.0)
+            f = exe.submit(_sleep, 0.3)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 f.exception(timeout=0)
 

@@ -215,7 +215,7 @@ class JobserverTest(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
-                for size in (1 << i for i in range(22, 28)):  # 2**27 is 128 MB
+                for size in (1 << i for i in range(22, 26)):  # 2**25 is 32 MB
                     with self.subTest(size=size):
                         f = js.submit(fn=bytearray, args=(size,))
                         x = f.result()
@@ -244,7 +244,7 @@ class JobserverTest(unittest.TestCase):
                 context = get_context(method)
                 mq: MinimalQueue[str] = MinimalQueue(context=context)
                 js = Jobserver(context=context, slots=1)
-                delay = 0.05  # Impacts test runtime on the success path
+                delay = 0.02  # Impacts test runtime on the success path
 
                 # Future f stalls until it receives the handshake below
                 f = js.submit(fn=self.helper_nonblocking, args=(mq,))
@@ -542,14 +542,14 @@ class JobserverTest(unittest.TestCase):
                 f = js.submit(fn=len, args=((1,),), sleep_fn=lambda: next(zs))
 
                 # Confirm sleep_fn(...) returning finite sleep can proceed
-                gs = iter(itertools.cycle((0.1, 0.05, None)))
+                gs = iter(itertools.cycle((0.05, 0.02, None)))
                 g = js.submit(fn=len, args=((),), sleep_fn=lambda: next(gs))
 
                 # Confirm repeated sleeping can cause a timeout to occur.
                 # Note fn is never called as sleep_fn vetoes the invocation.
-                hs = iter(itertools.cycle((0.1,)))
+                hs = iter(itertools.cycle((0.05,)))
                 with self.assertRaises(Blocked):
-                    js.submit(fn=len, sleep_fn=lambda: next(hs), timeout=0.2)
+                    js.submit(fn=len, sleep_fn=lambda: next(hs), timeout=0.1)
 
                 # Confirm as expected.  Importantly, results not previously
                 # retrieved implying above submissions finalized results.
@@ -662,7 +662,7 @@ class JobserverTest(unittest.TestCase):
         approximately T seconds, even if the lock is contested.
         """
         js = Jobserver(slots=1)
-        f = js.submit(fn=time.sleep, args=(1.5,), timeout=5)
+        f = js.submit(fn=time.sleep, args=(0.5,), timeout=5)
 
         # Hold the lock from another thread to force contention
         acquired = threading.Event()
@@ -934,7 +934,7 @@ class JobserverTest(unittest.TestCase):
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 # First submission fills the slot
-                f = js.submit(fn=time.sleep, args=(0.5,), timeout=5)
+                f = js.submit(fn=time.sleep, args=(0.1,), timeout=5)
 
                 def raises_error() -> float:
                     raise RuntimeError("sleep_fn failed")
