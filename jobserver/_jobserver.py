@@ -494,6 +494,15 @@ class Jobserver:
         argses: Optional[Iterable] = None,
         kwargses: Optional[Iterable] = None,
         *,
+        env: Union[
+            None,
+            Mapping[str, Optional[str]],
+            Iterable[tuple[str, Optional[str]]],
+        ] = None,
+        preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
+        sleep_fn: Optional[  # None uses instance default
+            Callable[[], Optional[float]]
+        ] = None,
         timeout: Optional[float] = None,
         chunksize: int = 1,
         buffersize: Optional[int] = None,
@@ -512,6 +521,15 @@ class Jobserver:
         not available by the deadline, the iterator raises
         TimeoutError.  Function calls are sent to workers in groups
         of chunksize.
+
+        When env provided, child updates os.environ unsetting None-valued keys.
+        When preexec_fn provided, child calls it just before fn(...).
+
+        Optional sleep_fn() permits injecting additional logic as
+        to when a slot may be consumed.
+
+        For env, preexec_fn, and sleep_fn non-None values override any
+        instance defaults.
         """
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
@@ -541,6 +559,9 @@ class Jobserver:
                 else len(collected)  # type: ignore[arg-type]
             ),
             deadline=deadline,
+            env=env,
+            preexec_fn=preexec_fn,
+            sleep_fn=sleep_fn,
         )
 
     def reclaim_resources(self) -> None:
@@ -669,6 +690,13 @@ def _map_generate(
     chunksize: int,
     buffersize: int,
     deadline: float,
+    env: Union[
+        None,
+        Mapping[str, Optional[str]],
+        Iterable[tuple[str, Optional[str]]],
+    ] = None,
+    preexec_fn: Optional[Callable[[], None]] = None,
+    sleep_fn: Optional[Callable[[], Optional[float]]] = None,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map() which yields results in order."""
     futures: deque[Future] = deque()  # Future[list[T]] in practice
@@ -678,6 +706,9 @@ def _map_generate(
             submit(
                 fn=_map_chunk,
                 args=(fn, chunk),
+                env=env,
+                preexec_fn=preexec_fn,
+                sleep_fn=sleep_fn,
                 timeout=deadline - time.monotonic(),
             )
         )
