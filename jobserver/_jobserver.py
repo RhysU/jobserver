@@ -299,7 +299,7 @@ class Jobserver:
         context: Union[None, str, BaseContext] = None,
         slots: Optional[int] = None,
         *,
-        env: Iterable = (),  # Iterable[Tuple[str,str]] breaks!
+        env: Iterable[tuple[str, Optional[str]]] = (),
         preexec_fn: Callable[[], None] = noop,
         sleep_fn: Callable[[], Optional[float]] = noop,
     ) -> None:
@@ -328,7 +328,11 @@ class Jobserver:
         self._future_sentinels: dict[Future, int] = {}
 
         # Instance-level defaults for submit(...)
-        self._env = env
+        # Defensive copy: consume any one-shot iterable and guard against
+        # mutation of the caller's container after __init__ returns.
+        # Mappings expose .items(); plain iterables are already pairs.
+        items = env.items() if isinstance(env, Mapping) else env
+        self._env: tuple[tuple[str, Optional[str]], ...] = tuple(items)
         self._preexec_fn = preexec_fn
         self._sleep_fn = sleep_fn
 
@@ -389,7 +393,7 @@ class Jobserver:
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
-        env: Optional[Iterable] = None,  # None uses instance default
+        env: Optional[Iterable[tuple[str, Optional[str]]]] = None,
         preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
         sleep_fn: Optional[  # None uses instance default
             Callable[[], Optional[float]]
