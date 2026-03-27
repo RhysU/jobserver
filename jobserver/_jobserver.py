@@ -536,9 +536,9 @@ class Jobserver:
             pairs=pairs if collected is None else iter(collected),
             chunksize=chunksize,
             buffersize=(
-                buffersize  # type: ignore[arg-type]
-                if collected is None
-                else len(collected)
+                buffersize
+                if buffersize is not None
+                else len(collected)  # type: ignore[arg-type]
             ),
             deadline=deadline,
         )

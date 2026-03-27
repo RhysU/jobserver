@@ -24,11 +24,6 @@ from .helpers import (
 )
 
 
-def _add(a, b):
-    """Return a + b (picklable helper for map tests)."""
-    return a + b
-
-
 def _kw_sum(a, b=0, c=0):
     """Return a + b + c (picklable helper for kwargs tests)."""
     return a + b + c
@@ -191,7 +186,7 @@ class TestJobserverMap(unittest.TestCase):
         kwargses = [{"b": 100}] * 6
         results = list(
             js.map(
-                fn=_add,
+                fn=_kw_sum,
                 argses=argses,
                 kwargses=kwargses,
                 chunksize=2,
