@@ -152,6 +152,22 @@ class TestJobserverMap(unittest.TestCase):
         results = list(js.map(fn=len, argses=[((1, 2),)], timeout=TIMEOUT))
         self.assertEqual(results, [2])
 
+    def test_empty_default_buffersize(self) -> None:
+        """Empty input with default buffersize=None yields nothing."""
+        js = Jobserver(context=FAST, slots=2)
+        results = list(js.map(fn=len, argses=[], buffersize=None))
+        self.assertEqual(results, [])
+
+    def test_single_element_default_buffersize(self) -> None:
+        """Length-1 input with default buffersize=None works."""
+        js = Jobserver(context=FAST, slots=1)
+        results = list(
+            js.map(
+                fn=len, argses=[((1, 2, 3),)], buffersize=None, timeout=TIMEOUT
+            )
+        )
+        self.assertEqual(results, [3])
+
     # ---- Iterator semantics ----
 
     def test_returns_iterator(self) -> None:
