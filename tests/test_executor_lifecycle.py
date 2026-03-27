@@ -334,3 +334,58 @@ class TestResourceLeaks(unittest.TestCase):
         after = len(multiprocessing.active_children())
         self.assertEqual(baseline, after)
 
+    def test_dispatcher_death_orphans_futures(self) -> None:
+        """Killing the dispatcher fails outstanding futures."""
+        js = Jobserver(context=FAST, slots=1)
+        exe = JobserverExecutor(js)
+        try:
+            # Submit slow work so a future is outstanding
+            f = exe.submit(time.sleep, 10)
+            # Wait for the dispatcher to be alive
+            deadline = time.monotonic() + 5
+            while (
+                not exe._dispatcher.is_alive()
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+            self.assertTrue(exe._dispatcher.is_alive())
+            # Kill the dispatcher
+            os.kill(exe._dispatcher.pid, signal.SIGKILL)
+            # The outstanding future must surface an error
+            with self.assertRaises(Exception):
+                f.result(timeout=TIMEOUT)
+        finally:
+            exe.shutdown(wait=True)
+
+    def test_submit_after_dispatcher_death(self) -> None:
+        """submit() after dispatcher death raises RuntimeError."""
+        js = Jobserver(context=FAST, slots=2)
+        exe = JobserverExecutor(js)
+        try:
+            f = exe.submit(len, (1, 2))
+            f.result(timeout=TIMEOUT)
+            # Kill the dispatcher
+            os.kill(exe._dispatcher.pid, signal.SIGKILL)
+            exe._dispatcher.join(timeout=5)
+            # Give the receiver thread time to notice the EOF
+            time.sleep(0.2)
+            # submit() should now raise RuntimeError because the
+            # request pipe is broken
+            with self.assertRaises(RuntimeError):
+                exe.submit(len, (1,))
+        finally:
+            exe.shutdown(wait=True)
+
+    def test_shutdown_after_dispatcher_death(self) -> None:
+        """shutdown() tolerates an already-dead dispatcher."""
+        js = Jobserver(context=FAST, slots=2)
+        exe = JobserverExecutor(js)
+        f = exe.submit(len, (1, 2))
+        f.result(timeout=TIMEOUT)
+        # Kill the dispatcher
+        os.kill(exe._dispatcher.pid, signal.SIGKILL)
+        exe._dispatcher.join(timeout=5)
+        time.sleep(0.2)
+        # shutdown() must not raise despite BrokenPipeError
+        exe.shutdown(wait=True)
+
