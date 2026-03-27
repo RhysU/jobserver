@@ -31,6 +31,10 @@ def main() -> None:
     info("len((1, 2, 3)) = %s", future_a.result())
     info("str(object=42) = %s", future_b.result())
 
+    # Map over multiple inputs, results yielded in order
+    lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
+    info("lengths via map: %s", lengths)
+
 
 def task_sum(numbers: list) -> int:
     """Return the sum of numbers."""
