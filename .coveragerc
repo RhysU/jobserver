@@ -1,5 +1,5 @@
 [run]
 source = jobserver
-concurrency = multiprocessing
+concurrency = multiprocessing,thread
 parallel = true
 sigterm = true
