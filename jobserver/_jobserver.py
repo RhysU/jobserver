@@ -656,7 +656,7 @@ def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
         raise ValueError("argses and kwargses must have equal length")
 
 
-def _map_chunk(fn: Callable, chunk: list) -> list:
+def _map_chunk(fn: Callable, chunk: tuple) -> list:
     """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
     return [fn(*args, **kwargs) for args, kwargs in chunk]
 
@@ -673,7 +673,7 @@ def _map_generate(
     try:
         futures: deque[Future] = deque()
 
-        def _futures_append_submit(chunk: list) -> None:
+        def _futures_append_submit(chunk: tuple) -> None:
             futures.append(
                 submit(
                     fn=_map_chunk,
@@ -684,13 +684,13 @@ def _map_generate(
 
         # Initial fill up to buffersize
         while len(futures) < buffersize and (
-            chunk := list(islice(pairs, chunksize))
+            chunk := tuple(islice(pairs, chunksize))
         ):
             _futures_append_submit(chunk)
 
         # Yield results, submitting replacements
         while futures:
-            if chunk := list(islice(pairs, chunksize)):
+            if chunk := tuple(islice(pairs, chunksize)):
                 _futures_append_submit(chunk)
             yield from futures.popleft().result(
                 timeout=deadline - time.monotonic()
