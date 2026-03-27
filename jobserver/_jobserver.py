@@ -642,6 +642,7 @@ class Jobserver:
         return retval
 
 
+# Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
 def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
     """Zip raising ValueError when the two iterables differ in length."""
     a_it, b_it = iter(a), iter(b)
