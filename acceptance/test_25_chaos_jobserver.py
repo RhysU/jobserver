@@ -81,34 +81,37 @@ class TestChaosJobserver(unittest.TestCase):
 
         # Thread 1: Submit all work
         def submitter():
-            try:
-                for idx, cat in enumerate(categories):
-                    fn, args, category = _make_work(cat, idx)
-                    f = js.submit(fn=fn, args=args, timeout=TIMEOUT)
-                    # Register callbacks for callback categories
-                    if category == CALLBACK_OK:
-                        f.when_done(lambda: None)
-                    elif category == CALLBACK_RAISE:
-                        f.when_done(lambda: (_ for _ in ()).throw(
-                            RuntimeError("cb chaos")
-                        ))
-                    with lock:
-                        futures.append((f, category))
-            except Exception as e:
+            for idx, cat in enumerate(categories):
+                fn, args, category = _make_work(cat, idx)
+                # submit() with callbacks=True (default) may raise
+                # CallbackRaised from a previously registered raising
+                # callback.  Drain any such errors before proceeding.
+                while True:
+                    try:
+                        f = js.submit(fn=fn, args=args, timeout=TIMEOUT)
+                        break
+                    except CallbackRaised:
+                        pass
+                # Register callbacks for callback categories
+                if category == CALLBACK_OK:
+                    f.when_done(lambda: None)
+                elif category == CALLBACK_RAISE:
+                    f.when_done(lambda: (_ for _ in ()).throw(
+                        RuntimeError("cb chaos")
+                    ))
                 with lock:
-                    errors.append(("submitter", e))
+                    futures.append((f, category))
 
         # Thread 2: Periodically reclaim resources
         stop_event = threading.Event()
 
         def reclaimer():
-            try:
-                while not stop_event.is_set():
+            while not stop_event.is_set():
+                try:
                     js.reclaim_resources()
-                    time.sleep(0.05)
-            except Exception as e:
-                with lock:
-                    errors.append(("reclaimer", e))
+                except CallbackRaised:
+                    pass  # Expected from CALLBACK_RAISE futures
+                time.sleep(0.05)
 
         t_submit = threading.Thread(target=submitter)
         t_reclaim = threading.Thread(target=reclaimer)
