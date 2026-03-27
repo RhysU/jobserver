@@ -670,7 +670,7 @@ def _map_generate(
     buffersize: int,
     deadline: float,
 ) -> Iterator[T]:
-    """Generator backing Jobserver.map(); yields results in order."""
+    """Generator backing Jobserver.map() which yields results in order."""
     futures: deque[Future] = deque()  # Future[list[T]] in practice
 
     def _futures_append_submit(chunk: tuple) -> None:
