@@ -6,7 +6,7 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 import os
 import queue
 import signal
@@ -282,6 +282,11 @@ def noop(*args, **kwargs) -> None:
     return None
 
 
+def _map_chunk(fn: Callable, chunk: list) -> list:
+    """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
+    return [fn(*args, **kwargs) for args, kwargs in chunk]
+
+
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
@@ -485,6 +490,120 @@ class Jobserver:
 
         # Finally, return a viable Future to the caller
         return future
+
+    def map(
+        self,
+        fn: Callable[..., T],
+        argses: Iterable = (),
+        kwargses: Optional[Iterable] = None,
+        *,
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+        buffersize: Optional[int] = None,
+    ) -> Iterator[T]:
+        """Map fn over argses and kwargses, yielding results in order.
+
+        Similar to concurrent.futures.Executor.map but adapted for
+        the Jobserver.submit() API that separates args from kwargs.
+
+        Each element of argses provides positional arguments and each
+        element of kwargses provides keyword arguments for one call
+        to fn.  When kwargses is None, empty keyword arguments are
+        used for every call.  When both are provided, iteration stops
+        at the shorter of the two (per the builtin map contract).
+
+        Timeout is given in seconds from this call; if a result is
+        not available by the deadline, the iterator raises
+        TimeoutError.  When chunksize > 1, calls are grouped and
+        dispatched together via an auxiliary worker function.
+        When buffersize is not None, at most that many submissions
+        are outstanding at any time.
+        """
+        if chunksize < 1:
+            raise ValueError("chunksize must be >= 1")
+        if buffersize is not None and buffersize < 1:
+            raise ValueError("buffersize must be >= 1")
+
+        deadline = absolute_deadline(relative_timeout=timeout)
+
+        # Collect inputs eagerly per Executor.map contract
+        pairs: list[tuple] = (
+            [(a, {}) for a in argses]
+            if kwargses is None
+            else [(a, k) for a, k in zip(argses, kwargses)]
+        )
+
+        return self._map_generate(fn, pairs, chunksize, buffersize, deadline)
+
+    def _map_generate(
+        self,
+        fn: Callable[..., T],
+        pairs: list,
+        chunksize: int,
+        buffersize: Optional[int],
+        deadline: float,
+    ) -> Iterator[T]:
+        """Generator backing map(); yields results in order."""
+        if not pairs:
+            return
+
+        # Build submission units (single pairs or chunks)
+        if chunksize == 1:
+            units: list = pairs
+        else:
+            end = chunksize
+            units = []
+            for i in range(0, len(pairs), chunksize):
+                units.append(pairs[i:end])
+                end += chunksize
+
+        n = len(units)
+        futures: list[Optional[Future]] = [None] * n
+
+        def _submit(unit: Any) -> Future:
+            remaining = deadline - time.monotonic()
+            try:
+                if chunksize == 1:
+                    args, kwargs = unit
+                    return self.submit(
+                        fn=fn,
+                        args=args,
+                        kwargs=kwargs,
+                        timeout=remaining,
+                    )
+                else:
+                    return self.submit(
+                        fn=_map_chunk,
+                        args=(fn, unit),
+                        timeout=remaining,
+                    )
+            except Blocked:
+                raise TimeoutError()
+
+        def _result(future: Future) -> Any:
+            remaining = deadline - time.monotonic()
+            try:
+                return future.result(timeout=remaining)
+            except Blocked:
+                raise TimeoutError()
+
+        # Fill initial buffer
+        window = n if buffersize is None else buffersize
+        head = min(window, n)
+        for i in range(head):
+            futures[i] = _submit(units[i])
+
+        # Yield results, submitting replacements as we go
+        for i in range(n):
+            nxt = i + window
+            if nxt < n:
+                futures[nxt] = _submit(units[nxt])
+            value = _result(futures[i])  # type: ignore[arg-type]
+            futures[i] = None  # Allow GC
+            if chunksize == 1:
+                yield value
+            else:
+                yield from value
 
     def reclaim_resources(self) -> None:
         """
