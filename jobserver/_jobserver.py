@@ -6,7 +6,9 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
-from collections.abc import Callable, Iterable, Mapping
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from itertools import islice, zip_longest
 import os
 import queue
 import signal
@@ -486,6 +488,61 @@ class Jobserver:
         # Finally, return a viable Future to the caller
         return future
 
+    def map(
+        self,
+        fn: Callable[..., T],
+        argses: Optional[Iterable] = None,
+        kwargses: Optional[Iterable] = None,
+        *,
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+        buffersize: Optional[int] = None,
+    ) -> Iterator[T]:
+        """Map fn over argses and kwargses, yielding results in order.
+
+        Each element of argses provides positional arguments and each
+        element of kwargses provides keyword arguments for one call
+        to fn.  Non-None argses and kwargses must have equal length.
+
+        Inputs are collected immediately unless buffersize limits
+        the number of outstanding submissions, in which case inputs
+        are consumed lazily as results are yielded.
+
+        Timeout is given in seconds from this call; if a result is
+        not available by the deadline, the iterator raises
+        TimeoutError.  Function calls are sent to workers in groups
+        of chunksize.
+        """
+        if chunksize < 1:
+            raise ValueError("chunksize must be >= 1")
+        if buffersize is not None and buffersize < 1:
+            raise ValueError("buffersize must be >= 1")
+
+        deadline = absolute_deadline(relative_timeout=timeout)
+
+        # Build a (possibly lazy) iterator of (args, kwargs) pairs
+        pairs: Iterable[tuple]
+        if argses is not None and kwargses is not None:
+            pairs = _strict_zip(argses, kwargses)
+        elif kwargses is not None:
+            pairs = zip_longest((), kwargses, fillvalue=())
+        else:
+            pairs = zip_longest(argses or (), (), fillvalue={})
+
+        collected = list(pairs) if buffersize is None else None
+        return _map_generate(
+            submit=self.submit,
+            fn=fn,
+            pairs=pairs if collected is None else iter(collected),
+            chunksize=chunksize,
+            buffersize=(
+                buffersize
+                if buffersize is not None
+                else len(collected)  # type: ignore[arg-type]
+            ),
+            deadline=deadline,
+        )
+
     def reclaim_resources(self) -> None:
         """
         Reclaim resources for any completed submissions and issue callbacks.
@@ -583,3 +640,61 @@ class Jobserver:
 
         assert len(retval) == consume, "Postcondition"
         return retval
+
+
+# Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
+def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
+    """Zip raising ValueError when the two iterables differ in length."""
+    a_it, b_it = iter(a), iter(b)
+    sentinel = object()
+    for a_val in a_it:
+        b_val = next(b_it, sentinel)
+        if b_val is sentinel:
+            raise ValueError("argses and kwargses must have equal length")
+        yield (a_val, b_val)
+    if next(b_it, sentinel) is not sentinel:
+        raise ValueError("argses and kwargses must have equal length")
+
+
+def _map_chunk(fn: Callable, chunk: tuple) -> list:
+    """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
+    # Eager list required; result must be picklable across process boundary.
+    return [fn(*args, **kwargs) for args, kwargs in chunk]
+
+
+def _map_generate(
+    submit: Callable[..., Future[T]],
+    fn: Callable[..., T],
+    pairs: Iterator,
+    chunksize: int,
+    buffersize: int,
+    deadline: float,
+) -> Iterator[T]:
+    """Generator backing Jobserver.map() which yields results in order."""
+    futures: deque[Future] = deque()  # Future[list[T]] in practice
+
+    def _futures_append_submit(chunk: tuple) -> None:
+        futures.append(
+            submit(
+                fn=_map_chunk,
+                args=(fn, chunk),
+                timeout=deadline - time.monotonic(),
+            )
+        )
+
+    try:
+        # Initial fill up to buffersize
+        while len(futures) < buffersize and (
+            chunk := tuple(islice(pairs, chunksize))
+        ):
+            _futures_append_submit(chunk)
+
+        # Yield results, submitting replacements
+        while futures:
+            if chunk := tuple(islice(pairs, chunksize)):
+                _futures_append_submit(chunk)
+            yield from futures.popleft().result(
+                timeout=deadline - time.monotonic()
+            )
+    except Blocked:
+        raise TimeoutError()
