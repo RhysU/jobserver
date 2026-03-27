@@ -287,61 +287,6 @@ def _map_chunk(fn: Callable, chunk: list) -> list:
     return [fn(*args, **kwargs) for args, kwargs in chunk]
 
 
-def _map_generate(
-    submit: Callable[..., "Future[T]"],
-    fn: Callable[..., T],
-    pairs: list,
-    chunksize: int,
-    buffersize: Optional[int],
-    deadline: float,
-) -> Iterator[T]:
-    """Generator backing Jobserver.map(); yields results in order."""
-    if not pairs:
-        return
-
-    # Group all pairs into chunks, even when chunksize == 1
-    end = chunksize
-    chunks: list = []
-    for i in range(0, len(pairs), chunksize):
-        chunks.append(pairs[i:end])
-        end += chunksize
-
-    n = len(chunks)
-    futures: list[Optional["Future"]] = [None] * n
-
-    def _submit(chunk: list) -> "Future":
-        remaining = deadline - time.monotonic()
-        try:
-            return submit(
-                fn=_map_chunk,
-                args=(fn, chunk),
-                timeout=remaining,
-            )
-        except Blocked:
-            raise TimeoutError()
-
-    def _result(future: "Future") -> Any:
-        remaining = deadline - time.monotonic()
-        try:
-            return future.result(timeout=remaining)
-        except Blocked:
-            raise TimeoutError()
-
-    # Fill initial buffer
-    window = n if buffersize is None else buffersize
-    head = min(window, n)
-    for i in range(head):
-        futures[i] = _submit(chunks[i])
-
-    # Yield results, submitting replacements as we go
-    for i in range(n):
-        nxt = i + window
-        if nxt < n:
-            futures[nxt] = _submit(chunks[nxt])
-        yield from _result(futures[i])  # type: ignore[arg-type]
-        futures[i] = None  # Allow GC
-
-
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
@@ -692,3 +637,58 @@ class Jobserver:
 
         assert len(retval) == consume, "Postcondition"
         return retval
+
+
+def _map_generate(
+    submit: Callable[..., Future[T]],
+    fn: Callable[..., T],
+    pairs: list,
+    chunksize: int,
+    buffersize: Optional[int],
+    deadline: float,
+) -> Iterator[T]:
+    """Generator backing Jobserver.map(); yields results in order."""
+    if not pairs:
+        return
+
+    # Group all pairs into chunks, even when chunksize == 1
+    end = chunksize
+    chunks: list = []
+    for i in range(0, len(pairs), chunksize):
+        chunks.append(pairs[i:end])
+        end += chunksize
+
+    n = len(chunks)
+    futures: list[Optional[Future]] = [None] * n
+
+    def _submit(chunk: list) -> Future:
+        remaining = deadline - time.monotonic()
+        try:
+            return submit(
+                fn=_map_chunk,
+                args=(fn, chunk),
+                timeout=remaining,
+            )
+        except Blocked:
+            raise TimeoutError()
+
+    def _result(future: Future) -> Any:
+        remaining = deadline - time.monotonic()
+        try:
+            return future.result(timeout=remaining)
+        except Blocked:
+            raise TimeoutError()
+
+    # Fill initial buffer
+    window = n if buffersize is None else buffersize
+    head = min(window, n)
+    for i in range(head):
+        futures[i] = _submit(chunks[i])
+
+    # Yield results, submitting replacements as we go
+    for i in range(n):
+        nxt = i + window
+        if nxt < n:
+            futures[nxt] = _submit(chunks[nxt])
+        yield from _result(futures[i])  # type: ignore[arg-type]
+        futures[i] = None  # Allow GC
