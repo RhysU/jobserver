@@ -392,7 +392,7 @@ class Jobserver:
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         callbacks: bool = True,
         consume: int = 1,
-        env: Optional[Iterable[tuple[str, Optional[str]]]] = None,
+        env: Iterable[tuple[str, Optional[str]]] | None = None,
         preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
         sleep_fn: Optional[  # None uses instance default
             Callable[[], Optional[float]]
