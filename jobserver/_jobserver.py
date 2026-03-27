@@ -334,7 +334,7 @@ class Jobserver:
         # mutation of the caller's container after __init__ returns.
         # Mappings expose .items(); plain iterables are already pairs.
         items = env.items() if isinstance(env, Mapping) else env
-        self._env: tuple[tuple[str, Optional[str]], ...] = tuple(items)
+        self._env = tuple(items)
         self._preexec_fn = preexec_fn
         self._sleep_fn = sleep_fn
 
