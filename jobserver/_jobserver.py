@@ -311,8 +311,7 @@ class Jobserver:
         which reports the number of usable CPUs for the current process.
 
         The env, preexec_fn, and sleep_fn parameters set instance-level
-        defaults for submit(...).  Any of these passed directly to submit(...)
-        override the instance default for that call only.
+        defaults for submit(...).
         """
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
@@ -417,9 +416,8 @@ class Jobserver:
         should either return None when work is acceptable or return the
         non-negative number of seconds for which this process should sleep.
 
-        For env, preexec_fn, and sleep_fn: when None (the default), the
-        instance-level default set in __init__ is used.  Pass an explicit
-        value to override the instance default for this call only.
+        For env, preexec_fn, and sleep_fn non-None values override any
+        instance defaults.
         """
         # First, check any arguments not for _obtain_tokens(...) just below.
         assert fn is not None
@@ -428,12 +426,9 @@ class Jobserver:
         assert isinstance(callbacks, bool), type(callbacks)
 
         # Resolve None to the instance-level default for each optional param
-        if env is None:
-            env = self._env
-        if preexec_fn is None:
-            preexec_fn = self._preexec_fn
-        if sleep_fn is None:
-            sleep_fn = self._sleep_fn
+        env = self._env if env is None else env
+        preexec_fn = self._preexec_fn if preexec_fn is None else preexec_fn
+        sleep_fn = self._sleep_fn if sleep_fn is None else sleep_fn
 
         assert isinstance(env, Iterable), type(env)
         assert preexec_fn is not None
