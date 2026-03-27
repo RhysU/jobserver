@@ -91,35 +91,25 @@ class TestJobserverMap(unittest.TestCase):
                 )
                 self.assertEqual(results, [6, 60, 600])
 
-    def test_kwargses_shorter_than_argses(self) -> None:
-        """map() stops at the shorter iterable (kwargses)."""
+    def test_kwargses_shorter_than_argses_raises(self) -> None:
+        """Mismatched lengths raise ValueError (kwargses shorter)."""
         js = Jobserver(context=FAST, slots=2)
-        argses = [(1,), (2,), (3,)]
-        kwargses = [{"b": 10}]
-        results = list(
+        with self.assertRaises(ValueError):
             js.map(
                 fn=_kw_sum,
-                argses=argses,
-                kwargses=kwargses,
-                timeout=TIMEOUT,
+                argses=[(1,), (2,), (3,)],
+                kwargses=[{"b": 10}],
             )
-        )
-        self.assertEqual(results, [11])
 
-    def test_argses_shorter_than_kwargses(self) -> None:
-        """map() stops at the shorter iterable (argses)."""
+    def test_argses_shorter_than_kwargses_raises(self) -> None:
+        """Mismatched lengths raise ValueError (argses shorter)."""
         js = Jobserver(context=FAST, slots=2)
-        argses = [(1,)]
-        kwargses = [{"b": 10}, {"b": 20}, {"b": 30}]
-        results = list(
+        with self.assertRaises(ValueError):
             js.map(
                 fn=_kw_sum,
-                argses=argses,
-                kwargses=kwargses,
-                timeout=TIMEOUT,
+                argses=[(1,)],
+                kwargses=[{"b": 10}, {"b": 20}, {"b": 30}],
             )
-        )
-        self.assertEqual(results, [11])
 
     def test_preserves_order(self) -> None:
         """Results are yielded in submission order, not completion."""
