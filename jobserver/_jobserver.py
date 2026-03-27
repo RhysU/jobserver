@@ -658,6 +658,7 @@ def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
 
 def _map_chunk(fn: Callable, chunk: tuple) -> list:
     """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
+    # Eager list required; result must be picklable across process boundary.
     return [fn(*args, **kwargs) for args, kwargs in chunk]
 
 
