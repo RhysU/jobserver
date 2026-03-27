@@ -670,18 +670,18 @@ def _map_generate(
     deadline: float,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map(); yields results in order."""
-    try:
-        futures: deque[Future] = deque()  # Future[list[T]] in practice
+    futures: deque[Future] = deque()  # Future[list[T]] in practice
 
-        def _futures_append_submit(chunk: tuple) -> None:
-            futures.append(
-                submit(
-                    fn=_map_chunk,
-                    args=(fn, chunk),
-                    timeout=deadline - time.monotonic(),
-                )
+    def _futures_append_submit(chunk: tuple) -> None:
+        futures.append(
+            submit(
+                fn=_map_chunk,
+                args=(fn, chunk),
+                timeout=deadline - time.monotonic(),
             )
+        )
 
+    try:
         # Initial fill up to buffersize
         while len(futures) < buffersize and (
             chunk := tuple(islice(pairs, chunksize))
