@@ -39,9 +39,16 @@ Homepage = "https://github.com/RhysU/jobserver"
 Repository = "https://github.com/RhysU/jobserver"
 Issues = "https://github.com/RhysU/jobserver/issues"
 
+[tool.flake8]
+extend-exclude = [".venv", "dist", "*.egg-info"]
+
 [tool.isort]
 profile = "black"
 line_length = 79
+skip_gitignore = true
+
+[tool.mypy]
+files = ["jobserver", "examples"]
 
 [tool.black]
 line-length = 79
