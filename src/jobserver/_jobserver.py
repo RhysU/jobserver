@@ -6,6 +6,7 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
+import concurrent.futures
 import os
 import queue
 import signal
@@ -728,4 +729,6 @@ def _map_generate(
                 timeout=deadline - time.monotonic()
             )
     except Blocked:
-        raise TimeoutError() from None
+        # concurrent.futures.TimeoutError (not builtin TimeoutError) so that
+        # callers catching either type see it on Python < 3.11.
+        raise concurrent.futures.TimeoutError() from None
