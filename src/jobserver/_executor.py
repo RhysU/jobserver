@@ -12,7 +12,7 @@ import queue
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator
-from typing import Any, TypeVar
+from typing import Any, Optional, TypeVar
 
 from . import _request, _response
 from ._jobserver import (
@@ -120,6 +120,28 @@ class JobserverExecutor(concurrent.futures.Executor):
                 self._futures.pop(work_id, None)
             raise
         return future
+
+    # TODO: Add @typing.override when Python 3.12+ is the minimum.
+    def map(
+        self,
+        fn: Callable[..., T],
+        /,
+        *iterables: Any,
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+    ) -> Iterator[T]:
+        """Map fn over iterables, yielding results in order.
+
+        Delegates to Jobserver.map() by translating Executor.map()'s
+        *iterables (one iterable per positional parameter) into the
+        argses form (one tuple of positional args per call).
+        """
+        return self._jobserver.map(
+            fn=fn,
+            argses=zip(*iterables),
+            timeout=timeout,
+            chunksize=chunksize,
+        )
 
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
