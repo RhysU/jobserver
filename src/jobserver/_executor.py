@@ -129,11 +129,15 @@ class JobserverExecutor(concurrent.futures.Executor):
         *iterables: Any,
         timeout: Optional[float] = None,
         chunksize: int = 1,
+        buffersize: Optional[int] = None,
     ) -> Iterator[T]:
         """Return an iterator of fn applied to each iterables entry.
 
         Calls may be evaluated out-of-order.  Raises TimeoutError if
         results cannot be generated before timeout seconds elapse.
+        Chunksize groups calls into batches sent to each worker.
+        Buffersize limits outstanding submissions; None collects all
+        inputs eagerly.
 
         Overrides Executor.map() for efficiency.
         """
@@ -142,6 +146,7 @@ class JobserverExecutor(concurrent.futures.Executor):
             argses=zip(*iterables),
             timeout=timeout,
             chunksize=chunksize,
+            buffersize=buffersize,
         )
 
     def shutdown(
