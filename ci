@@ -1,5 +1,5 @@
 #!/bin/bash -eu
-# Run uv-based continuous integration tests for src/jobserver/
+# Run uv-based continuous integration tests for jobserver
 
 # First, unit testing runs the included tests
 uv run -m unittest -v ./test/test_*.py
