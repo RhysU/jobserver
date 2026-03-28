@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 8 shows preexec_fn setting PR_SET_PDEATHSIG via prctl."""
+
 import ctypes
 import ctypes.util
 import os

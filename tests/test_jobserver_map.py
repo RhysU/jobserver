@@ -8,6 +8,7 @@
 Exercises the map API covering argument handling, chunking, buffering,
 timeout semantics, and error propagation.
 """
+
 import time
 import unittest
 from multiprocessing import get_all_start_methods

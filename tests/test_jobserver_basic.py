@@ -9,6 +9,7 @@ Exercises the Jobserver API directly, without the JobserverExecutor
 wrapper, to verify the fundamental submit-then-result contract under
 normal operation, slot exhaustion, timeouts, and edge-case payloads.
 """
+
 import contextlib
 import copy
 import itertools

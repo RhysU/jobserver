@@ -8,6 +8,7 @@
 Past participles: events reporting what happened.
 Using NamedTuple (dataclass slots require 3.10+).
 """
+
 import typing
 from typing import Any
 
