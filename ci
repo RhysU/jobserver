@@ -17,7 +17,7 @@ uvx --from "mypy>0.770" mypy jobserver/ examples/
 
 # Then, check for formatting issues
 uvx isort jobserver/ examples/ tests/
-uvx --from "black<25" black --check --line-length 79 --verbose jobserver/ examples/ tests/
+uvx --from "black<25" black --check --verbose jobserver/ examples/ tests/
 
 # Last, verify the source distribution builds correctly
 uvx --from build python -m build --sdist
