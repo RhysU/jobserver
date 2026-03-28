@@ -39,9 +39,6 @@ Homepage = "https://github.com/RhysU/jobserver"
 Repository = "https://github.com/RhysU/jobserver"
 Issues = "https://github.com/RhysU/jobserver/issues"
 
-[tool.ruff]
-extend-exclude = [".venv", "dist", "*.egg-info"]
-
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 
