@@ -16,7 +16,7 @@ uvx ruff check
 uvx --from "mypy>0.770" mypy
 
 # Then, check for formatting issues
-uvx --from "black>25.1" black --check --verbose .
+uvx --from "black>=26" black --check --verbose .
 
 # Last, verify the source distribution builds correctly
 uvx --from build python -m build --sdist
