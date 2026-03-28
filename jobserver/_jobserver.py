@@ -6,21 +6,21 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
-from collections import deque
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from itertools import islice, zip_longest
 import os
 import queue
 import signal
 import threading
 import time
 import types
-from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from itertools import islice, zip_longest
 
 # Implementation depends upon an explicit subset of multiprocessing
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
+from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 
 from ._queue import MinimalQueue, absolute_deadline, resolve_context
 

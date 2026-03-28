@@ -10,7 +10,6 @@ timeout semantics, and error propagation.
 """
 import time
 import unittest
-
 from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver

@@ -15,7 +15,7 @@ import sys
 import time
 import typing
 
-from jobserver import JobserverExecutor, Jobserver, MinimalQueue
+from jobserver import Jobserver, JobserverExecutor, MinimalQueue
 
 T = typing.TypeVar("T")
 

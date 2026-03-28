@@ -7,13 +7,13 @@
 
 import queue
 import time
-from typing import Any, Generic, Optional, TypeVar, Union
 
 # Implementation depends upon an explicit subset of multiprocessing
 from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
 from multiprocessing.reduction import ForkingPickler
+from typing import Any, Generic, Optional, TypeVar, Union
 
 __all__ = (
     "MinimalQueue",

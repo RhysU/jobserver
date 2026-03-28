@@ -18,7 +18,7 @@ import time
 import typing
 import unittest
 
-from jobserver import JobserverExecutor, Jobserver
+from jobserver import Jobserver, JobserverExecutor
 
 from .helpers import (
     FAST,

@@ -17,7 +17,6 @@ import sys
 import time
 import typing
 import unittest
-
 from multiprocessing import get_all_start_methods, get_context
 
 from jobserver import (

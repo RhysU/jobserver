@@ -16,7 +16,6 @@ import signal
 import sys
 import time
 import unittest
-
 from multiprocessing import get_all_start_methods, get_context
 
 from jobserver import (
@@ -29,8 +28,8 @@ from jobserver import (
 from .helpers import (
     helper_callback,
     helper_current_process_name,
-    helper_noop,
     helper_nonblocking,
+    helper_noop,
     helper_preexec_fn,
     helper_raise,
     helper_return,
