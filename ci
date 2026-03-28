@@ -1,12 +1,12 @@
 #!/bin/bash -eu
-# Run uv-based continuous integration tests for jobserver/
+# Run uv-based continuous integration tests for src/jobserver/
 
 # First, unit testing runs the included tests
-uv run -m unittest -v ./tests/test_*.py
+uv run -m unittest -v ./test/test_*.py
 
 # Second, run examples to confirm they complete successfully
 for ex in examples/*.py; do
-    PYTHONPATH=. uv run "$ex"
+    PYTHONPATH=src uv run "$ex"
 done
 
 # Then, linting (PEP8, imports, bugbear, pyupgrade)
