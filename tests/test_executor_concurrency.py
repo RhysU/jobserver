@@ -19,10 +19,9 @@ import typing
 import unittest
 import unittest.mock
 import weakref
-
 from multiprocessing import get_all_start_methods
 
-from jobserver import JobserverExecutor, Jobserver, MinimalQueue
+from jobserver import Jobserver, JobserverExecutor, MinimalQueue
 from jobserver._request import Submit
 
 from .helpers import (

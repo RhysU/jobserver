@@ -5,15 +5,16 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """A concurrent.futures.Executor backed by a Jobserver."""
 
-from collections import deque
-from collections.abc import Callable, Iterator
 import concurrent.futures
 import itertools
 import logging
 import queue
 import threading
+from collections import deque
+from collections.abc import Callable, Iterator
 from typing import Any, TypeVar
 
+from . import _request, _response
 from ._jobserver import (
     Blocked,
     CallbackRaised,
@@ -21,9 +22,6 @@ from ._jobserver import (
     Jobserver,
 )
 from ._queue import MinimalQueue
-
-from . import _request
-from . import _response
 
 __all__ = ("JobserverExecutor",)
 

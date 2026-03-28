@@ -37,6 +37,7 @@ All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.
 Implementation passes both PEP 8 (per flake8) and type-hinting (per mypy).
 Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
+from ._executor import JobserverExecutor
 from ._jobserver import (
     Blocked,
     CallbackRaised,
@@ -46,7 +47,6 @@ from ._jobserver import (
     SubmissionDied,
 )
 from ._queue import absolute_deadline, resolve_context
-from ._executor import JobserverExecutor
 
 __all__ = (
     "Blocked",
