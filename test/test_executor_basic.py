@@ -470,3 +470,7 @@ class TestMap(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             result = list(exe.map(pow, [2, 3], [10, 10]))
         self.assertEqual([1024, 59049], result)
+
+    def test_map_not_inherited(self) -> None:
+        """map() is defined on JobserverExecutor, not inherited."""
+        self.assertIn("map", vars(JobserverExecutor))

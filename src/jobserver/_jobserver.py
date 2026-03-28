@@ -6,6 +6,7 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
+import concurrent.futures
 import os
 import queue
 import signal
@@ -519,8 +520,8 @@ class Jobserver:
 
         Timeout is given in seconds from this call; if a result is
         not available by the deadline, the iterator raises
-        TimeoutError.  Function calls are sent to workers in groups
-        of chunksize.
+        concurrent.futures.TimeoutError.  Function calls are sent to
+        workers in groups of chunksize.
 
         When env provided, child updates os.environ unsetting None-valued keys.
         When preexec_fn provided, child calls it just before fn(...).
@@ -728,4 +729,6 @@ def _map_generate(
                 timeout=deadline - time.monotonic()
             )
     except Blocked:
-        raise TimeoutError() from None
+        # concurrent.futures.TimeoutError (not builtin TimeoutError) so that
+        # callers catching either type see it on Python < 3.11.
+        raise concurrent.futures.TimeoutError() from None
