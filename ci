@@ -10,7 +10,7 @@ for ex in examples/*.py; do
 done
 
 # Then, PEP8 linting
-uvx --from flake8 --with Flake8-pyproject flake8 .
+uvx --from flake8 --with Flake8-pyproject flake8
 
 # Then, Typehint linting requires a new-enough mypy
 uvx --from "mypy>0.770" mypy
