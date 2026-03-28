@@ -49,7 +49,7 @@ select = ["B", "E", "F", "I", "UP", "W"]
 known-first-party = ["jobserver"]
 
 [tool.mypy]
-files = ["src/jobserver", "examples"]  # test/ deliberately excluded
+files = ["src", "examples"]  # test/ deliberately excluded
 
 [tool.black]
 line-length = 79
