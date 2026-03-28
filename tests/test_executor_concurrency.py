@@ -217,9 +217,9 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2))
             ref = weakref.ref(f)  # noqa: F841
-            for done in concurrent.futures.as_completed([f], timeout=TIMEOUT):
+            for _done in concurrent.futures.as_completed([f], timeout=TIMEOUT):
                 pass
-            del f, done
+            del f, _done
             gc.collect()
             # Best-effort: GC may or may not collect
             # Just verify no crash

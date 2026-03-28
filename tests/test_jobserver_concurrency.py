@@ -70,7 +70,9 @@ class TestJobserverConcurrency(unittest.TestCase):
             f = js.submit(fn=time.sleep, args=(0.02,), timeout=5)
             results: list = [None, None]
 
-            def call_done(idx: int, barrier: threading.Barrier) -> None:
+            def call_done(
+                idx: int, barrier: threading.Barrier, f=f, results=results
+            ) -> None:
                 barrier.wait()
                 results[idx] = f.done(timeout=5)
 
@@ -140,11 +142,11 @@ class TestJobserverConcurrency(unittest.TestCase):
             barrier = threading.Barrier(2)
 
             def register_callback(
-                barrier: threading.Barrier,
+                barrier: threading.Barrier, f=f, fired=fired
             ) -> None:
                 barrier.wait()
                 try:
-                    f.when_done(lambda: fired.append("cb"))
+                    f.when_done(lambda fired=fired: fired.append("cb"))
                 except CallbackRaised:
                     pass  # Callback fired and raised; still counts
 
@@ -186,7 +188,9 @@ class TestJobserverConcurrency(unittest.TestCase):
 
             raised_in: list[str] = []
 
-            def call_done(name: str, barrier: threading.Barrier) -> None:
+            def call_done(
+                name: str, barrier: threading.Barrier, f=f, raised_in=raised_in
+            ) -> None:
                 barrier.wait()
                 try:
                     f.done(timeout=5)

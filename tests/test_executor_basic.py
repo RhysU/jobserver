@@ -20,7 +20,7 @@ import time
 import typing
 import unittest
 
-from jobserver import Jobserver, JobserverExecutor
+from jobserver import Jobserver, JobserverExecutor, SubmissionDied
 
 from .helpers import (
     FAST,
@@ -128,7 +128,7 @@ class TestExceptionPropagation(unittest.TestCase):
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(signal.raise_signal, signal.SIGKILL)
-            with self.assertRaises(Exception):
+            with self.assertRaises(SubmissionDied):
                 f.result(timeout=TIMEOUT)
             # Executor must recover for multiple subsequent tasks
             for i in range(5):
@@ -140,7 +140,7 @@ class TestExceptionPropagation(unittest.TestCase):
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(sys.exit, 1)
-            with self.assertRaises(Exception):
+            with self.assertRaises(SubmissionDied):
                 f.result(timeout=TIMEOUT)
             # Executor must remain usable
             g = exe.submit(len, (1, 2, 3))
@@ -152,7 +152,7 @@ class TestExceptionPropagation(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             # lambda is not picklable under spawn;
             # pickling fails at submit() time in put().
-            with self.assertRaises(Exception):
+            with self.assertRaises((AttributeError, TypeError)):
                 exe.submit(lambda: 42)
 
     def test_unpicklable_arguments(self) -> None:
@@ -161,7 +161,7 @@ class TestExceptionPropagation(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             lock = threading.Lock()
             # Lock is not picklable; fails at submit().
-            with self.assertRaises(Exception):
+            with self.assertRaises((AttributeError, TypeError)):
                 exe.submit(len, lock)
 
     def test_large_arguments_and_results(self) -> None:
