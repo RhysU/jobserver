@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import operator
+import pickle
 import signal
 import sys
 import threading
@@ -152,7 +153,9 @@ class TestExceptionPropagation(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             # lambda is not picklable under spawn;
             # pickling fails at submit() time in put().
-            with self.assertRaises((AttributeError, TypeError)):
+            with self.assertRaises(
+                (AttributeError, TypeError, pickle.PicklingError)
+            ):
                 exe.submit(lambda: 42)
 
     def test_unpicklable_arguments(self) -> None:
@@ -161,7 +164,9 @@ class TestExceptionPropagation(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             lock = threading.Lock()
             # Lock is not picklable; fails at submit().
-            with self.assertRaises((AttributeError, TypeError)):
+            with self.assertRaises(
+                (AttributeError, TypeError, pickle.PicklingError)
+            ):
                 exe.submit(len, lock)
 
     def test_large_arguments_and_results(self) -> None:
