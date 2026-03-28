@@ -9,6 +9,8 @@ Covers the executor's start-to-finish lifecycle: cancellation of pending
 and running futures, shutdown semantics (wait, cancel_futures), and
 verification that processes, threads, and file descriptors are released.
 """
+from __future__ import annotations
+
 import concurrent.futures
 import gc
 import multiprocessing
@@ -16,10 +18,9 @@ import os
 import signal
 import threading
 import time
-import typing
 import unittest
 
-from jobserver import Jobserver, JobserverExecutor
+from jobserver import Jobserver, JobserverExecutor, SubmissionDied
 
 from .helpers import (
     FAST,
@@ -201,12 +202,15 @@ class TestShutdown(unittest.TestCase):
             js = Jobserver(context=FAST, slots=2)
             exe = JobserverExecutor(js)
             barrier = threading.Barrier(2)
-            result_holder: typing.List[
-                typing.Optional[concurrent.futures.Future]
-            ] = [None]
-            error_holder: typing.List[typing.Optional[Exception]] = [None]
+            result_holder: list[concurrent.futures.Future | None] = [None]
+            error_holder: list[Exception | None] = [None]
 
-            def submitter() -> None:
+            def submitter(
+                barrier=barrier,
+                exe=exe,
+                result_holder=result_holder,
+                error_holder=error_holder,
+            ) -> None:
                 barrier.wait()
                 try:
                     result_holder[0] = exe.submit(len, (1,))
@@ -328,7 +332,7 @@ class TestResourceLeaks(unittest.TestCase):
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(signal.raise_signal, signal.SIGKILL)
-            with self.assertRaises(Exception):
+            with self.assertRaises(SubmissionDied):
                 f.result(timeout=TIMEOUT)
         time.sleep(0.5)
         after = len(multiprocessing.active_children())
@@ -351,7 +355,7 @@ class TestResourceLeaks(unittest.TestCase):
             # Kill the dispatcher
             os.kill(exe._dispatcher.pid, signal.SIGKILL)
             # The outstanding future must surface an error
-            with self.assertRaises(Exception):
+            with self.assertRaises(RuntimeError):
                 f.result(timeout=TIMEOUT)
         finally:
             exe.shutdown(wait=True)

@@ -41,7 +41,7 @@ def main() -> None:
         info("pending cancelled: %s", cancelled)
         try:
             pending.result()
-            assert False, "Unexpected"
+            raise AssertionError("Unexpected")
         except CancelledError:
             pass
 

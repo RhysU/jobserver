@@ -650,7 +650,7 @@ class Jobserver:
                 # (5) Otherwise, possibly throw in the towel...
                 monotonic = time.monotonic()
                 if monotonic >= deadline:
-                    raise Blocked()
+                    raise Blocked() from None
 
                 # (6) ...then block until some interesting event.
                 wait(
@@ -728,4 +728,4 @@ def _map_generate(
                 timeout=deadline - time.monotonic()
             )
     except Blocked:
-        raise TimeoutError()
+        raise TimeoutError() from None

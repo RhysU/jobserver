@@ -8,6 +8,8 @@
 All module-level functions must be picklable for use with spawn/forkserver
 start methods.
 """
+from __future__ import annotations
+
 import multiprocessing
 import os
 import signal
@@ -85,7 +87,7 @@ def executor_in_child(method: str) -> int:
 
 
 def executor_in_child_via_queue(
-    method: str, q: "multiprocessing.Queue[int]"
+    method: str, q: multiprocessing.Queue[int]
 ) -> None:
     """Wrapper for executor_in_child that puts result on a queue."""
     q.put(executor_in_child(method))
@@ -97,7 +99,7 @@ def helper_nonblocking(mq: MinimalQueue[str]) -> str:
     return mq.get(timeout=60.0)
 
 
-def helper_callback(lizt: typing.List, index: int, increment: int) -> None:
+def helper_callback(lizt: list, index: int, increment: int) -> None:
     """Helper permitting tests to observe callbacks firing."""
     lizt[index] += increment
 
@@ -115,7 +117,7 @@ def helper_raise(klass: type, *args) -> typing.NoReturn:
 def helper_signal(sig: signal.Signals) -> typing.NoReturn:
     """Helper sending the given signal to the current process."""
     os.kill(os.getpid(), sig)
-    assert False, "Unreachable"
+    raise AssertionError("Unreachable")
 
 
 def helper_noop() -> None:

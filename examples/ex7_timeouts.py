@@ -41,7 +41,7 @@ def main() -> None:
 def task_slow(seconds: float) -> str:
     """Sleep then return a confirmation."""
     time.sleep(seconds)
-    return "done after %.2fs" % seconds
+    return f"done after {seconds:.2f}s"
 
 
 if __name__ == "__main__":

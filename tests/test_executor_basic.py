@@ -9,8 +9,11 @@ Exercises the single-future data flow through the executor: submitting
 work, retrieving results and exceptions, querying state transitions,
 receiving done callbacks, and iterating with map().
 """
+from __future__ import annotations
+
 import concurrent.futures
 import operator
+import pickle
 import signal
 import sys
 import threading
@@ -18,7 +21,7 @@ import time
 import typing
 import unittest
 
-from jobserver import Jobserver, JobserverExecutor
+from jobserver import Jobserver, JobserverExecutor, SubmissionDied
 
 from .helpers import (
     FAST,
@@ -126,7 +129,7 @@ class TestExceptionPropagation(unittest.TestCase):
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(signal.raise_signal, signal.SIGKILL)
-            with self.assertRaises(Exception):
+            with self.assertRaises(SubmissionDied):
                 f.result(timeout=TIMEOUT)
             # Executor must recover for multiple subsequent tasks
             for i in range(5):
@@ -138,7 +141,7 @@ class TestExceptionPropagation(unittest.TestCase):
         js = Jobserver(context=FAST, slots=2)
         with JobserverExecutor(js) as exe:
             f = exe.submit(sys.exit, 1)
-            with self.assertRaises(Exception):
+            with self.assertRaises(SubmissionDied):
                 f.result(timeout=TIMEOUT)
             # Executor must remain usable
             g = exe.submit(len, (1, 2, 3))
@@ -150,7 +153,9 @@ class TestExceptionPropagation(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             # lambda is not picklable under spawn;
             # pickling fails at submit() time in put().
-            with self.assertRaises(Exception):
+            with self.assertRaises(
+                (AttributeError, TypeError, pickle.PicklingError)
+            ):
                 exe.submit(lambda: 42)
 
     def test_unpicklable_arguments(self) -> None:
@@ -159,7 +164,9 @@ class TestExceptionPropagation(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             lock = threading.Lock()
             # Lock is not picklable; fails at submit().
-            with self.assertRaises(Exception):
+            with self.assertRaises(
+                (AttributeError, TypeError, pickle.PicklingError)
+            ):
                 exe.submit(len, lock)
 
     def test_large_arguments_and_results(self) -> None:
@@ -244,7 +251,7 @@ class TestCallbacks(unittest.TestCase):
     def test_callback_on_success(self) -> None:
         """add_done_callback fires on success."""
         js = Jobserver(context=FAST, slots=2)
-        results: typing.List[typing.Any] = []
+        results: list[typing.Any] = []
         event = threading.Event()
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2, 3))
@@ -260,7 +267,7 @@ class TestCallbacks(unittest.TestCase):
     def test_callback_on_exception(self) -> None:
         """add_done_callback fires on exception."""
         js = Jobserver(context=FAST, slots=2)
-        results: typing.List[typing.Any] = []
+        results: list[typing.Any] = []
         event = threading.Event()
         with JobserverExecutor(js) as exe:
             f = exe.submit(helper_raise, ValueError, "raised")
@@ -277,7 +284,7 @@ class TestCallbacks(unittest.TestCase):
         """add_done_callback fires on cancellation."""
         js = Jobserver(context=FAST, slots=1)
         exe = JobserverExecutor(js)
-        results: typing.List[bool] = []
+        results: list[bool] = []
         event = threading.Event()
         try:
             exe.submit(time.sleep, 0.4)
@@ -302,14 +309,14 @@ class TestCallbacks(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2))
             f.result(timeout=TIMEOUT)
-            results: typing.List[int] = []
+            results: list[int] = []
             f.add_done_callback(lambda fut: results.append(42))
             self.assertEqual([42], results)
 
     def test_multiple_callbacks_order(self) -> None:
         """Multiple callbacks fire in registration order."""
         js = Jobserver(context=FAST, slots=2)
-        order: typing.List[str] = []
+        order: list[str] = []
         event = threading.Event()
         with JobserverExecutor(js) as exe:
             f = exe.submit(len, (1, 2))
@@ -335,7 +342,7 @@ class TestCallbacks(unittest.TestCase):
     def test_raising_callback(self) -> None:
         """A raising callback does not prevent subsequent ones."""
         js = Jobserver(context=FAST, slots=2)
-        order: typing.List[str] = []
+        order: list[str] = []
         event = threading.Event()
         # concurrent.futures.Future._invoke_callbacks logs
         # raising callbacks via the 'concurrent.futures' logger
@@ -372,7 +379,7 @@ class TestCallbacks(unittest.TestCase):
     def test_callback_receives_correct_future(self) -> None:
         """Callback receives the correct future."""
         js = Jobserver(context=FAST, slots=2)
-        mapping: typing.Dict[int, concurrent.futures.Future] = {}
+        mapping: dict[int, concurrent.futures.Future] = {}
         event = threading.Event()
         count = [0]
         with JobserverExecutor(js) as exe:

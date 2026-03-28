@@ -92,7 +92,7 @@ class TestJobserverCallbacks(unittest.TestCase):
                 f = js.submit(fn=len, args=((1,),), timeout=5)
                 order: list[int] = []
                 for i in range(100):
-                    f.when_done(lambda idx=i: order.append(idx))
+                    f.when_done(lambda idx=i, o=order: o.append(idx))
                 f.done(timeout=5)
                 self.assertEqual(order, list(range(100)))
 

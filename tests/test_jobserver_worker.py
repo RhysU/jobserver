@@ -234,7 +234,7 @@ class TestJobserverWorker(unittest.TestCase):
                     ),
                     timeout=5,
                 )
-                with self.assertRaises(Exception):
+                with self.assertRaises(RuntimeError):
                     f.result(timeout=5)
 
     def test_sleep_fn(self) -> None:
@@ -249,17 +249,29 @@ class TestJobserverWorker(unittest.TestCase):
 
                 # Confirm sleep_fn(...) returning zero can proceed
                 zs = iter(itertools.cycle((0, None)))
-                f = js.submit(fn=len, args=((1,),), sleep_fn=lambda: next(zs))
+
+                def sfn_zs(zs=zs):
+                    return next(zs)
+
+                f = js.submit(fn=len, args=((1,),), sleep_fn=sfn_zs)
 
                 # Confirm sleep_fn(...) returning finite sleep can proceed
                 gs = iter(itertools.cycle((0.05, 0.02, None)))
-                g = js.submit(fn=len, args=((),), sleep_fn=lambda: next(gs))
+
+                def sfn_gs(gs=gs):
+                    return next(gs)
+
+                g = js.submit(fn=len, args=((),), sleep_fn=sfn_gs)
 
                 # Confirm repeated sleeping can cause a timeout to occur.
                 # Note fn is never called as sleep_fn vetoes the invocation.
                 hs = iter(itertools.cycle((0.05,)))
+
+                def sfn_hs(hs=hs):
+                    return next(hs)
+
                 with self.assertRaises(Blocked):
-                    js.submit(fn=len, sleep_fn=lambda: next(hs), timeout=0.1)
+                    js.submit(fn=len, sleep_fn=sfn_hs, timeout=0.1)
 
                 # Confirm as expected.  Importantly, results not previously
                 # retrieved implying above submissions finalized results.

@@ -39,13 +39,14 @@ Homepage = "https://github.com/RhysU/jobserver"
 Repository = "https://github.com/RhysU/jobserver"
 Issues = "https://github.com/RhysU/jobserver/issues"
 
-[tool.flake8]
-extend-exclude = [".venv", "dist", "*.egg-info"]
+[tool.ruff]
+line-length = 79
 
-[tool.isort]
-profile = "black"
-line_length = 79
-skip_gitignore = true
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["jobserver"]
 
 [tool.mypy]
 files = ["jobserver", "examples"]  # tests/ deliberately excluded
