@@ -34,7 +34,6 @@ from .helpers import (
     helper_preexec_fn,
     helper_raise,
     helper_return,
-    helper_signal,
 )
 
 
@@ -51,15 +50,15 @@ class TestJobserverWorker(unittest.TestCase):
                 # Prepare jobs with workers possibly receiving signals
                 context = get_context(method)
                 js = Jobserver(context=context, slots=2)
-                f = js.submit(fn=helper_signal, args=(signal.SIGKILL,))
+                f = js.submit(fn=signal.raise_signal, args=(signal.SIGKILL,))
                 f.when_done(helper_callback, mutable, 0, 2)
-                g = js.submit(fn=helper_signal, args=(signal.SIGTERM,))
+                g = js.submit(fn=signal.raise_signal, args=(signal.SIGTERM,))
                 g.when_done(helper_callback, mutable, 1, 3)
-                h = js.submit(fn=helper_signal, args=(signal.SIGUSR1,))
+                h = js.submit(fn=signal.raise_signal, args=(signal.SIGUSR1,))
                 h.when_done(helper_callback, mutable, 2, 5)
                 i = js.submit(fn=len, args=(("The jig is up!",)))
                 i.when_done(helper_callback, mutable, 3, 7)
-                j = js.submit(fn=helper_signal, args=(signal.SIGUSR2,))
+                j = js.submit(fn=signal.raise_signal, args=(signal.SIGUSR2,))
                 j.when_done(helper_callback, mutable, 4, 11)
 
                 # Confirm done/callbacks correct even when submissions die

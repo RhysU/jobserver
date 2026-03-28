@@ -115,12 +115,6 @@ def helper_raise(klass: type, *args) -> typing.NoReturn:
     raise klass(*args)
 
 
-def helper_signal(sig: signal.Signals) -> typing.NoReturn:
-    """Helper sending the given signal to the current process."""
-    signal.raise_signal(sig)
-    raise AssertionError("Unreachable")
-
-
 def helper_noop() -> None:
     """A do-nothing callable picklable for spawn/forkserver contexts."""
 
