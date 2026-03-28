@@ -9,14 +9,13 @@ for ex in examples/*.py; do
     PYTHONPATH=. uv run "$ex"
 done
 
-# Then, PEP8 linting
+# Then, linting (PEP8, imports, bugbear, pyupgrade)
 uvx ruff check
 
 # Then, Typehint linting requires a new-enough mypy
 uvx --from "mypy>0.770" mypy
 
 # Then, check for formatting issues
-uvx isort .
 uvx --from "black<25" black --check --verbose .
 
 # Last, verify the source distribution builds correctly

@@ -113,7 +113,8 @@ class JobserverExecutor(concurrent.futures.Executor):
             # submit() that observed the flag in time.
             with self._lock:
                 self._futures.pop(work_id, None)
-            raise RuntimeError("Cannot submit: executor is shut down")
+            msg = "Cannot submit: executor is shut down"
+            raise RuntimeError(msg) from None
         except Exception:
             with self._lock:
                 self._futures.pop(work_id, None)
