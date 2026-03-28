@@ -159,7 +159,7 @@ class TestJobserverBasic(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
-                e = Exception("Returned by method {}".format(method))
+                e = Exception(f"Returned by method {method}")
                 f = js.submit(fn=helper_return, args=(e,), timeout=None)
                 self.assertEqual(type(e), type(f.result()))
                 self.assertEqual(e.args, f.result().args)
