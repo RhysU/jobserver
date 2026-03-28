@@ -39,6 +39,10 @@ Homepage = "https://github.com/RhysU/jobserver"
 Repository = "https://github.com/RhysU/jobserver"
 Issues = "https://github.com/RhysU/jobserver/issues"
 
+[tool.isort]
+profile = "black"
+line_length = 79
+
 [tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
