@@ -130,7 +130,13 @@ class JobserverExecutor(concurrent.futures.Executor):
         timeout: Optional[float] = None,
         chunksize: int = 1,
     ) -> Iterator[T]:
-        """Override Executor.map() for efficiency."""
+        """Return an iterator of fn applied to each iterables entry.
+
+        Calls may be evaluated out-of-order.  Raises TimeoutError if
+        results cannot be generated before timeout seconds elapse.
+
+        Overrides Executor.map() for efficiency.
+        """
         return self._jobserver.map(
             fn=fn,
             argses=zip(*iterables),
