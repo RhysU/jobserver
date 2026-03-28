@@ -249,20 +249,29 @@ class TestJobserverWorker(unittest.TestCase):
 
                 # Confirm sleep_fn(...) returning zero can proceed
                 zs = iter(itertools.cycle((0, None)))
-                sfn = lambda zs=zs: next(zs)  # noqa: E731
-                f = js.submit(fn=len, args=((1,),), sleep_fn=sfn)
+
+                def sfn_zs(zs=zs):
+                    return next(zs)
+
+                f = js.submit(fn=len, args=((1,),), sleep_fn=sfn_zs)
 
                 # Confirm sleep_fn(...) returning finite sleep can proceed
                 gs = iter(itertools.cycle((0.05, 0.02, None)))
-                sfn = lambda gs=gs: next(gs)  # noqa: E731
-                g = js.submit(fn=len, args=((),), sleep_fn=sfn)
+
+                def sfn_gs(gs=gs):
+                    return next(gs)
+
+                g = js.submit(fn=len, args=((),), sleep_fn=sfn_gs)
 
                 # Confirm repeated sleeping can cause a timeout to occur.
                 # Note fn is never called as sleep_fn vetoes the invocation.
                 hs = iter(itertools.cycle((0.05,)))
-                sfn = lambda hs=hs: next(hs)  # noqa: E731
+
+                def sfn_hs(hs=hs):
+                    return next(hs)
+
                 with self.assertRaises(Blocked):
-                    js.submit(fn=len, sleep_fn=sfn, timeout=0.1)
+                    js.submit(fn=len, sleep_fn=sfn_hs, timeout=0.1)
 
                 # Confirm as expected.  Importantly, results not previously
                 # retrieved implying above submissions finalized results.
