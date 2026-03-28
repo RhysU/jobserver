@@ -43,6 +43,9 @@ Issues = "https://github.com/RhysU/jobserver/issues"
 profile = "black"
 line_length = 79
 
+[tool.black]
+line-length = 79
+
 [tool.setuptools_scm]
 
 [tool.setuptools.packages.find]
