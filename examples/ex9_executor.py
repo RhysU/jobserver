@@ -47,7 +47,6 @@ def main() -> None:
             pass
 
         # Collect the slow task's result; executor shuts down cleanly on exit
-        info("slow task complete: %s", slow.done())
         assert slow.result() is None
 
 

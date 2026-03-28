@@ -17,22 +17,22 @@ def main() -> None:
     # Register callbacks that fire when the future completes
     results: list = []
     future = jobserver.submit(fn=len, args=("hello",))
-    future.when_done(callback_record, results, "first")
-    future.when_done(callback_record, results, "second")
+    future.when_done(callback_record, results=results, tag="first")
+    future.when_done(callback_record, results=results, tag="second")
     info("Result: %s", future.result())
     info("Callbacks fired: %s", results)
 
     # Register a callback after the future already has a result.
     # It fires immediately.
-    future.when_done(callback_record, results, "after-done")
+    future.when_done(callback_record, results=results, tag="after-done")
     info("Callbacks after done: %s", results)
 
     # When a callback raises, CallbackRaised wraps the original exception.
     # Re-calling done() drains the remaining callbacks one by one.
     future_err = jobserver.submit(fn=len, args=("world",))
-    future_err.when_done(callback_raise, ValueError, "bad")
-    future_err.when_done(callback_raise, TypeError, "worse")
-    future_err.when_done(callback_record, results, "survivor")
+    future_err.when_done(callback_raise, klass=ValueError, args=("bad",))
+    future_err.when_done(callback_raise, klass=TypeError, args=("worse",))
+    future_err.when_done(callback_record, results=results, tag="survivor")
 
     for i in range(3):
         try:
@@ -55,7 +55,7 @@ def callback_record(results: list, tag: str) -> None:
     results.append(tag)
 
 
-def callback_raise(klass: type, *args) -> None:
+def callback_raise(klass: type, args: tuple = ()) -> None:
     """Raise the requested exception."""
     raise klass(*args)
 

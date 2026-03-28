@@ -24,8 +24,8 @@ def main() -> None:
     future_ok = jobserver.submit(fn=len, args=("hello",))
 
     # done() returns True even for dead submissions
-    info("Killed worker done: %s", future_killed.done())
-    info("Normal worker done: %s", future_ok.done())
+    info("Killed worker done: %s", future_killed.done(timeout=None))
+    info("Normal worker done: %s", future_ok.done())  # None is the default
     info("Normal result: %s", future_ok.result())
 
     # result() raises SubmissionDied for the killed worker
