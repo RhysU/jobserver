@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import multiprocessing
 import os
-import signal
 import sys
 import time
 import typing
@@ -113,12 +112,6 @@ def helper_return(arg: T) -> T:
 def helper_raise(klass: type, *args) -> typing.NoReturn:
     """Helper raising the requested Exception class."""
     raise klass(*args)
-
-
-def helper_signal(sig: signal.Signals) -> typing.NoReturn:
-    """Helper sending the given signal to the current process."""
-    os.kill(os.getpid(), sig)
-    raise AssertionError("Unreachable")
 
 
 def helper_noop() -> None:

@@ -5,7 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 3 shows detecting when a worker process dies unexpectedly."""
 
-import os
 import signal
 from logging import INFO, basicConfig, info
 
@@ -18,7 +17,7 @@ def main() -> None:
 
     # Submit work that will be killed
     future_killed = jobserver.submit(
-        fn=task_self_signal, args=(signal.SIGKILL,)
+        fn=signal.raise_signal, args=(signal.SIGKILL,)
     )
 
     # Submit normal work alongside the doomed submission
@@ -35,11 +34,6 @@ def main() -> None:
         raise RuntimeError("Expected SubmissionDied was not raised")
     except SubmissionDied:
         info("Caught expected SubmissionDied from SIGKILL worker")
-
-
-def task_self_signal(sig: signal.Signals) -> None:
-    """Send the given signal to the current process."""
-    os.kill(os.getpid(), sig)
 
 
 if __name__ == "__main__":
