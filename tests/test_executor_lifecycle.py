@@ -9,6 +9,8 @@ Covers the executor's start-to-finish lifecycle: cancellation of pending
 and running futures, shutdown semantics (wait, cancel_futures), and
 verification that processes, threads, and file descriptors are released.
 """
+from __future__ import annotations
+
 import concurrent.futures
 import gc
 import multiprocessing
@@ -16,7 +18,6 @@ import os
 import signal
 import threading
 import time
-import typing
 import unittest
 
 from jobserver import Jobserver, JobserverExecutor
@@ -201,10 +202,8 @@ class TestShutdown(unittest.TestCase):
             js = Jobserver(context=FAST, slots=2)
             exe = JobserverExecutor(js)
             barrier = threading.Barrier(2)
-            result_holder: typing.List[
-                typing.Optional[concurrent.futures.Future]
-            ] = [None]
-            error_holder: typing.List[typing.Optional[Exception]] = [None]
+            result_holder: list[concurrent.futures.Future | None] = [None]
+            error_holder: list[Exception | None] = [None]
 
             def submitter() -> None:
                 barrier.wait()

@@ -9,6 +9,8 @@ Verifies the executor under heavy parallel load, confirms integration
 with concurrent.futures.wait() and as_completed(), exercises every
 multiprocessing start method, and checks internal invariants.
 """
+from __future__ import annotations
+
 import concurrent.futures
 import gc
 import multiprocessing
@@ -78,11 +80,11 @@ class TestConcurrencyStress(unittest.TestCase):
 
     def _threaded_submit_stress(self, exe: JobserverExecutor) -> None:
         """Submit 200 tasks from 8 threads and verify all results."""
-        results: typing.List[concurrent.futures.Future] = []
+        results: list[concurrent.futures.Future] = []
         lock = threading.Lock()
 
         def worker(start: int, count: int) -> None:
-            local: typing.List[concurrent.futures.Future] = []
+            local: list[concurrent.futures.Future] = []
             for i in range(start, start + count):
                 local.append(exe.submit(len, "x" * i))
             with lock:
@@ -141,7 +143,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         with JobserverExecutor(js) as exe:
             slow = exe.submit(time.sleep, 0.3)
             fast = exe.submit(len, (1,))
-            futures: typing.List[concurrent.futures.Future[typing.Any]] = [
+            futures: list[concurrent.futures.Future[typing.Any]] = [
                 slow,
                 fast,
             ]
@@ -361,7 +363,7 @@ class TestInternalInvariants(unittest.TestCase):
         """
         js = Jobserver(context=FAST, slots=2)
         exe = JobserverExecutor(js)
-        lock_held: typing.List[bool] = []
+        lock_held: list[bool] = []
         original_put = MinimalQueue.put
 
         def spy_put(self_q: MinimalQueue, *args: typing.Any) -> None:
