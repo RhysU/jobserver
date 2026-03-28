@@ -130,12 +130,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         timeout: Optional[float] = None,
         chunksize: int = 1,
     ) -> Iterator[T]:
-        """Map fn over iterables, yielding results in order.
-
-        Delegates to Jobserver.map() by translating Executor.map()'s
-        *iterables (one iterable per positional parameter) into the
-        argses form (one tuple of positional args per call).
-        """
+        """Override Executor.map() for efficiency."""
         return self._jobserver.map(
             fn=fn,
             argses=zip(*iterables),
