@@ -39,6 +39,19 @@ Homepage = "https://github.com/RhysU/jobserver"
 Repository = "https://github.com/RhysU/jobserver"
 Issues = "https://github.com/RhysU/jobserver/issues"
 
+[tool.black]
+line-length = 79
+target-version = ["py39", "py310", "py311", "py312", "py313", "py314"]
+
+[tool.mypy]
+files = ["src", "examples"]  # test/ deliberately excluded
+
+[tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["jobserver*"]
+
 [tool.ruff]
 line-length = 79
 
@@ -47,16 +60,3 @@ select = ["B", "E", "F", "I", "UP", "W"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["jobserver"]
-
-[tool.mypy]
-files = ["src", "examples"]  # test/ deliberately excluded
-
-[tool.black]
-line-length = 79
-target-version = ["py39", "py310", "py311", "py312", "py313", "py314"]
-
-[tool.setuptools_scm]
-
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["jobserver*"]
