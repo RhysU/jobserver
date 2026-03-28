@@ -117,7 +117,7 @@ def helper_raise(klass: type, *args) -> typing.NoReturn:
 
 def helper_signal(sig: signal.Signals) -> typing.NoReturn:
     """Helper sending the given signal to the current process."""
-    os.kill(os.getpid(), sig)
+    signal.raise_signal(sig)
     raise AssertionError("Unreachable")
 
 

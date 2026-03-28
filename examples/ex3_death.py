@@ -5,7 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 3 shows detecting when a worker process dies unexpectedly."""
 
-import os
 import signal
 from logging import INFO, basicConfig, info
 
@@ -39,7 +38,7 @@ def main() -> None:
 
 def task_self_signal(sig: signal.Signals) -> None:
     """Send the given signal to the current process."""
-    os.kill(os.getpid(), sig)
+    signal.raise_signal(sig)
 
 
 if __name__ == "__main__":
