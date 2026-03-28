@@ -9,6 +9,7 @@ Covers the per-submission child process: abnormal exits and signal
 delivery, environment customization via env and preexec_fn, sleep_fn
 scheduling control, and propagation of __init__ defaults to submit().
 """
+
 import functools
 import itertools
 import os

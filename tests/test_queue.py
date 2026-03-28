@@ -9,6 +9,7 @@ MinimalQueue receives heavy indirect coverage through the Jobserver and
 JobserverExecutor suites, so this file only covers its own API surface
 and the resolve_context / absolute_deadline helpers.
 """
+
 import copy
 import time
 import unittest

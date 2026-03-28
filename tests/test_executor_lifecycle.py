@@ -9,6 +9,7 @@ Covers the executor's start-to-finish lifecycle: cancellation of pending
 and running futures, shutdown semantics (wait, cancel_futures), and
 verification that processes, threads, and file descriptors are released.
 """
+
 from __future__ import annotations
 
 import concurrent.futures

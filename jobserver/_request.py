@@ -8,6 +8,7 @@
 Imperative verbs: commands sent to the dispatcher.
 Using NamedTuple (dataclass slots require 3.10+).
 """
+
 import typing
 from collections.abc import Callable
 

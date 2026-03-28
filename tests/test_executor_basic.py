@@ -9,6 +9,7 @@ Exercises the single-future data flow through the executor: submitting
 work, retrieving results and exceptions, querying state transitions,
 receiving done callbacks, and iterating with map().
 """
+
 from __future__ import annotations
 
 import concurrent.futures

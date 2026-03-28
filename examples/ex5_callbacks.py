@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 5 shows callbacks, exception handling, and CallbackRaised."""
+
 from logging import INFO, basicConfig, info
 
 from jobserver import CallbackRaised, Jobserver

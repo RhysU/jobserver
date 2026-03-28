@@ -9,6 +9,7 @@ Verifies the when_done() contract on Jobserver Futures: registration
 ordering, error propagation via CallbackRaised, and correct behavior
 when callbacks are registered after the Future has already completed.
 """
+
 import unittest
 from multiprocessing import get_all_start_methods
 
