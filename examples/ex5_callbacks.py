@@ -30,8 +30,8 @@ def main() -> None:
     # When a callback raises, CallbackRaised wraps the original exception.
     # Re-calling done() drains the remaining callbacks one by one.
     future_err = jobserver.submit(fn=len, args=("world",))
-    future_err.when_done(callback_raise, klass=ValueError, args=("bad",))
-    future_err.when_done(callback_raise, klass=TypeError, args=("worse",))
+    future_err.when_done(callback_raise, klass=ValueError)
+    future_err.when_done(callback_raise, klass=TypeError)
     future_err.when_done(callback_record, results=results, tag="survivor")
 
     for i in range(3):
@@ -55,7 +55,7 @@ def callback_record(results: list, tag: str) -> None:
     results.append(tag)
 
 
-def callback_raise(klass: type, args: tuple = ()) -> None:
+def callback_raise(klass: type, *args) -> None:
     """Raise the requested exception."""
     raise klass(*args)
 
