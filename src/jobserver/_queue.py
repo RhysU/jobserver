@@ -68,14 +68,8 @@ class MinimalQueue(Generic[T]):
         self._write_lock = context.Lock()
 
     def __repr__(self) -> str:
-        if self._reader is not None:
-            r = f"open(fd={self._reader.fileno()})"
-        else:
-            r = "closed"
-        if self._writer is not None:
-            w = f"open(fd={self._writer.fileno()})"
-        else:
-            w = "closed"
+        r = "closed" if self._reader is None else f"open(fd={self._reader.fileno()})"
+        w = "closed" if self._writer is None else f"open(fd={self._writer.fileno()})"
         return f"MinimalQueue(reader={r}, writer={w})"
 
     def __copy__(self) -> "MinimalQueue":
