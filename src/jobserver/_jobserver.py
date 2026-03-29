@@ -50,7 +50,7 @@ class CallbackRaised(Exception):
     Instances of this type must have non-None __cause__ members (see PEP 3154).
     The __cause__ member will be the Exception raised by client code.
 
-    When raised by some method, e.g. by Future.done(...) or by
+    When raised by some method, e.g. by Future.wait(...) or by
     Future.result(...), the caller MAY choose to re-invoke that same
     method immediately to continue processing any additional callbacks.
     If the caller requires that all callbacks are attempted, the caller
@@ -118,7 +118,7 @@ class Future(Generic[T]):
     """
     Future instances are obtained by submitting work to a Jobserver.
 
-    Futures report if a submission is done(), its result(), and may
+    Futures report if a submission is wait(), its result(), and may
     additionally be used to register callbacks issued at completion.
     Futures are threadsafe.  Futures can be neither copied nor pickled.
     """
@@ -164,9 +164,9 @@ class Future(Generic[T]):
         self, fn: Callable, *args, __internal: bool = False, **kwargs
     ) -> None:
         """
-        Register a function for execution sometime after Future.done(...).
+        Register a function for execution sometime after Future.wait(...).
 
-        When already done(...), will immediately invoke the requested function.
+        When already wait(...), will immediately invoke the requested function.
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
@@ -175,18 +175,19 @@ class Future(Generic[T]):
             if self._connection is None:
                 self._issue_callbacks()
 
-    def done(
+    def wait(
         self,
         timeout: Optional[float] = None,
         *,
         signal: Union[None, int, signal.Signals] = None,
     ) -> bool:
         """
-        Is result ready?  Never raises Blocked instead returning False.
+        Waiting at most timeout, return True if result(timeout=0) must succeed.
 
         First, sends any provided signal to any underlying, running process.
         Second, returns whether completion can be confirmed within the timeout.
         Timeout is given in seconds with None meaning to block indefinitely.
+        Never raises Blocked but instead returns False on unavailable result.
 
         Allows, e.g., a SIGTERM followed by waiting 1 second for termination.
         A signal need not force termination, e.g. SIGUSR1 / SIGSTOP / SIGCONT.
@@ -272,7 +273,7 @@ class Future(Generic[T]):
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        if not self.done(timeout):
+        if not self.wait(timeout):
             raise Blocked()
 
         assert self._wrapper is not None
@@ -575,7 +576,7 @@ class Jobserver:
         """
         # Copy of keys() required to prevent concurrent modification
         for future in tuple(self._future_sentinels.keys()):
-            future.done(timeout=0)
+            future.wait(timeout=0)
 
     @staticmethod
     def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:

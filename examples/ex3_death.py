@@ -23,9 +23,9 @@ def main() -> None:
     # Submit normal work alongside the doomed submission
     future_ok = jobserver.submit(fn=len, args=("hello",))
 
-    # done() returns True even for dead submissions
-    info("Killed worker done: %s", future_killed.done(timeout=None))
-    info("Normal worker done: %s", future_ok.done())  # None is the default
+    # wait() returns True even for dead submissions
+    info("Killed worker wait: %s", future_killed.wait(timeout=None))
+    info("Normal worker wait: %s", future_ok.wait())  # None is the default
     info("Normal result: %s", future_ok.result())
 
     # result() raises SubmissionDied for the killed worker

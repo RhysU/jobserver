@@ -18,8 +18,8 @@ def main() -> None:
     # Submit a slow task that occupies the only slot
     future = jobserver.submit(fn=task_slow, args=(0.5,))
 
-    # done(timeout=0) polls without blocking
-    info("done(timeout=0): %s", future.done(timeout=0))
+    # wait(timeout=0) polls without blocking
+    info("wait(timeout=0): %s", future.wait(timeout=0))
 
     # result() with a finite timeout raises Blocked if not ready
     try:
