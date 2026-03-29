@@ -40,7 +40,8 @@ T = TypeVar("T")
 class Blocked(Exception):
     """Reports that Jobserver.submit(...) or Future.result(...) is blocked."""
 
-    pass
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args or ("submission is blocked",))
 
 
 class CallbackRaised(Exception):
@@ -59,7 +60,8 @@ class CallbackRaised(Exception):
     processing to perform after seeing the 1st, 2nd, or Nth error.
     """
 
-    pass
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args or ("callback raised an exception",))
 
 
 class SubmissionDied(Exception):
@@ -70,7 +72,8 @@ class SubmissionDied(Exception):
     Exactly what has transpired is not reported.  Do not attempt to recover.
     """
 
-    pass
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args or ("submission died unexpectedly",))
 
 
 class Wrapper(abc.ABC, Generic[T]):
@@ -149,6 +152,15 @@ class Future(Generic[T]):
 
         # Populated by calls to when_done(...)
         self._callbacks: deque[tuple] = deque()
+
+    def __repr__(self) -> str:
+        state = "done" if self._connection is None else "running"
+        parts = [state]
+        if self._process is not None:
+            parts.append(f"pid={self._process.pid}")
+        if self._callbacks:
+            parts.append(f"callbacks={len(self._callbacks)}")
+        return f"Future({', '.join(parts)})"
 
     def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
@@ -358,6 +370,13 @@ class Jobserver:
         self._env = tuple(items)
         self._preexec_fn = preexec_fn
         self._sleep_fn = sleep_fn
+
+    def __repr__(self) -> str:
+        method = self._context.get_start_method()
+        return (
+            f"Jobserver(tracked={len(self._future_sentinels)}"
+            f", context={method!r})"
+        )
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""

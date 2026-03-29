@@ -85,6 +85,12 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._dispatcher.pid,
         )
 
+    def __repr__(self) -> str:
+        state = "shutdown" if self._shutdown else "active"
+        with self._lock:
+            pending = len(self._futures)
+        return f"JobserverExecutor({state}, pending={pending})"
+
     def submit(
         self,
         fn: Callable[..., T],
