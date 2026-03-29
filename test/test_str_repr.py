@@ -72,8 +72,8 @@ class TestJobserverRepr(unittest.TestCase):
     def test_idle(self) -> None:
         js = Jobserver(slots=2)
         r = repr(js)
+        self.assertTrue(r.startswith("Jobserver('"))
         self.assertIn("tracked=0", r)
-        self.assertIn("context=", r)
         self.assertEqual(str(js), repr(js))
 
     def test_with_tracked(self) -> None:

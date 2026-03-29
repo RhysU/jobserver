@@ -374,8 +374,8 @@ class Jobserver:
     def __repr__(self) -> str:
         method = self._context.get_start_method()
         return (
-            f"Jobserver(tracked={len(self._future_sentinels)}"
-            f", context={method!r})"
+            f"Jobserver({method!r}"
+            f", tracked={len(self._future_sentinels)})"
         )
 
     def __getstate__(self) -> tuple:
