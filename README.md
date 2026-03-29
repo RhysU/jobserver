@@ -56,6 +56,6 @@ Examples
 Testing
 -------
 
-All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.<br>
+All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14 per [ci](ci) script.<br>
 Implementation passes both PEP 8 (per `flake8`) and type-hinting (per `mypy`).<br>
 [![Build Status](https://circleci.com/gh/RhysU/jobserver.svg?style=shield)](https://app.circleci.com/pipelines/github/RhysU/jobserver)
