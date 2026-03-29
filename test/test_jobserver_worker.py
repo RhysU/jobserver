@@ -61,7 +61,8 @@ class TestJobserverWorker(unittest.TestCase):
                 j = js.submit(fn=signal.raise_signal, args=(signal.SIGUSR2,))
                 j.when_done(helper_callback, mutable, 4, 11)
 
-                # Confirm done/callbacks correct even when submissions die
+                # Confirm completion/callbacks correct even when
+                # submissions die
                 self.assertTrue(f.wait())
                 self.assertTrue(g.wait())
                 self.assertTrue(h.wait())
@@ -140,7 +141,7 @@ class TestJobserverWorker(unittest.TestCase):
                     f.result(timeout=10)
 
     def test_done_signal_after_done_is_safe(self) -> None:
-        """Future.wait(..., signal=...) on an already-done Future is safe."""
+        """wait(..., signal=...) on an already-completed Future is safe."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)

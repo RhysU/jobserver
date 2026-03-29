@@ -257,7 +257,7 @@ class Future(Generic[T]):
                 try:
                     fn(*args, **kwargs)
                 except Exception as e:
-                    # A re-entrant when_done() on an already-done future
+                    # A re-entrant when_done() on an already-completed future
                     # triggers a nested _issue_callbacks(); without this
                     # guard the caller sees CallbackRaised wrapping another
                     # CallbackRaised instead of one layer around the cause.

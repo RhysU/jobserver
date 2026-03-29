@@ -146,7 +146,7 @@ class TestJobserverCallbacks(unittest.TestCase):
     def test_reentrant_callback_raised_no_double_wrap(self) -> None:
         """Re-entrant raising inner callback must not double-wrap.
 
-        If a callback calls when_done() on an already-done future
+        If a callback calls when_done() on an already-completed future
         and that inner callback raises, the caller must see
         CallbackRaised(cause=<original>), not
         CallbackRaised(cause=CallbackRaised(cause=<original>)).

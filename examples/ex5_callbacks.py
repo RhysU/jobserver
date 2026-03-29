@@ -24,8 +24,8 @@ def main() -> None:
 
     # Register a callback after the future already has a result.
     # It fires immediately.
-    future.when_done(callback_record, results=results, tag="after-done")
-    info("Callbacks after done: %s", results)
+    future.when_done(callback_record, results=results, tag="after-completion")
+    info("Callbacks after completion: %s", results)
 
     # When a callback raises, CallbackRaised wraps the original exception.
     # Re-calling wait() drains the remaining callbacks one by one.

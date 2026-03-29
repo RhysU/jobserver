@@ -131,7 +131,7 @@ class TestJobserverBasic(unittest.TestCase):
                 h.when_done(
                     helper_callback, lizt=mutable, index=2, increment=11
                 )
-                self.assertEqual(mutable[2], 18, "Callback after done")
+                self.assertEqual(mutable[2], 18, "Callback after completion")
                 self.assertEqual(1, h.result())
                 self.assertTrue(h.wait())
                 self.assertEqual(mutable[2], 18, "Callbacks idempotent")
@@ -188,7 +188,7 @@ class TestJobserverBasic(unittest.TestCase):
                     f.result()
                 self.assertEqual(mutable[0], 1, "One callback observed")
                 f.when_done(helper_callback, mutable, 0, 2)
-                self.assertEqual(mutable[0], 3, "Callback after done")
+                self.assertEqual(mutable[0], 3, "Callback after completion")
                 with self.assertRaises(ArithmeticError):
                     f.result()
                 self.assertTrue(f.wait())

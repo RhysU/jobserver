@@ -178,7 +178,7 @@ class TestJobserverConcurrency(unittest.TestCase):
         """CallbackRaised is delivered to exactly one thread.
 
         When two threads race into wait(), only the winner executes
-        callbacks.  The loser sees an already-done Future with no
+        callbacks.  The loser sees an already-completed Future with no
         pending callbacks and does not raise CallbackRaised.
         """
         js = Jobserver(slots=4)
