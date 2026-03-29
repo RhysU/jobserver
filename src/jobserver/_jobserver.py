@@ -50,8 +50,8 @@ class CallbackRaised(Exception):
     Instances of this type must have non-None __cause__ members (see PEP 3154).
     The __cause__ member will be the Exception raised by client code.
 
-    When raised by some method, e.g. by Future.wait(...) or by
-    Future.result(...), the caller MAY choose to re-invoke that same
+    When raised by some method, e.g. by Future.done(...), Future.wait(...),
+    or Future.result(...), the caller MAY choose to re-invoke that same
     method immediately to continue processing any additional callbacks.
     If the caller requires that all callbacks are attempted, the caller
     MUST re-invoke the same method until no CallbackRaised occurs.
@@ -118,7 +118,7 @@ class Future(Generic[T]):
     """
     Future instances are obtained by submitting work to a Jobserver.
 
-    Futures report if a submission is wait(), its result(), and may
+    Futures report if a submission is done(), its result(), and may
     additionally be used to register callbacks issued at completion.
     Futures are threadsafe.  Futures can be neither copied nor pickled.
     """
@@ -164,9 +164,9 @@ class Future(Generic[T]):
         self, fn: Callable, *args, __internal: bool = False, **kwargs
     ) -> None:
         """
-        Register a function for execution sometime after Future.wait(...).
+        Register a function for execution sometime after Future.done(...).
 
-        When already wait(...), will immediately invoke the requested function.
+        When already done(...) the requested function is immediately invoked.
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
@@ -174,6 +174,23 @@ class Future(Generic[T]):
             self._callbacks.append((__internal, fn, args, kwargs))
             if self._connection is None:
                 self._issue_callbacks()
+
+    def done(self, timeout: Optional[float] = 0) -> bool:
+        """
+        Never raising Blocked, returns True if result(timeout=0) must succeed.
+
+        Returns whether completion can be confirmed within the timeout.
+        Timeout is given in seconds with None meaning to block indefinitely.
+        Never raises Blocked but instead returns False on unavailable result.
+
+        May raise CallbackRaised from at most one registered callback.
+        See CallbackRaised documentation for callback error semantics.
+        """
+        # Method done(...) is nothing but an impatient, simplified wait(...)
+        # Both done(...) and wait(...) in API because (a) concurrent.futures
+        # API anchored peoples' expectations that done() non-blocking by
+        # default and because (b) wait(...) more natural for signaling/joining.
+        return self.wait(timeout=timeout)  # Notice default is 0
 
     def wait(
         self,
@@ -185,7 +202,7 @@ class Future(Generic[T]):
         Waiting at most timeout, return True if result(timeout=0) must succeed.
 
         First, sends any provided signal to any underlying, running process.
-        Second, returns whether completion can be confirmed within the timeout.
+        Second, returns True if process completion confirmed by the timeout.
         Timeout is given in seconds with None meaning to block indefinitely.
         Never raises Blocked but instead returns False on unavailable result.
 
@@ -391,6 +408,18 @@ class Jobserver:
         """Return the multiprocessing context used by this Jobserver."""
         return self._context
 
+    def reclaim_resources(self) -> None:
+        """
+        Reclaim resources for any completed submissions and issue callbacks.
+
+        Method exposed for when explicit resource reclamation is desired.
+        For example, when work requires locking more than just a slot and
+        the paired unlock is accomplished via Future-registered callbacks.
+        """
+        # Copy of keys() required to prevent concurrent modification
+        for future in tuple(self._future_sentinels.keys()):
+            future.done()
+
     def submit(
         self,
         fn: Callable[..., T],
@@ -430,7 +459,7 @@ class Jobserver:
         For env, preexec_fn, and sleep_fn non-None values override any
         instance defaults.
         """
-        # First, check any arguments not for _obtain_tokens(...) just below.
+        # First, check any arguments not for _obtain_tokens(...)
         assert fn is not None
         assert isinstance(args, Iterable), type(args)
         assert isinstance(kwargs, Mapping), type(kwargs)
@@ -447,7 +476,7 @@ class Jobserver:
         # Next, either obtain requested tokens or else raise Blocked
         # Work submission only reclaims tokens when callbacks are enabled
         reclaim_tokens_fn = self.reclaim_resources if callbacks else noop
-        tokens = self._obtain_tokens(
+        tokens = _obtain_tokens(
             consume=consume,
             deadline=absolute_deadline(relative_timeout=timeout),
             reclaim_tokens_fn=reclaim_tokens_fn,
@@ -462,7 +491,7 @@ class Jobserver:
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
             process = self._context.Process(  # type: ignore
-                target=self._worker_entrypoint,
+                target=_worker_entrypoint,
                 args=((send, dict(env), preexec_fn, fn) + tuple(args)),
                 kwargs=kwargs,
                 daemon=False,
@@ -566,103 +595,90 @@ class Jobserver:
             sleep_fn=sleep_fn,
         )
 
-    def reclaim_resources(self) -> None:
-        """
-        Reclaim resources for any completed submissions and issue callbacks.
 
-        Method exposed for when explicit resource reclamation is desired.
-        For example, when work requires locking more than just a slot and
-        the paired unlock is accomplished via Future-registered callbacks.
-        """
-        # Copy of keys() required to prevent concurrent modification
-        for future in tuple(self._future_sentinels.keys()):
-            future.wait(timeout=0)
-
-    @staticmethod
-    def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
-        """Entry point for workers to fun fn(...) due to some  submit(...)."""
-        # Wrapper usage tracks whether a value was returned or raised
-        # in degenerate case where client code returns an Exception
-        result: Optional[Wrapper[Any]] = None
+def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
+    """Entry point for workers to fun fn(...) due to some  submit(...)."""
+    # Wrapper usage tracks whether a value was returned or raised
+    # in degenerate case where client code returns an Exception
+    result: Optional[Wrapper[Any]] = None
+    try:
+        # None invalid in os.environ so interpret as sentinel for popping
+        for key, value in env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        preexec_fn()
+        result = ResultWrapper(fn(*args, **kwargs))
+    except Exception as exception:
+        result = ExceptionWrapper(exception)
+    finally:
+        # Ignore broken pipes which naturally occur when the destination
+        # terminates (or otherwise hangs up) before the result is ready
         try:
-            # None invalid in os.environ so interpret as sentinel for popping
-            for key, value in env.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-            preexec_fn()
-            result = ResultWrapper(fn(*args, **kwargs))
-        except Exception as exception:
-            result = ExceptionWrapper(exception)
-        finally:
-            # Ignore broken pipes which naturally occur when the destination
-            # terminates (or otherwise hangs up) before the result is ready
-            try:
-                # None means a BaseException (not Exception) escaped fn; let
-                # the pipe close so the parent sees EOFError -> SubmissionDied.
-                if result is not None:
-                    send.send(result)  # ValueError => object too large
-            except BrokenPipeError:
-                pass
-            send.close()
+            # None means a BaseException (not Exception) escaped fn; let
+            # the pipe close so the parent sees EOFError -> SubmissionDied.
+            if result is not None:
+                send.send(result)  # ValueError => object too large
+        except BrokenPipeError:
+            pass
+        send.close()
 
-    # Static because who can worry about one's self at a time like this?!
-    @staticmethod
-    def _obtain_tokens(
-        consume: int,
-        deadline: float,
-        reclaim_tokens_fn: Callable[[], Any],
-        sentinels_fn: Callable[[], Iterable[int]],
-        sleep_fn: Callable[[], Optional[float]],
-        slots: MinimalQueue[int],
-        *,
-        resolution: float = 1.0e-2,
-    ) -> list[int]:
-        """Either retrieve requested tokens or raise Blocked while trying."""
-        # Defensively check arguments
-        assert consume == 0 or consume == 1, "Invalid or deadlock possible"
-        assert deadline > 0.0
 
-        # Acquire the requested retval or raise Blocked when impossible
-        retval: list[int] = []
-        while True:
+def _obtain_tokens(
+    consume: int,
+    deadline: float,
+    reclaim_tokens_fn: Callable[[], Any],
+    sentinels_fn: Callable[[], Iterable[int]],
+    sleep_fn: Callable[[], Optional[float]],
+    slots: MinimalQueue[int],
+    *,
+    resolution: float = 1.0e-2,
+) -> list[int]:
+    """Either retrieve requested tokens or raise Blocked while trying."""
+    # Defensively check arguments
+    assert consume == 0 or consume == 1, "Invalid or deadlock possible"
+    assert deadline > 0.0
 
-            # (1) Eagerly clean up any completed work to avoid deadlocks
-            reclaim_tokens_fn()
+    # Acquire the requested retval or raise Blocked when impossible
+    retval: list[int] = []
+    while True:
 
-            # (2) Exit loop if all requested resources have been acquired
-            if len(retval) >= consume:
-                break
+        # (1) Eagerly clean up any completed work to avoid deadlocks
+        reclaim_tokens_fn()
 
-            # (3) When sleep_fn() vetoes new work proceed to sleep
-            sleep = sleep_fn()
+        # (2) Exit loop if all requested resources have been acquired
+        if len(retval) >= consume:
+            break
+
+        # (3) When sleep_fn() vetoes new work proceed to sleep
+        sleep = sleep_fn()
+        monotonic = time.monotonic()
+        if sleep is not None:
+            assert sleep >= 0.0
+            time.sleep(max(resolution, min(sleep, deadline - monotonic)))
+            if monotonic >= deadline:
+                raise Blocked()
+            continue
+
+        try:
+            # (4) Grab any immediately available token
+            retval.append(slots.get(timeout=0))
+        except queue.Empty:
+            # (5) Otherwise, possibly throw in the towel...
             monotonic = time.monotonic()
-            if sleep is not None:
-                assert sleep >= 0.0
-                time.sleep(max(resolution, min(sleep, deadline - monotonic)))
-                if monotonic >= deadline:
-                    raise Blocked()
-                continue
+            if monotonic >= deadline:
+                raise Blocked() from None
 
-            try:
-                # (4) Grab any immediately available token
-                retval.append(slots.get(timeout=0))
-            except queue.Empty:
-                # (5) Otherwise, possibly throw in the towel...
-                monotonic = time.monotonic()
-                if monotonic >= deadline:
-                    raise Blocked() from None
+            # (6) ...then block until some interesting event.
+            wait(
+                tuple(sentinels_fn())  # "Child" result
+                + (slots.waitable(),),  # "Grandchild" restores token
+                timeout=deadline - monotonic,
+            )
 
-                # (6) ...then block until some interesting event.
-                wait(
-                    tuple(sentinels_fn())  # "Child" result
-                    + (slots.waitable(),),  # "Grandchild" restores token
-                    timeout=deadline - monotonic,
-                )
-
-        assert len(retval) == consume, "Postcondition"
-        return retval
+    assert len(retval) == consume, "Postcondition"
+    return retval
 
 
 # Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
