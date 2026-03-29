@@ -95,9 +95,11 @@ class TestMinimalQueueRepr(unittest.TestCase):
         mq.close_get()
         self.assertIn("reader=closed", repr(mq))
         self.assertIn("writer=open", repr(mq))
+        self.assertEqual(str(mq), repr(mq))
 
     def test_closed_writer(self) -> None:
         mq: MinimalQueue[int] = MinimalQueue()
         mq.close_put()
         self.assertIn("reader=open", repr(mq))
         self.assertIn("writer=closed", repr(mq))
+        self.assertEqual(str(mq), repr(mq))
