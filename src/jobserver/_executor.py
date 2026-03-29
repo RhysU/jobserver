@@ -357,7 +357,7 @@ def _poll_running(
     completed: list[Future] = []
     for f in running:
         try:
-            if f.done(timeout=0):
+            if f.wait(timeout=0):
                 completed.append(f)
         except CallbackRaised:
             # Internal callbacks should not raise, but recover
@@ -392,7 +392,7 @@ def _handle_shutdown(
     for f, work_id in running.items():
         while True:
             try:
-                f.done(timeout=None)
+                f.wait(timeout=None)
                 break
             except CallbackRaised:
                 continue

@@ -33,8 +33,8 @@ class TestJobserverCallbacks(unittest.TestCase):
         # Prepare how callbacks will be observed
         mutable = [0]
 
-        # Confirm that inside a callback the Future reports done()
-        self.assertTrue(f.done(timeout=0))
+        # Confirm that inside a callback the Future reports wait()
+        self.assertTrue(f.wait(timeout=0))
 
         # Confirm that inside a callback additional work can be registered
         f.when_done(helper_callback, mutable, 0, 1)
@@ -44,7 +44,7 @@ class TestJobserverCallbacks(unittest.TestCase):
         self.assertEqual(mutable[0], 3, "Two callbacks observed")
 
     def test_callback_semantics(self) -> None:
-        """Inside a Future's callback the Future reports it is done."""
+        """Inside a Future's callback the Future reports wait() is True."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
@@ -53,23 +53,23 @@ class TestJobserverCallbacks(unittest.TestCase):
                 self.assertEqual(3, f.result())
 
     def test_done_callback_raises(self) -> None:
-        """Future.done() raises Exceptions thrown while processing work?"""
+        """Future.wait() raises CallbackRaised from processing callbacks."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
 
-                # Calling done() repeatedly correctly reports multiple errors
+                # Calling wait() repeatedly correctly reports multiple errors
                 f = js.submit(fn=len, args=(("hello",)), timeout=None)
                 f.when_done(helper_raise, ArithmeticError, "123")
                 f.when_done(helper_raise, ZeroDivisionError, "45")
                 with self.assertRaises(CallbackRaised) as c:
-                    f.done(timeout=None)
+                    f.wait(timeout=None)
                 self.assertIsInstance(c.exception.__cause__, ArithmeticError)
                 with self.assertRaises(CallbackRaised) as c:
-                    f.done(timeout=None)
+                    f.wait(timeout=None)
                 self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
-                self.assertTrue(f.done(timeout=None))
-                self.assertTrue(f.done(timeout=0))
+                self.assertTrue(f.wait(timeout=None))
+                self.assertTrue(f.wait(timeout=0))
 
                 # After callbacks have completed, the result is available.
                 self.assertEqual(f.result(), 5)
@@ -79,7 +79,7 @@ class TestJobserverCallbacks(unittest.TestCase):
                 with self.assertRaises(CallbackRaised) as c:
                     f.when_done(helper_raise, UnicodeError, "67")
                 self.assertIsInstance(c.exception.__cause__, UnicodeError)
-                self.assertTrue(f.done(timeout=0.0))
+                self.assertTrue(f.wait(timeout=0.0))
 
                 # After callbacks have completed, result is still available.
                 self.assertEqual(f.result(), 5)
@@ -94,11 +94,11 @@ class TestJobserverCallbacks(unittest.TestCase):
                 order: list[int] = []
                 for i in range(100):
                     f.when_done(lambda idx=i, o=order: o.append(idx))
-                f.done(timeout=5)
+                f.wait(timeout=5)
                 self.assertEqual(order, list(range(100)))
 
     def test_five_raising_callbacks_drain(self) -> None:
-        """Five raising callbacks each require a done() call to drain."""
+        """Five raising callbacks each require a wait() call to drain."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
@@ -107,10 +107,10 @@ class TestJobserverCallbacks(unittest.TestCase):
                     f.when_done(helper_raise, ValueError, f"cb-{i}")
                 for i in range(5):
                     with self.assertRaises(CallbackRaised) as c:
-                        f.done(timeout=5)
+                        f.wait(timeout=5)
                     self.assertIsInstance(c.exception.__cause__, ValueError)
                     self.assertIn(f"cb-{i}", str(c.exception.__cause__))
-                self.assertTrue(f.done(timeout=0))
+                self.assertTrue(f.wait(timeout=0))
                 self.assertEqual(f.result(), 1)
 
     def test_reentrant_when_done_nests_issue_callbacks(self) -> None:
@@ -134,7 +134,7 @@ class TestJobserverCallbacks(unittest.TestCase):
             f.when_done(lambda: order.append("third"))
 
         f.when_done(first_cb)
-        f.done(timeout=5)
+        f.wait(timeout=5)
         self.assertEqual(
             order,
             ["first", "second", "third"],
@@ -146,14 +146,14 @@ class TestJobserverCallbacks(unittest.TestCase):
     def test_reentrant_callback_raised_no_double_wrap(self) -> None:
         """Re-entrant raising inner callback must not double-wrap.
 
-        If a callback calls when_done() on an already-done future
+        If a callback calls when_done() on an already-completed future
         and that inner callback raises, the caller must see
         CallbackRaised(cause=<original>), not
         CallbackRaised(cause=CallbackRaised(cause=<original>)).
         """
         js = Jobserver(slots=1)
         f = js.submit(fn=len, args=((1,),), timeout=5)
-        f.done(timeout=5)
+        f.wait(timeout=5)
 
         def outer() -> None:
             f.when_done(lambda: 1 / 0)  # raises ZeroDivisionError immediately

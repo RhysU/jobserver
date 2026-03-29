@@ -24,11 +24,11 @@ def main() -> None:
 
     # Register a callback after the future already has a result.
     # It fires immediately.
-    future.when_done(callback_record, results=results, tag="after-done")
-    info("Callbacks after done: %s", results)
+    future.when_done(callback_record, results=results, tag="after-completion")
+    info("Callbacks after completion: %s", results)
 
     # When a callback raises, CallbackRaised wraps the original exception.
-    # Re-calling done() drains the remaining callbacks one by one.
+    # Re-calling wait() drains the remaining callbacks one by one.
     future_err = jobserver.submit(fn=len, args=("world",))
     future_err.when_done(callback_raise, klass=ValueError)
     future_err.when_done(callback_raise, klass=TypeError)
@@ -36,12 +36,12 @@ def main() -> None:
 
     for i in range(3):
         try:
-            future_err.done()
-            info("done() call %d: no more errors", i)
+            future_err.wait()
+            info("wait() call %d: no more errors", i)
             break
         except CallbackRaised as e:
             info(
-                "done() call %d: caught %s",
+                "wait() call %d: caught %s",
                 i,
                 type(e.__cause__).__name__,
             )

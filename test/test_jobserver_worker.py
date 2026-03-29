@@ -61,12 +61,13 @@ class TestJobserverWorker(unittest.TestCase):
                 j = js.submit(fn=signal.raise_signal, args=(signal.SIGUSR2,))
                 j.when_done(helper_callback, mutable, 4, 11)
 
-                # Confirm done/callbacks correct even when submissions die
-                self.assertTrue(f.done())
-                self.assertTrue(g.done())
-                self.assertTrue(h.done())
-                self.assertTrue(i.done())
-                self.assertTrue(j.done())
+                # Confirm completion/callbacks correct even when
+                # submissions die
+                self.assertTrue(f.wait())
+                self.assertTrue(g.wait())
+                self.assertTrue(h.wait())
+                self.assertTrue(i.wait())
+                self.assertTrue(j.wait())
                 self.assertEqual([2, 3, 5, 7, 11], mutable)
 
                 # Confirm either results or signals available in reverse order
@@ -112,19 +113,19 @@ class TestJobserverWorker(unittest.TestCase):
                     f.result(timeout=5)
 
     def test_done_signal_terminates(self) -> None:
-        """Future.done(..., signal=...) accepts Signals enum and int forms."""
+        """Future.wait(..., signal=...) accepts Signals enum and int forms."""
         for method, sig in itertools.product(
             get_all_start_methods(), (signal.SIGTERM, int(signal.SIGTERM))
         ):
             with self.subTest(method=method, sig=sig):
                 js = Jobserver(context=get_context(method), slots=1)
                 f = js.submit(fn=time.sleep, args=(60,))
-                self.assertTrue(f.done(timeout=None, signal=sig))
+                self.assertTrue(f.wait(timeout=None, signal=sig))
                 with self.assertRaises(SubmissionDied):
                     f.result()
 
     def test_done_signal_invalid_raises(self) -> None:
-        """Future.done(..., signal=invalid) raises OSError from os.kill."""
+        """Future.wait(..., signal=invalid) raises OSError from os.kill."""
         invalid_sig = max(signal.valid_signals()) + 1
         for method in get_all_start_methods():
             with self.subTest(method=method):
@@ -134,29 +135,29 @@ class TestJobserverWorker(unittest.TestCase):
                 f = js.submit(fn=helper_nonblocking, args=(mq,))
                 try:
                     with self.assertRaises(OSError):
-                        f.done(timeout=0, signal=invalid_sig)
+                        f.wait(timeout=0, signal=invalid_sig)
                 finally:
                     mq.put("cleanup")
                     f.result(timeout=10)
 
     def test_done_signal_after_done_is_safe(self) -> None:
-        """Future.done(..., signal=...) on an already-done Future is safe."""
+        """wait(..., signal=...) on an already-completed Future is safe."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
                 f = js.submit(fn=len, args=((1, 2, 3),))
                 self.assertEqual(f.result(timeout=None), 3)
-                self.assertTrue(f.done(timeout=None, signal=signal.SIGTERM))
-                self.assertTrue(f.done(timeout=0, signal=int(signal.SIGTERM)))
+                self.assertTrue(f.wait(timeout=None, signal=signal.SIGTERM))
+                self.assertTrue(f.wait(timeout=0, signal=int(signal.SIGTERM)))
 
     def test_done_signal_very_short_timeout(self) -> None:
-        """Future.done(timeout=tiny, signal=...) still delivers the signal."""
+        """Future.wait(timeout=tiny, signal=...) still delivers the signal."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=get_context(method), slots=1)
                 f = js.submit(fn=time.sleep, args=(60,))
-                f.done(timeout=1e-9, signal=signal.SIGTERM)
-                self.assertTrue(f.done(timeout=5))
+                f.wait(timeout=1e-9, signal=signal.SIGTERM)
+                self.assertTrue(f.wait(timeout=5))
                 with self.assertRaises(SubmissionDied):
                     f.result()
 
@@ -297,7 +298,7 @@ class TestJobserverWorker(unittest.TestCase):
                         timeout=5,
                     )
                 self.assertIn("sleep_fn failed", str(c.exception))
-                f.done(timeout=5)
+                f.wait(timeout=5)
 
     def test_init_defaults_used_by_submit(self) -> None:
         """Defaults set in __init__ apply in submit."""

@@ -44,7 +44,7 @@ Examples
  * [ex4_sleep_fn](examples/ex4_sleep_fn.py) — Gating work acceptance on an external condition using `sleep_fn`.
  * [ex5_callbacks](examples/ex5_callbacks.py) — Registering `when_done` callbacks and draining errors via `CallbackRaised`.
  * [ex6_environment](examples/ex6_environment.py) — Setting and unsetting environment variables in child processes via `env=`.
- * [ex7_timeouts](examples/ex7_timeouts.py) — Non-blocking polling, finite deadlines, and `Blocked` on `done()`, `result()`, and `submit()`.
+ * [ex7_timeouts](examples/ex7_timeouts.py) — Non-blocking polling, finite deadlines, and `Blocked` from `result()` and `submit()`.
  * [ex8_pdeathsig](examples/ex8_pdeathsig.py) — Using `preexec_fn` to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
  * [ex9_executor](examples/ex9_executor.py) — `JobserverExecutor` as a context manager supporting `map()` and `c.f.Future` cancellation.
 

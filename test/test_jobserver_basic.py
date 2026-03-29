@@ -123,22 +123,22 @@ class TestJobserverBasic(unittest.TestCase):
                 self.assertEqual("2", g.result())
                 self.assertEqual(mutable[1], 5, "Two callbacks observed")
                 if check_done:
-                    self.assertTrue(f.done())
-                self.assertTrue(h.done())  # No check_done guard!
+                    self.assertTrue(f.wait())
+                self.assertTrue(h.wait())  # No check_done guard!
                 self.assertEqual(mutable[2], 7)
                 self.assertEqual(1, h.result())
                 self.assertEqual(1, h.result(), "Multiple calls OK")
                 h.when_done(
                     helper_callback, lizt=mutable, index=2, increment=11
                 )
-                self.assertEqual(mutable[2], 18, "Callback after done")
+                self.assertEqual(mutable[2], 18, "Callback after completion")
                 self.assertEqual(1, h.result())
-                self.assertTrue(h.done())
+                self.assertTrue(h.wait())
                 self.assertEqual(mutable[2], 18, "Callbacks idempotent")
                 self.assertEqual(4, i.result(), "Zero-consumption request")
                 if check_done:
-                    self.assertTrue(g.done())
-                    self.assertTrue(g.done(), "Multiple calls OK")
+                    self.assertTrue(g.wait())
+                    self.assertTrue(g.wait(), "Multiple calls OK")
                 self.assertEqual(3, f.result())
                 self.assertEqual(mutable[0], 1, "One callback observed")
                 self.assertEqual(4, i.result(), "Zero-consumption repeat")
@@ -188,10 +188,10 @@ class TestJobserverBasic(unittest.TestCase):
                     f.result()
                 self.assertEqual(mutable[0], 1, "One callback observed")
                 f.when_done(helper_callback, mutable, 0, 2)
-                self.assertEqual(mutable[0], 3, "Callback after done")
+                self.assertEqual(mutable[0], 3, "Callback after completion")
                 with self.assertRaises(ArithmeticError):
                     f.result()
-                self.assertTrue(f.done())
+                self.assertTrue(f.wait())
                 self.assertEqual(mutable[0], 3, "Callback idempotent")
 
                 # Confirm other work processed without issue
@@ -207,7 +207,7 @@ class TestJobserverBasic(unittest.TestCase):
         self.assertGreaterEqual(elapsed, minimum, "Not enough seconds elapsed")
 
     def test_nonblocking(self) -> None:
-        """Ensure non-blocking done() and submit() logic honors timeouts."""
+        """Ensure non-blocking wait() and submit() logic honors timeouts."""
         for method, check_done in itertools.product(
             get_all_start_methods(), (True, False)
         ):
@@ -226,12 +226,12 @@ class TestJobserverBasic(unittest.TestCase):
                 with self.assert_elapsed(delay), self.assertRaises(Blocked):
                     js.submit(fn=len, args=("abc",), timeout=delay)
 
-                # Future f reports not done() and adheres to timeouts
+                # Future f reports not wait() and adheres to timeouts
                 if check_done:
                     with self.assert_elapsed(0):
-                        self.assertFalse(f.done(timeout=0))
+                        self.assertFalse(f.wait(timeout=0))
                     with self.assert_elapsed(delay):
-                        self.assertFalse(f.done(timeout=delay))
+                        self.assertFalse(f.wait(timeout=delay))
 
                 # Future f reports no result() and adheres to timeouts
                 with self.assert_elapsed(0), self.assertRaises(Blocked):
@@ -242,7 +242,7 @@ class TestJobserverBasic(unittest.TestCase):
                 # Future f has a result() after it receives this handshake
                 mq.put("handshake")
                 if check_done:
-                    self.assertTrue(f.done(timeout=None))
+                    self.assertTrue(f.wait(timeout=None))
                 self.assertEqual(f.result(timeout=None), "handshake")
                 self.assertEqual(f.result(timeout=0), "handshake")
 

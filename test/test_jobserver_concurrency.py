@@ -27,9 +27,9 @@ class TestJobserverConcurrency(unittest.TestCase):
     """Threading races and concurrent Future access."""
 
     def test_concurrent_done_no_crash(self) -> None:
-        """Concurrent done() on the same Future must not crash.
+        """Concurrent wait() on the same Future must not crash.
 
-        Two threads calling done() on the same Future concurrently must not
+        Two threads calling wait() on the same Future concurrently must not
         cause an AttributeError or AssertionError.  This naturally happens
         when one thread calls reclaim_resources() while another is inside
         submit() with callbacks=True.
@@ -38,10 +38,10 @@ class TestJobserverConcurrency(unittest.TestCase):
         errors: list[Exception] = []
 
         def call_done(future: Future, barrier: threading.Barrier) -> None:
-            """Wait at the barrier then count exceptions from done()."""
+            """Wait at the barrier then count exceptions from wait()."""
             barrier.wait()
             try:
-                future.done(timeout=5)
+                future.wait(timeout=5)
             except Exception as e:
                 errors.append(e)
 
@@ -51,16 +51,16 @@ class TestJobserverConcurrency(unittest.TestCase):
             barrier = threading.Barrier(2)
             t = threading.Thread(target=call_done, args=(f, barrier))
             t.start()
-            call_done(f, barrier)  # Main thread also races into done()
+            call_done(f, barrier)  # Main thread also races into wait()
             t.join(timeout=5)
 
         # Drain futures left incomplete when the race caused an exception
         for future in list(js._future_sentinels.keys()):
-            future.done(timeout=10)
-        self.assertEqual(errors, [], f"Concurrent done() crashed: {errors}")
+            future.wait(timeout=10)
+        self.assertEqual(errors, [], f"Concurrent wait() crashed: {errors}")
 
     def test_concurrent_done_both_threads_see_true(self) -> None:
-        """Both threads calling done() concurrently must see True.
+        """Both threads calling wait() concurrently must see True.
 
         The losing thread must take the fast-path (_connection is None)
         and return True, never silently swallowing the result.
@@ -75,22 +75,22 @@ class TestJobserverConcurrency(unittest.TestCase):
                 idx: int, barrier: threading.Barrier, f=f, results=results
             ) -> None:
                 barrier.wait()
-                results[idx] = f.done(timeout=5)
+                results[idx] = f.wait(timeout=5)
 
             barrier = threading.Barrier(2)
             t = threading.Thread(target=call_done, args=(1, barrier))
             t.start()
             call_done(0, barrier)
             t.join(timeout=5)
-            self.assertTrue(results[0], "Main thread must see done() == True")
+            self.assertTrue(results[0], "Main thread must see wait() == True")
             self.assertTrue(
-                results[1], "Background thread must see done() == True"
+                results[1], "Background thread must see wait() == True"
             )
 
     def test_concurrent_done_timeout_budget(self) -> None:
         """Lock acquisition time is deducted from the timeout budget.
 
-        A done(timeout=T) call must not block for longer than
+        A wait(timeout=T) call must not block for longer than
         approximately T seconds, even if the lock is contested.
         """
         js = Jobserver(slots=1)
@@ -109,9 +109,9 @@ class TestJobserverConcurrency(unittest.TestCase):
         t.start()
         acquired.wait(timeout=5)
 
-        # done(timeout=0.1) must return within ~0.2s, not hang
+        # wait(timeout=0.1) must return within ~0.2s, not hang
         start = time.monotonic()
-        result = f.done(timeout=0.1)
+        result = f.wait(timeout=0.1)
         elapsed = time.monotonic() - start
 
         release.set()
@@ -123,13 +123,13 @@ class TestJobserverConcurrency(unittest.TestCase):
         )
 
         # Clean up: let the future actually complete
-        f.done(timeout=10)
+        f.wait(timeout=10)
 
     def test_concurrent_when_done_with_done(self) -> None:
-        """when_done() from one thread while done() transitions in another.
+        """when_done() from one thread while wait() transitions in another.
 
         The callback registered by when_done() must fire exactly once,
-        regardless of the timing relative to the done() transition.
+        regardless of the timing relative to the wait() transition.
 
         NB: The CPython GIL may prevent this test from failing even if
         Future had no explicit locking.
@@ -154,15 +154,15 @@ class TestJobserverConcurrency(unittest.TestCase):
             t = threading.Thread(target=register_callback, args=(barrier,))
             t.start()
 
-            # Main thread races done() against when_done()
+            # Main thread races wait() against when_done()
             barrier.wait()
-            f.done(timeout=5)
+            f.wait(timeout=5)
             t.join(timeout=5)
 
             # Drain any remaining callbacks
             while True:
                 try:
-                    f.done(timeout=0)
+                    f.wait(timeout=0)
                     break
                 except CallbackRaised:
                     pass
@@ -177,8 +177,8 @@ class TestJobserverConcurrency(unittest.TestCase):
     def test_concurrent_callback_raised_delivery(self) -> None:
         """CallbackRaised is delivered to exactly one thread.
 
-        When two threads race into done(), only the winner executes
-        callbacks.  The loser sees an already-done Future with no
+        When two threads race into wait(), only the winner executes
+        callbacks.  The loser sees an already-completed Future with no
         pending callbacks and does not raise CallbackRaised.
         """
         js = Jobserver(slots=4)
@@ -194,7 +194,7 @@ class TestJobserverConcurrency(unittest.TestCase):
             ) -> None:
                 barrier.wait()
                 try:
-                    f.done(timeout=5)
+                    f.wait(timeout=5)
                 except CallbackRaised:
                     raised_in.append(name)
 
@@ -214,9 +214,9 @@ class TestJobserverConcurrency(unittest.TestCase):
     def test_reclaim_resources_with_contested_lock(self) -> None:
         """reclaim_resources() tolerates a contested Future lock.
 
-        When one thread holds a Future's lock (inside done()), another
+        When one thread holds a Future's lock (inside wait()), another
         thread calling reclaim_resources() must not crash.  The
-        done(timeout=0) inside reclaim_resources returns False for the
+        wait(timeout=0) inside reclaim_resources returns False for the
         contested Future and moves on.
         """
         js = Jobserver(slots=2)
@@ -235,7 +235,7 @@ class TestJobserverConcurrency(unittest.TestCase):
         t.start()
         acquired.wait(timeout=5)
 
-        # reclaim_resources uses done(timeout=0) which should fail
+        # reclaim_resources uses wait(timeout=0) which should fail
         # gracefully when the lock is contested
         js.reclaim_resources()  # Must not crash
 
@@ -243,5 +243,5 @@ class TestJobserverConcurrency(unittest.TestCase):
         t.join(timeout=5)
 
         # Now the future can complete normally
-        f.done(timeout=10)
+        f.wait(timeout=10)
         self.assertIsNone(f.result())
