@@ -14,32 +14,24 @@ def main() -> None:
     """Shows submitting jobs and collecting results."""
     jobserver = Jobserver(context="spawn", slots=2)
 
-    # Shorthand with positional args
-    future_a = jobserver(len, (1, 2, 3))
+    # Full Jobserver.submit(...) example with args and kwargs
+    # The submit(...) method has many additional options
+    future_a = jobserver.submit(fn=pow, args=(2, 10), kwargs={"mod": 1000})
 
-    # Shorthand with keyword args
-    future_b = jobserver(str, object=42)
+    # Simpler shorthand via Jobserver.__call__(...) with positional args
+    future_b = jobserver(len, (1, 2, 3))
 
-    # Full form with args and kwargs
-    future_c = jobserver.submit(fn=pow, args=(2, 10), kwargs={"mod": 1000})
-
-    # Full form with a user-defined task function
-    future_d = jobserver.submit(fn=task_sum, args=([10, 20, 30],))
+    # Simpler shorthand also permits kwargs or mixed args/kwargs
+    future_c = jobserver(str, object=42)
 
     # Results retrieved in arbitrary order
-    info("pow(2, 10, mod=1000) = %s", future_c.result())
-    info("task_sum([10, 20, 30]) = %s", future_d.result())
-    info("len((1, 2, 3)) = %s", future_a.result())
-    info("str(object=42) = %s", future_b.result())
+    info("str(object=42) = %s", future_c.result())
+    info("len((1, 2, 3)) = %s", future_b.result())
+    info("pow(2, 10, mod=1000) = %s", future_a.result())
 
     # Map over multiple inputs, results yielded in order
     lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
     info("lengths via map: %s", lengths)
-
-
-def task_sum(numbers: list) -> int:
-    """Return the sum of numbers."""
-    return sum(numbers)
 
 
 if __name__ == "__main__":

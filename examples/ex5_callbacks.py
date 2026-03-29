@@ -13,30 +13,34 @@ from jobserver import CallbackRaised, Jobserver
 def main() -> None:
     """Shows callbacks, exception handling, and CallbackRaised."""
     jobserver = Jobserver(context="fork", slots=2)
+    future1 = jobserver.submit(fn=len, args=("hello",))
 
-    # Register callbacks that fire when the future completes
-    results: list = []
-    future = jobserver.submit(fn=len, args=("hello",))
-    future.when_done(callback_record, results=results, tag="first")
-    future.when_done(callback_record, results=results, tag="second")
-    info("Result: %s", future.result())
-    info("Callbacks fired: %s", results)
+    # Register callbacks to fire after observing the future completes
+    # Callbacks receive exactly and only the arguments given to when_done(...)
+    accumulator: list = []
+    future1.when_done(accumulator.append, "first")
+    future1.when_done(accumulator.append, "second")
+    info("Result: %s", future1.result())
+    info("Callbacks fired: %s", accumulator)
 
-    # Register a callback after the future already has a result.
-    # It fires immediately.
-    future.when_done(callback_record, results=results, tag="after-completion")
-    info("Callbacks after completion: %s", results)
+    # Unlike concurrent.futures.Future.add_done_callback(...), you must
+    # pass the future as an argument if wanting the callback to receive it.
+    future1.when_done(type, future1)
+
+    # Registering a callback after completion causes it to immediately fire
+    future1.when_done(accumulator.append, "after-completion")
+    info("Callbacks after completion: %s", accumulator)
 
     # When a callback raises, CallbackRaised wraps the original exception.
     # Re-calling wait() drains the remaining callbacks one by one.
-    future_err = jobserver.submit(fn=len, args=("world",))
-    future_err.when_done(callback_raise, klass=ValueError)
-    future_err.when_done(callback_raise, klass=TypeError)
-    future_err.when_done(callback_record, results=results, tag="survivor")
+    future2 = jobserver.submit(fn=len, args=("world",))
+    future2.when_done(raise_exception, klass=ValueError)
+    future2.when_done(raise_exception, klass=TypeError)
+    future2.when_done(accumulator.append, "survivor")
 
     for i in range(3):
         try:
-            future_err.wait()
+            future2.wait()
             info("wait() call %d: no more errors", i)
             break
         except CallbackRaised as e:
@@ -47,17 +51,16 @@ def main() -> None:
             )
 
     # The result is still available after all callbacks drain
-    info("Result after errors: %s", future_err.result())
+    info("Result after errors: %s", future2.result())
+
+    # Callbacks may register additional callbacks or be provided any future
+    future1.when_done(future1.when_done, tuple)
+    future1.when_done(future2.when_done, list)
 
 
-def callback_record(results: list, tag: str) -> None:
-    """Append a tag to the results list."""
-    results.append(tag)
-
-
-def callback_raise(klass: type, *args) -> None:
+def raise_exception(klass: type) -> None:
     """Raise the requested exception."""
-    raise klass(*args)
+    raise klass()
 
 
 if __name__ == "__main__":

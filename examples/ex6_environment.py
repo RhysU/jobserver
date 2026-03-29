@@ -17,7 +17,7 @@ def main() -> None:
 
     # Set an environment variable in the child process
     future_set = jobserver.submit(
-        fn=task_getenv,
+        fn=task_getenv_missing,
         args=("DEMO_KEY",),
         env={"DEMO_KEY": "hello"},
     )
@@ -25,16 +25,16 @@ def main() -> None:
 
     # Unset an environment variable by passing None
     future_unset = jobserver.submit(
-        fn=task_getenv,
+        fn=task_getenv_missing,
         args=("DEMO_KEY",),
         env={"DEMO_KEY": None},
     )
     info("env unset: %s", future_unset.result())
 
 
-def task_getenv(key: str) -> str:
-    """Return os.environ.get(key, 'MISSING')."""
-    return os.environ.get(key, "MISSING")
+def task_getenv_missing(key: str) -> str:
+    """Return os.getenv(key, 'MISSING')."""
+    return os.getenv(key, "MISSING")
 
 
 if __name__ == "__main__":

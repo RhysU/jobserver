@@ -24,9 +24,8 @@ def main() -> None:
     future_ok = jobserver.submit(fn=len, args=("hello",))
 
     # wait() returns True even for dead submissions
-    info("Killed worker wait: %s", future_killed.wait(timeout=None))
-    info("Normal worker wait: %s", future_ok.wait())  # None is the default
-    info("Normal result: %s", future_ok.result())
+    info("Killed worker wait: %s", future_killed.wait())  # Blocks by default
+    info("Normal result: %s", future_ok.result())  # Also blocks by default
 
     # result() raises SubmissionDied for the killed worker
     try:
