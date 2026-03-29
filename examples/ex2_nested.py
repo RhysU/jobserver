@@ -17,7 +17,9 @@ def main() -> None:
     jobserver_a = Jobserver(context="fork", slots=2)
 
     # slots=2: parent(1) + child(1) + grandchild(Blocked) -> depth 1
-    future_a = jobserver_a.submit(fn=task_recurse, args=(jobserver_a, 10), timeout=5)
+    future_a = jobserver_a.submit(
+        fn=task_recurse, args=(jobserver_a, 10), timeout=5
+    )
     depth_a = future_a.result()
     info("Reached recursion depth %d with 2 slots", depth_a)
     assert depth_a == 1, depth_a
