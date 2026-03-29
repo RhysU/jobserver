@@ -3,11 +3,16 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 4 shows gating work acceptance on external conditions."""
+"""
+Example 4 shows gating work acceptance on external conditions.
+
+Availability of RAM is a more common use case but ill-suited for an example.
+"""
 
 import os
 import tempfile
 from logging import INFO, basicConfig, info
+from typing import Optional
 
 from jobserver import Blocked, Jobserver
 
@@ -21,9 +26,9 @@ def main() -> None:
         info("Gate file: %s", gate_path)
 
         # sleep_fn returns None (proceed) when gate exists, 0.1 otherwise
-        def sleep_fn_gate() -> float:
+        def sleep_fn_gate() -> Optional[float]:
             if os.path.exists(gate_path):
-                return None  # type: ignore[return-value]
+                return None
             return 0.1
 
         # Submission proceeds because the gate file exists
