@@ -8,7 +8,6 @@
 import unittest
 
 from jobserver import (
-    Future,
     Jobserver,
     JobserverExecutor,
     MinimalQueue,

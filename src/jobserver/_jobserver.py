@@ -155,7 +155,7 @@ class Future(Generic[T]):
         return (
             f"Future({'done' if self._connection is None else 'running'}"
             f", callbacks={len(self._callbacks)}"
-            f", pid={p.pid if p is not None else None})"
+            f", pid={None if p is None else p.pid})"
         )
 
     def __copy__(self) -> NoReturn:
@@ -369,10 +369,8 @@ class Jobserver:
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
-        return (
-            f"Jobserver({method!r}"
-            f", tracked={len(self._future_sentinels)})"
-        )
+        n = len(self._future_sentinels)
+        return f"Jobserver({method!r}, tracked={n})"
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""
