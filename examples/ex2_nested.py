@@ -32,7 +32,11 @@ def main() -> None:
 
 
 def task_recurse(jobserver: Jobserver, max_depth: int) -> int:
-    """Submit nested work until either Blocked or max_depth reached."""
+    """Submit nested work until either Blocked or max_depth reached.
+
+    Note: passing a Jobserver as an argument requires context="fork" or a
+    picklable Jobserver; it does not work with context="spawn" or "forkserver".
+    """
     if max_depth < 1:
         return 0
     try:
