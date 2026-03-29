@@ -162,7 +162,7 @@ class TestJobserverConcurrency(unittest.TestCase):
             # Drain any remaining callbacks
             while True:
                 try:
-                    f.wait(timeout=0)
+                    f.done()
                     break
                 except CallbackRaised:
                     pass
@@ -215,9 +215,9 @@ class TestJobserverConcurrency(unittest.TestCase):
         """reclaim_resources() tolerates a contested Future lock.
 
         When one thread holds a Future's lock (inside wait()), another
-        thread calling reclaim_resources() must not crash.  The
-        wait(timeout=0) inside reclaim_resources returns False for the
-        contested Future and moves on.
+        thread calling reclaim_resources() must not crash.  The done()
+        inside reclaim_resources returns False for the contested Future
+        and moves on.
         """
         js = Jobserver(slots=2)
         f = js.submit(fn=time.sleep, args=(0.05,), timeout=5)
@@ -235,7 +235,7 @@ class TestJobserverConcurrency(unittest.TestCase):
         t.start()
         acquired.wait(timeout=5)
 
-        # reclaim_resources uses wait(timeout=0) which should fail
+        # reclaim_resources uses done() which should fail
         # gracefully when the lock is contested
         js.reclaim_resources()  # Must not crash
 

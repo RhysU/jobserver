@@ -33,8 +33,10 @@ class TestJobserverCallbacks(unittest.TestCase):
         # Prepare how callbacks will be observed
         mutable = [0]
 
-        # Confirm that inside a callback the Future reports wait()
+        # Confirm that inside a callback the Future reports done()
+        self.assertTrue(f.done())
         self.assertTrue(f.wait(timeout=0))
+        self.assertTrue(f.wait(timeout=None))
 
         # Confirm that inside a callback additional work can be registered
         f.when_done(helper_callback, mutable, 0, 1)
@@ -44,7 +46,7 @@ class TestJobserverCallbacks(unittest.TestCase):
         self.assertEqual(mutable[0], 3, "Two callbacks observed")
 
     def test_callback_semantics(self) -> None:
-        """Inside a Future's callback the Future reports wait() is True."""
+        """Inside a Future's callback the Future reports done() is True."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=3)
@@ -69,7 +71,7 @@ class TestJobserverCallbacks(unittest.TestCase):
                     f.wait(timeout=None)
                 self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
                 self.assertTrue(f.wait(timeout=None))
-                self.assertTrue(f.wait(timeout=0))
+                self.assertTrue(f.done())
 
                 # After callbacks have completed, the result is available.
                 self.assertEqual(f.result(), 5)
@@ -98,7 +100,7 @@ class TestJobserverCallbacks(unittest.TestCase):
                 self.assertEqual(order, list(range(100)))
 
     def test_five_raising_callbacks_drain(self) -> None:
-        """Five raising callbacks each require a wait() call to drain."""
+        """Five raising callbacks each require a done() call to drain."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 js = Jobserver(context=method, slots=1)
@@ -110,7 +112,7 @@ class TestJobserverCallbacks(unittest.TestCase):
                         f.wait(timeout=5)
                     self.assertIsInstance(c.exception.__cause__, ValueError)
                     self.assertIn(f"cb-{i}", str(c.exception.__cause__))
-                self.assertTrue(f.wait(timeout=0))
+                self.assertTrue(f.done())
                 self.assertEqual(f.result(), 1)
 
     def test_reentrant_when_done_nests_issue_callbacks(self) -> None:

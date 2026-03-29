@@ -357,7 +357,7 @@ def _poll_running(
     completed: list[Future] = []
     for f in running:
         try:
-            if f.wait(timeout=0):
+            if f.done():
                 completed.append(f)
         except CallbackRaised:
             # Internal callbacks should not raise, but recover

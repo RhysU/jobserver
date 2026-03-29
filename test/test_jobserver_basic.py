@@ -226,10 +226,10 @@ class TestJobserverBasic(unittest.TestCase):
                 with self.assert_elapsed(delay), self.assertRaises(Blocked):
                     js.submit(fn=len, args=("abc",), timeout=delay)
 
-                # Future f reports not wait() and adheres to timeouts
+                # Future f reports not done() and adheres to timeouts
                 if check_done:
                     with self.assert_elapsed(0):
-                        self.assertFalse(f.wait(timeout=0))
+                        self.assertFalse(f.done())
                     with self.assert_elapsed(delay):
                         self.assertFalse(f.wait(timeout=delay))
 
