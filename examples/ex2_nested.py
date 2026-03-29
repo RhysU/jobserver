@@ -16,18 +16,19 @@ def main() -> None:
     # to match the number of usable CPUs for the current process.
     jobserver = Jobserver(context="fork", slots=2)
 
-    # Parent submits task_recurse which itself submits more work.
-    # Recursion depth is bounded by the number of available slots.
+    # slots=2: parent(1) + child(1) + grandchild(Blocked) -> depth 1
     future = jobserver.submit(fn=task_recurse, args=(jobserver, 10), timeout=5)
     depth = future.result()
+    assert depth == 1, depth
     info("Reached recursion depth %d with 2 slots", depth)
 
-    # With more slots, deeper recursion is possible
+    # slots=4: depth 3 (N slots -> depth N-1)
     jobserver_wide = Jobserver(context="fork", slots=4)
     future_wide = jobserver_wide.submit(
         fn=task_recurse, args=(jobserver_wide, 10), timeout=5
     )
     depth_wide = future_wide.result()
+    assert depth_wide == 3, depth_wide
     info("Reached recursion depth %d with 4 slots", depth_wide)
 
 
