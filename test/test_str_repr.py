@@ -8,40 +8,13 @@
 import unittest
 
 from jobserver import (
-    Blocked,
-    CallbackRaised,
     Future,
     Jobserver,
     JobserverExecutor,
     MinimalQueue,
-    SubmissionDied,
 )
 
 from .helpers import helper_return
-
-
-class TestExceptionRepr(unittest.TestCase):
-    """Exception classes have sensible default messages."""
-
-    def test_blocked_default(self) -> None:
-        e = Blocked()
-        self.assertIn("blocked", str(e))
-        self.assertIn(str(e), repr(e))
-
-    def test_blocked_custom(self) -> None:
-        e = Blocked("custom")
-        self.assertEqual(str(e), "custom")
-        self.assertIn("custom", repr(e))
-
-    def test_callback_raised_default(self) -> None:
-        e = CallbackRaised()
-        self.assertIn("callback", str(e))
-        self.assertIn(str(e), repr(e))
-
-    def test_submission_died_default(self) -> None:
-        e = SubmissionDied()
-        self.assertIn("died", str(e))
-        self.assertIn(str(e), repr(e))
 
 
 class TestFutureRepr(unittest.TestCase):

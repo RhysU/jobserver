@@ -40,8 +40,7 @@ T = TypeVar("T")
 class Blocked(Exception):
     """Reports that Jobserver.submit(...) or Future.result(...) is blocked."""
 
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args or ("submission is blocked",))
+    pass
 
 
 class CallbackRaised(Exception):
@@ -60,8 +59,7 @@ class CallbackRaised(Exception):
     processing to perform after seeing the 1st, 2nd, or Nth error.
     """
 
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args or ("callback raised an exception",))
+    pass
 
 
 class SubmissionDied(Exception):
@@ -72,8 +70,7 @@ class SubmissionDied(Exception):
     Exactly what has transpired is not reported.  Do not attempt to recover.
     """
 
-    def __init__(self, *args: object) -> None:
-        super().__init__(*args or ("submission died unexpectedly",))
+    pass
 
 
 class Wrapper(abc.ABC, Generic[T]):
