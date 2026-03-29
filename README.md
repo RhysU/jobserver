@@ -35,6 +35,11 @@ compatibility.  `JobserverExecutor` is a drop-in replacement for
 `concurrent.futures.ProcessPoolExecutor` that aims to provide more robustness
 at the expense of slower process launching.
 
+Dependencies
+------------
+
+None aside from the Python standard library.
+
 Examples
 --------
 
