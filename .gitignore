@@ -1,8 +1,9 @@
+*.egg-info/
+.claude
+.coverage
 .idea
 .mypy_cache/
 .venv
 __pycache__
-*.egg-info/
 dist/
 uv.lock
-.coverage
