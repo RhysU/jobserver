@@ -156,10 +156,10 @@ class Future(Generic[T]):
     def __repr__(self) -> str:
         state = "done" if self._connection is None else "running"
         parts = [state]
-        if self._process is not None:
-            parts.append(f"pid={self._process.pid}")
         if self._callbacks:
             parts.append(f"callbacks={len(self._callbacks)}")
+        if self._process is not None:
+            parts.append(f"pid={self._process.pid}")
         return f"Future({', '.join(parts)})"
 
     def __copy__(self) -> NoReturn:
