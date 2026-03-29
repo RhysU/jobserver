@@ -14,21 +14,24 @@ def main() -> None:
     """Shows nested submissions sharing slot constraints."""
     # Using slots=2 here; slots=None would use os.sched_getaffinity(0)
     # to match the number of usable CPUs for the current process.
-    jobserver = Jobserver(context="fork", slots=2)
+    jobserver_a = Jobserver(context="fork", slots=2)
 
-    # Parent submits task_recurse which itself submits more work.
-    # Recursion depth is bounded by the number of available slots.
-    future = jobserver.submit(fn=task_recurse, args=(jobserver, 10), timeout=5)
-    depth = future.result()
-    info("Reached recursion depth %d with 2 slots", depth)
-
-    # With more slots, deeper recursion is possible
-    jobserver_wide = Jobserver(context="fork", slots=4)
-    future_wide = jobserver_wide.submit(
-        fn=task_recurse, args=(jobserver_wide, 10), timeout=5
+    # slots=2: parent(1) + child(1) + grandchild(Blocked) -> depth 1
+    future_a = jobserver_a.submit(
+        fn=task_recurse, args=(jobserver_a, 10), timeout=5
     )
-    depth_wide = future_wide.result()
-    info("Reached recursion depth %d with 4 slots", depth_wide)
+    depth_a = future_a.result()
+    info("Reached recursion depth %d with 2 slots", depth_a)
+    assert depth_a == 1, depth_a
+
+    # slots=4: depth 3 (N slots -> depth N-1)
+    jobserver_b = Jobserver(context="fork", slots=4)
+    future_b = jobserver_b.submit(
+        fn=task_recurse, args=(jobserver_b, 10), timeout=5
+    )
+    depth_b = future_b.result()
+    info("Reached recursion depth %d with 4 slots", depth_b)
+    assert depth_b == 3, depth_b
 
 
 def task_recurse(jobserver: Jobserver, max_depth: int) -> int:
