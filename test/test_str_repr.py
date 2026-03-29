@@ -35,7 +35,7 @@ class TestFutureRepr(unittest.TestCase):
         f.result()
         r = repr(f)
         self.assertIn("done", r)
-        self.assertNotIn("pid=", r)
+        self.assertIn("pid=None", r)
         self.assertEqual(str(f), repr(f))
 
 

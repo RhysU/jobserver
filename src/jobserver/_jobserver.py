@@ -151,13 +151,12 @@ class Future(Generic[T]):
         self._callbacks: deque[tuple] = deque()
 
     def __repr__(self) -> str:
-        state = "done" if self._connection is None else "running"
-        parts = [state]
-        if self._callbacks:
-            parts.append(f"callbacks={len(self._callbacks)}")
-        if self._process is not None:
-            parts.append(f"pid={self._process.pid}")
-        return f"Future({', '.join(parts)})"
+        p = self._process
+        return (
+            f"Future({'done' if self._connection is None else 'running'}"
+            f", callbacks={len(self._callbacks)}"
+            f", pid={p.pid if p is not None else None})"
+        )
 
     def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
