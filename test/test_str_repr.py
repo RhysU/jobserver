@@ -92,6 +92,8 @@ class TestJobserverExecutorRepr(unittest.TestCase):
         r = repr(ex)
         self.assertIn("active", r)
         self.assertIn("pending=", r)
+        self.assertIn("jobserver=", r)
+        self.assertIn("Jobserver(", r)
         self.assertEqual(str(ex), repr(ex))
         ex.shutdown(wait=True)
 
@@ -101,6 +103,7 @@ class TestJobserverExecutorRepr(unittest.TestCase):
         ex.shutdown(wait=True)
         r = repr(ex)
         self.assertIn("shutdown", r)
+        self.assertIn("jobserver=", r)
         self.assertEqual(str(ex), repr(ex))
 
 
