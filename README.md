@@ -7,7 +7,7 @@ type-hinting
 Purpose
 -------
 
-[Jobserver](jobserver/_jobserver.py) is similar in spirit to
+[Jobserver](src/jobserver/_jobserver.py) is similar in spirit to
 `multiprocessing.Pool` or `concurrent.futures.Executor` with a few differences:
 
  * First, the implementation choices are based upon the [GNU Make
@@ -29,7 +29,7 @@ asynchronously issuing `concurrent.futures.Future` callbacks.  `Jobserver`,
 eschewing threads, consequently is both somehow less-than and more-than a
 standard `Executor`.
 
-In contrast, [JobserverExecutor](jobserver/_executor.py) combines a `Jobserver`
+In contrast, [JobserverExecutor](src/jobserver/_executor.py) combines a `Jobserver`
 with a background thread to provide full `concurrent.futures.Executor`
 compatibility.  `JobserverExecutor` is a drop-in replacement for
 `concurrent.futures.ProcessPoolExecutor` that aims to provide more robustness
