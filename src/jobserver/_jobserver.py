@@ -150,6 +150,14 @@ class Future(Generic[T]):
         # Populated by calls to when_done(...)
         self._callbacks: deque[tuple] = deque()
 
+    def __repr__(self) -> str:
+        p = self._process
+        return (
+            f"Future({'done' if self._connection is None else 'running'}"
+            f", callbacks={len(self._callbacks)}"
+            f", pid={None if p is None else p.pid})"
+        )
+
     def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
         # In particular, which copy would call self._process.join()?
@@ -358,6 +366,11 @@ class Jobserver:
         self._env = tuple(items)
         self._preexec_fn = preexec_fn
         self._sleep_fn = sleep_fn
+
+    def __repr__(self) -> str:
+        method = self._context.get_start_method()
+        n = len(self._future_sentinels)
+        return f"Jobserver({method!r}, tracked={n})"
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""

@@ -67,6 +67,13 @@ class MinimalQueue(Generic[T]):
         self._read_lock = context.Lock()
         self._write_lock = context.Lock()
 
+    def __repr__(self) -> str:
+        rd = self._reader
+        wr = self._writer
+        r = "closed" if rd is None else f"open(fd={rd.fileno()})"
+        w = "closed" if wr is None else f"open(fd={wr.fileno()})"
+        return f"MinimalQueue(reader={r}, writer={w})"
+
     def __copy__(self) -> "MinimalQueue":
         """Shallow copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
