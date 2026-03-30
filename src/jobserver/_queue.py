@@ -129,7 +129,8 @@ class MinimalQueue(Generic[T]):
 
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
-        assert self._reader is not None, "get() after close_get()"
+        if self._reader is None:
+            raise ValueError("MinimalQueue.get() after close_get()")
         # Accounting for lock acquisition time is easiest with a deadline
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
@@ -152,7 +153,8 @@ class MinimalQueue(Generic[T]):
 
         Raises BrokenPipeError if the receiving half has hung up.
         """
-        assert self._writer is not None, "put() after close_put()"
+        if self._writer is None:
+            raise ValueError("MinimalQueue.put() after close_put()")
         if args:
             # Serialize outside the critical section
             send = [ForkingPickler.dumps(arg) for arg in args]
