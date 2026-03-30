@@ -7,6 +7,7 @@
 
 import abc
 import concurrent.futures
+import heapq
 import os
 import queue
 import signal
@@ -120,6 +121,14 @@ class ExceptionWrapper(Wrapper[T]):
         raise self._raised
 
 
+# Callback priorities for the Future heapq-based callback queue.
+# Token restoration fires first, user callbacks in the middle,
+# and sentinel cleanup fires last.
+_PRIORITY_TOKEN = 0
+_PRIORITY_USER = 1
+_PRIORITY_CLEANUP = 2
+
+
 class Future(Generic[T]):
     """
     Future instances are obtained by submitting work to a Jobserver.
@@ -135,6 +144,7 @@ class Future(Generic[T]):
         "_connection",
         "_wrapper",
         "_callbacks",
+        "_callback_seqno",
     )
 
     def __init__(self, process: BaseProcess, connection: Connection) -> None:
@@ -153,8 +163,15 @@ class Future(Generic[T]):
         # Becomes non-None after result is obtained
         self._wrapper: Optional[Wrapper[T]] = None
 
-        # Populated by calls to when_done(...)
-        self._callbacks: deque[tuple] = deque()
+        # Populated by calls to when_done(...).  A heapq ordered by
+        # (priority, seqno, ...) so token restoration fires before
+        # user callbacks, which fire before sentinel cleanup.
+        self._callbacks: list[tuple] = []
+        # Monotonic counter; len(self._callbacks) would break because
+        # heappop during _issue_callbacks shrinks the list, so a
+        # re-entrant when_done could produce a seqno lower than
+        # previously issued ones, violating registration order.
+        self._callback_seqno = 0
 
     def __repr__(self) -> str:
         p = self._process
@@ -175,7 +192,12 @@ class Future(Generic[T]):
         raise NotImplementedError("Futures cannot be pickled.")
 
     def when_done(
-        self, fn: Callable, *args, __internal: bool = False, **kwargs
+        self,
+        fn: Callable,
+        *args,
+        __internal: bool = False,
+        __priority: int = _PRIORITY_USER,
+        **kwargs,
     ) -> None:
         """
         Register a function for execution sometime after Future.done(...).
@@ -185,7 +207,19 @@ class Future(Generic[T]):
         May raise CallbackRaised from at most this new callback.
         """
         with self._rlock:
-            self._callbacks.append((__internal, fn, args, kwargs))
+            seqno = self._callback_seqno
+            self._callback_seqno += 1
+            heapq.heappush(
+                self._callbacks,
+                (
+                    __priority,
+                    seqno,
+                    __internal,
+                    fn,
+                    args,
+                    kwargs,
+                ),
+            )
             if self._connection is None:
                 self._issue_callbacks()
 
@@ -285,7 +319,7 @@ class Future(Generic[T]):
         # Otherwise, we might obfuscate bugs within this module's logic
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
-            internal, fn, args, kwargs = self._callbacks.popleft()
+            _, _, internal, fn, args, kwargs = heapq.heappop(self._callbacks)
             if internal:
                 fn(*args, **kwargs)
             else:
@@ -471,12 +505,9 @@ class Jobserver:
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Copy of keys() required to prevent concurrent modification.
-        # done() raises CallbackRaised at most once per call; only
-        # pop a future after it returns True (all callbacks drained).
+        # Copy of keys() required to prevent concurrent modification
         for future in tuple(self._future_sentinels.keys()):
-            if future.done():
-                self._future_sentinels.pop(future, None)
+            future.done()
 
     def submit(
         self,
@@ -577,10 +608,19 @@ class Jobserver:
         # After any restoration, no longer track this Future within Jobserver
         if tokens:
             future.when_done(
-                _restore_tokens, self._slots, tokens, _Future__internal=True
+                _restore_tokens,
+                self._slots,
+                tokens,
+                _Future__internal=True,
+                _Future__priority=_PRIORITY_TOKEN,
             )
-        # Sentinel removal now handled by reclaim_resources() after
-        # all callbacks have drained, not as a when_done() callback.
+        future.when_done(
+            self._future_sentinels.pop,
+            future,
+            None,
+            _Future__internal=True,
+            _Future__priority=_PRIORITY_CLEANUP,
+        )
 
         # Finally, return a viable Future to the caller
         return future
