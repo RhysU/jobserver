@@ -223,7 +223,11 @@ class Future(Generic[T]):
                 (
                     __priority,
                     self._callback_seqno,
-                    fn if __internal else functools.partial(_possibly_raises, fn),
+                    (
+                        fn
+                        if __internal
+                        else functools.partial(_possibly_raises, fn)
+                    ),
                     args,
                     kwargs,
                 ),
