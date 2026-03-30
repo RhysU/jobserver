@@ -513,10 +513,12 @@ class Jobserver:
             )
             future: Future[T] = Future(process, recv)
             process.start()
+            send.close()
 
             # Prepare to track the Future and the wait(...)-able sentinel
             self._future_sentinels[future] = process.sentinel
         except Exception:
+            # TODO: close recv/send fds to avoid leaking until GC
             # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self._slots.put(tokens.pop())
