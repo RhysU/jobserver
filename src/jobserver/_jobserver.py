@@ -122,6 +122,14 @@ class ExceptionWrapper(Wrapper[T]):
         raise self._raised
 
 
+# Callback priorities for the Future heapq-based callback queue.
+# Token restoration fires first, user callbacks in the middle,
+# and sentinel cleanup fires last.
+_PRIORITY_TOKEN = 0
+_PRIORITY_USER = 1
+_PRIORITY_CLEANUP = 2
+
+
 def _possibly_raises(fn, *args, **kwargs) -> None:
     """Call fn(*args, **kwargs), wrapping any Exception in CallbackRaised."""
     try:
@@ -134,14 +142,6 @@ def _possibly_raises(fn, *args, **kwargs) -> None:
         if isinstance(e, CallbackRaised):
             raise
         raise CallbackRaised() from e
-
-
-# Callback priorities for the Future heapq-based callback queue.
-# Token restoration fires first, user callbacks in the middle,
-# and sentinel cleanup fires last.
-_PRIORITY_TOKEN = 0
-_PRIORITY_USER = 1
-_PRIORITY_CLEANUP = 2
 
 
 class Future(Generic[T]):
