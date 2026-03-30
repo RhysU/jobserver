@@ -244,10 +244,14 @@ class Future(Generic[T]):
                 except ProcessLookupError:
                     pass
 
-            # Possibly wait until a result is available for reading
-            # (If we just sent SIGKILL then poll(...) now should see EOFError)
+            # Wait for either pipe data or process death
+            assert self._process is not None
             remaining = max(0, deadline - time.monotonic())
-            if not self._connection.poll(remaining):
+            ready = wait(
+                [self._connection, self._process.sentinel],
+                timeout=remaining,
+            )
+            if self._connection not in ready and self._process.is_alive():
                 return False
 
             # Attempt to read the result Wrapper from the Connection
