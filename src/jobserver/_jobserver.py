@@ -23,6 +23,7 @@ from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 
+from ._compat import ignore_sigpipe, sched_getaffinity0
 from ._queue import MinimalQueue, absolute_deadline, resolve_context
 
 __all__ = (
@@ -351,7 +352,7 @@ class Jobserver:
 
         # Issue one token for each requested slot
         if slots is None:
-            slots = len(os.sched_getaffinity(0))  # Not context.cpu_count()!
+            slots = sched_getaffinity0()
         assert isinstance(slots, int) and slots >= 1, type(slots)
         self._slots.put(*range(slots))
 
@@ -611,6 +612,8 @@ class Jobserver:
 
 def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
     """Entry point for workers to fun fn(...) due to some  submit(...)."""
+    ignore_sigpipe()
+
     # Wrapper usage tracks whether a value was returned or raised
     # in degenerate case where client code returns an Exception
     result: Optional[Wrapper[Any]] = None
