@@ -164,14 +164,10 @@ class Future(Generic[T]):
         self._wrapper: Optional[Wrapper[T]] = None
 
         # Populated by calls to when_done(...).  A heapq ordered by
-        # (priority, seqno, ...) so token restoration fires before
+        # (priority, callback_seqno, ...) so token restoration fires before
         # user callbacks, which fire before sentinel cleanup.
         self._callbacks: list[tuple] = []
-        # Monotonic counter; len(self._callbacks) would break because
-        # heappop during _issue_callbacks shrinks the list, so a
-        # re-entrant when_done could produce a seqno lower than
-        # previously issued ones, violating registration order.
-        self._callback_seqno = 0
+        self._callback_seqno = 0  # Monotonic needed due to reentrancy
 
     def __repr__(self) -> str:
         p = self._process
@@ -207,19 +203,18 @@ class Future(Generic[T]):
         May raise CallbackRaised from at most this new callback.
         """
         with self._rlock:
-            seqno = self._callback_seqno
-            self._callback_seqno += 1
             heapq.heappush(
                 self._callbacks,
                 (
                     __priority,
-                    seqno,
+                    self._callback_seqno,
                     __internal,
                     fn,
                     args,
                     kwargs,
                 ),
             )
+            self._callback_seqno += 1
             if self._connection is None:
                 self._issue_callbacks()
 
@@ -440,7 +435,7 @@ class Jobserver:
             except CallbackRaised:
                 continue
             break
-        # Any still-incomplete futures are released for GC
+        # Allow any still-incomplete futures to be garbage collected
         self._future_sentinels.clear()
         self._slots.close_put()
         self._slots.close_get()
