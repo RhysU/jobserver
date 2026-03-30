@@ -18,6 +18,7 @@ from typing import Any, Generic, Optional, TypeVar, Union
 __all__ = (
     "MinimalQueue",
     "absolute_deadline",
+    "relative_timeout",
     "resolve_context",
 )
 
@@ -37,6 +38,14 @@ def absolute_deadline(relative_timeout: Optional[float]) -> float:
         if relative_timeout is None
         else relative_timeout
     )
+
+
+def relative_timeout(deadline: float) -> float:
+    """Return seconds remaining until deadline, strictly non-negative.
+
+    Intended to be paired with absolute_deadline().
+    """
+    return max(0.0, deadline - time.monotonic())
 
 
 def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
@@ -124,11 +133,11 @@ class MinimalQueue(Generic[T]):
         # Accounting for lock acquisition time is easiest with a deadline
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
-        deadline = absolute_deadline(relative_timeout=timeout)
+        deadline = absolute_deadline(timeout)
         if not self._read_lock.acquire(block=True, timeout=timeout):
             raise queue.Empty
         try:
-            if not self._reader.poll(deadline - time.monotonic()):
+            if not self._reader.poll(relative_timeout(deadline)):
                 raise queue.Empty
             recv = self._reader.recv_bytes()
         finally:
