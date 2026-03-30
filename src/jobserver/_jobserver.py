@@ -24,7 +24,12 @@ from multiprocessing.process import BaseProcess
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
-from ._queue import MinimalQueue, absolute_deadline, resolve_context
+from ._queue import (
+    MinimalQueue,
+    absolute_deadline,
+    relative_timeout,
+    resolve_context,
+)
 
 __all__ = (
     "Blocked",
@@ -222,11 +227,10 @@ class Future(Generic[T]):
         See CallbackRaised documentation for callback error semantics.
         """
         # Deadline computed before lock so acquisition time is deducted
-        deadline = absolute_deadline(relative_timeout=timeout)
+        deadline = absolute_deadline(timeout)
 
         # Acquire the lock, respecting the caller's timeout budget
-        remaining = max(0, deadline - time.monotonic())
-        if not self._rlock.acquire(timeout=remaining):
+        if not self._rlock.acquire(timeout=relative_timeout(deadline)):
             return False
 
         try:
@@ -246,10 +250,9 @@ class Future(Generic[T]):
 
             # Wait for either pipe data or process death
             assert self._process is not None
-            remaining = max(0, deadline - time.monotonic())
             ready = wait(
                 [self._connection, self._process.sentinel],
-                timeout=remaining,
+                timeout=relative_timeout(deadline),
             )
             if self._connection not in ready and self._process.is_alive():
                 return False
@@ -496,7 +499,7 @@ class Jobserver:
         reclaim_tokens_fn = self.reclaim_resources if callbacks else noop
         tokens = _obtain_tokens(
             consume=consume,
-            deadline=absolute_deadline(relative_timeout=timeout),
+            deadline=absolute_deadline(timeout),
             reclaim_tokens_fn=reclaim_tokens_fn,
             sentinels_fn=self._future_sentinels.values,
             sleep_fn=sleep_fn,
@@ -587,7 +590,7 @@ class Jobserver:
         if buffersize is not None and buffersize < 1:
             raise ValueError("buffersize must be >= 1")
 
-        deadline = absolute_deadline(relative_timeout=timeout)
+        deadline = absolute_deadline(timeout)
 
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]
