@@ -130,6 +130,8 @@ _PRIORITY_USER = 1
 _PRIORITY_CLEANUP = 2
 
 
+# Only a non-internal callback may cause CallbackRaised
+# Otherwise, we might obfuscate bugs within this module's logic
 def _possibly_raises(fn, *args, **kwargs) -> None:
     """Call fn(*args, **kwargs), wrapping any Exception in CallbackRaised."""
     try:
