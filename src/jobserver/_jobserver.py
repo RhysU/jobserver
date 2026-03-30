@@ -254,6 +254,7 @@ class Future(Generic[T]):
                 [self._connection, self._process.sentinel],
                 timeout=relative_timeout(deadline),
             )
+            # Sentinel ready implies exited: Linux closes fds before zombifying.
             if not ready and self._process.is_alive():
                 return False
 
