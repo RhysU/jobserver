@@ -10,6 +10,7 @@ ordering, error propagation via CallbackRaised, and correct behavior
 when callbacks are registered after the Future has already completed.
 """
 
+import time
 import unittest
 from multiprocessing import get_all_start_methods
 
@@ -169,3 +170,56 @@ class TestJobserverCallbacks(unittest.TestCase):
             f.when_done(outer)
         self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
         self.assertNotIsInstance(c.exception.__cause__, CallbackRaised)
+
+    def test_reclaim_resources_raises_callback_raised(self) -> None:
+        """reclaim_resources() surfaces CallbackRaised one at a time."""
+        with Jobserver(slots=4) as js:
+            sleep = (0.3,)
+            a = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            b = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            c = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            d = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            a.when_done(helper_raise, ValueError, "a0")
+            a.when_done(helper_raise, TypeError, "a1")
+            b.when_done(helper_raise, ArithmeticError, "b")
+            c.when_done(helper_raise, LookupError, "c")
+            order: list[str] = []
+            d.when_done(order.append, "ok")
+            time.sleep(1.0)  # ensure all children finish
+
+            with self.assertRaises(CallbackRaised) as ctx:
+                js.reclaim_resources()
+            self.assertIsInstance(ctx.exception.__cause__, ValueError)
+
+            with self.assertRaises(CallbackRaised) as ctx:
+                js.reclaim_resources()
+            self.assertIsInstance(ctx.exception.__cause__, TypeError)
+
+            with self.assertRaises(CallbackRaised) as ctx:
+                js.reclaim_resources()
+            self.assertIsInstance(ctx.exception.__cause__, ArithmeticError)
+
+            with self.assertRaises(CallbackRaised) as ctx:
+                js.reclaim_resources()
+            self.assertIsInstance(ctx.exception.__cause__, LookupError)
+
+            js.reclaim_resources()  # clean return
+            self.assertEqual(order, ["ok"])
+
+    def test_exit_drains_callback_raised(self) -> None:
+        """__exit__ drains all CallbackRaised without propagating."""
+        order: list[str] = []
+        with Jobserver(slots=4) as js:
+            sleep = (0.3,)
+            a = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            b = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            c = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            d = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            a.when_done(helper_raise, ValueError, "a0")
+            a.when_done(helper_raise, TypeError, "a1")
+            b.when_done(helper_raise, ArithmeticError, "b")
+            c.when_done(helper_raise, LookupError, "c")
+            d.when_done(order.append, "ok")
+            time.sleep(1.0)  # ensure all children finish
+        # __exit__ ran without raising; all callbacks were drained
+        self.assertEqual(order, ["ok"])
