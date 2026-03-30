@@ -254,7 +254,11 @@ class Future(Generic[T]):
                 [self._connection, self._process.sentinel],
                 timeout=relative_timeout(deadline),
             )
-            if self._connection not in ready and self._process.is_alive():
+            if (
+                self._connection not in ready
+                and self._process.sentinel not in ready
+                and self._process.is_alive()
+            ):
                 return False
 
             # Attempt to read the result Wrapper from the Connection
