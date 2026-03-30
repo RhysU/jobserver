@@ -13,7 +13,7 @@ done
 uvx ruff check
 
 # Then, Typehint linting requires a new-enough mypy
-uvx --from "mypy>0.770" mypy
+uvx --from "mypy>1.18" mypy
 
 # Then, check for formatting issues
 uvx --from "black>=26" black --check --verbose .
