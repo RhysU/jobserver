@@ -181,6 +181,8 @@ class JobserverExecutor(concurrent.futures.Executor):
         if wait:
             self._dispatcher.join()
             self._receiver.join()
+            self._requests.close_put()
+            self._responses.close_get()
 
     # ---- Receiver thread (bridges responses to c.f.Futures) ----
 
