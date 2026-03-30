@@ -394,11 +394,19 @@ class Jobserver:
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        self.reclaim_resources()
-        # TODO: Decide what to do with Future instances still in
-        # _future_sentinels after reclaim_resources() (e.g. wait/signal).
-        # Clear allows garbage collection to proceed and allows any
-        # remaining Future callbacks to fire without issue.
+        """Clean up slots and drain all callbacks.
+
+        Never raises CallbackRaised.  Calls reclaim_resources()
+        repeatedly until every registered callback has been attempted.
+        """
+        # Each call drains at most one CallbackRaised per future
+        while True:
+            try:
+                self.reclaim_resources()
+            except CallbackRaised:
+                continue
+            break
+        # Any still-incomplete futures are released for GC
         self._future_sentinels.clear()
         self._slots.close_put()
         self._slots.close_get()
@@ -459,10 +467,16 @@ class Jobserver:
         Method exposed for when explicit resource reclamation is desired.
         For example, when work requires locking more than just a slot and
         the paired unlock is accomplished via Future-registered callbacks.
+
+        May raise CallbackRaised from at most one registered callback.
+        See CallbackRaised documentation for callback error semantics.
         """
-        # Copy of keys() required to prevent concurrent modification
+        # Copy of keys() required to prevent concurrent modification.
+        # done() raises CallbackRaised at most once per call; only
+        # pop a future after it returns True (all callbacks drained).
         for future in tuple(self._future_sentinels.keys()):
-            future.done()
+            if future.done():
+                self._future_sentinels.pop(future, None)
 
     def submit(
         self,
@@ -565,10 +579,8 @@ class Jobserver:
             future.when_done(
                 _restore_tokens, self._slots, tokens, _Future__internal=True
             )
-        # None default allows Jobserver.__exit__ to occur prior to callback
-        future.when_done(
-            self._future_sentinels.pop, future, None, _Future__internal=True
-        )
+        # Sentinel removal now handled by reclaim_resources() after
+        # all callbacks have drained, not as a when_done() callback.
 
         # Finally, return a viable Future to the caller
         return future
