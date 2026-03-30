@@ -60,40 +60,45 @@ class TestDesignShortcoming(unittest.TestCase):
 
     def test_intermediate_death_leaks_one_token(self) -> None:
         """Parent -> Child -> Grandchild; kill Child; 1 token is leaked."""
-        js = Jobserver(context="fork", slots=self.SLOTS)
-
-        # All slots are available: submit and immediately collect
-        for _ in range(self.SLOTS):
-            js.submit(fn=time.sleep, args=(0,), timeout=0).result(timeout=5)
-
-        # Parent -> Child -> Grandchild
-        future = js.submit(fn=_child_work, args=(js, 0.5), timeout=5)
-        time.sleep(1.0)  # Let Child start and submit Grandchild
-
-        # Kill the intermediate Child and collect it
-        future.wait(signal=signal.SIGKILL, timeout=5)
-        with self.assertRaises(SubmissionDied):
-            future.result()
-
-        # Grandchild finishes but nobody reclaims its token
-        time.sleep(2.0)
-
-        # One fewer slot is usable now: the last is leaked.
-        # Hold workers alive so their tokens stay consumed.
-        futures = []
-        for i in range(self.SLOTS):
-            try:
-                futures.append(
-                    js.submit(fn=time.sleep, args=(10.0,), timeout=0)
+        with Jobserver(context="fork", slots=self.SLOTS) as js:
+            # All slots are available: submit and immediately collect
+            for _ in range(self.SLOTS):
+                js.submit(fn=time.sleep, args=(0,), timeout=0).result(
+                    timeout=5
                 )
-            except Blocked:
-                self.assertEqual(i, self.SLOTS - 1, "leak appeared too early")
-                break
-        else:
-            self.fail("expected Blocked on the 3rd submit, but all succeeded")
 
-        # Clean up the submissions that did succeed
-        for f in futures:
-            f.wait(signal=signal.SIGKILL)
+            # Parent -> Child -> Grandchild
+            future = js.submit(fn=_child_work, args=(js, 0.5), timeout=5)
+            time.sleep(1.0)  # Let Child start and submit Grandchild
+
+            # Kill the intermediate Child and collect it
+            future.wait(signal=signal.SIGKILL, timeout=5)
             with self.assertRaises(SubmissionDied):
-                f.result()
+                future.result()
+
+            # Grandchild finishes but nobody reclaims its token
+            time.sleep(2.0)
+
+            # One fewer slot is usable now: the last is leaked.
+            # Hold workers alive so their tokens stay consumed.
+            futures = []
+            for i in range(self.SLOTS):
+                try:
+                    futures.append(
+                        js.submit(fn=time.sleep, args=(10.0,), timeout=0)
+                    )
+                except Blocked:
+                    self.assertEqual(
+                        i, self.SLOTS - 1, "leak appeared too early"
+                    )
+                    break
+            else:
+                self.fail(
+                    "expected Blocked on the 3rd submit," " but all succeeded"
+                )
+
+            # Clean up the submissions that did succeed
+            for f in futures:
+                f.wait(signal=signal.SIGKILL)
+                with self.assertRaises(SubmissionDied):
+                    f.result()

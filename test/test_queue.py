@@ -26,27 +26,37 @@ class MinimalQueueTest(unittest.TestCase):
         """Copying of MinimalQueue is explicitly allowed."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
-                mq1: MinimalQueue[int] = MinimalQueue(context=method)
-                mq2 = copy.copy(mq1)
-                mq3 = copy.deepcopy(mq1)
-                mq1.put(1)
-                mq2.put(2)
-                mq3.put(3)
-                self.assertEqual(1, mq3.get())
-                self.assertEqual(2, mq2.get())
-                self.assertEqual(3, mq1.get())
-                # Though copying is allowed, it is degenerate in that
-                # copy.copy(...) and copy.deepcopy(...) return the original.
-                self.assertIs(mq1, mq2)
-                self.assertIs(mq1, mq3)
+                with MinimalQueue(context=method) as mq1:
+                    mq2 = copy.copy(mq1)
+                    mq3 = copy.deepcopy(mq1)
+                    mq1.put(1)
+                    mq2.put(2)
+                    mq3.put(3)
+                    self.assertEqual(1, mq3.get())
+                    self.assertEqual(2, mq2.get())
+                    self.assertEqual(3, mq1.get())
+                    # Copying is allowed but degenerate: copy.copy(...)
+                    # and copy.deepcopy(...) return the original.
+                    self.assertIs(mq1, mq2)
+                    self.assertIs(mq1, mq3)
 
     def test_close_get_and_close_put_are_idempotent(self) -> None:
         """close_get() and close_put() are safe to call more than once."""
-        mq: MinimalQueue[int] = MinimalQueue()
+        with MinimalQueue() as mq:
+            pass
+        # Both ends already closed by __exit__; repeat must not raise
         mq.close_get()
-        mq.close_get()  # second call must not raise
         mq.close_put()
-        mq.close_put()  # second call must not raise
+
+    def test_context_manager(self) -> None:
+        """Context manager closes both ends; put/get raise after exit."""
+        with MinimalQueue() as mq:
+            mq.put(42)
+            self.assertEqual(42, mq.get(timeout=1))
+        with self.assertRaises(ValueError):
+            mq.put(99)
+        with self.assertRaises(ValueError):
+            mq.get(timeout=0)
 
 
 class ResolveContextTest(unittest.TestCase):

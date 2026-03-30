@@ -20,86 +20,86 @@ class TestFutureRepr(unittest.TestCase):
     """Future __repr__ reports state."""
 
     def test_pending_future(self) -> None:
-        js = Jobserver(slots=1)
-        f = js.submit(fn=helper_return, args=(42,))
-        r = repr(f)
-        self.assertIn("running", r)
-        self.assertIn("pid=", r)
-        self.assertEqual(str(f), repr(f))
-        f.result()
+        with Jobserver(slots=1) as js:
+            f = js.submit(fn=helper_return, args=(42,))
+            r = repr(f)
+            self.assertIn("running", r)
+            self.assertIn("pid=", r)
+            self.assertEqual(str(f), repr(f))
+            f.result()
 
     def test_done_future(self) -> None:
-        js = Jobserver(slots=1)
-        f = js.submit(fn=helper_return, args=(42,))
-        f.result()
-        r = repr(f)
-        self.assertIn("done", r)
-        self.assertIn("pid=None", r)
-        self.assertEqual(str(f), repr(f))
+        with Jobserver(slots=1) as js:
+            f = js.submit(fn=helper_return, args=(42,))
+            f.result()
+            r = repr(f)
+            self.assertIn("done", r)
+            self.assertIn("pid=None", r)
+            self.assertEqual(str(f), repr(f))
 
 
 class TestJobserverRepr(unittest.TestCase):
     """Jobserver __repr__ reports state."""
 
     def test_idle(self) -> None:
-        js = Jobserver(slots=2)
-        r = repr(js)
-        self.assertTrue(r.startswith("Jobserver('"))
-        self.assertIn("tracked=0", r)
-        self.assertEqual(str(js), repr(js))
+        with Jobserver(slots=2) as js:
+            r = repr(js)
+            self.assertTrue(r.startswith("Jobserver('"))
+            self.assertIn("tracked=0", r)
+            self.assertEqual(str(js), repr(js))
 
     def test_with_tracked(self) -> None:
-        js = Jobserver(slots=2)
-        f = js.submit(fn=helper_return, args=(1,))
-        self.assertIn("tracked=", repr(js))
-        f.result()
+        with Jobserver(slots=2) as js:
+            f = js.submit(fn=helper_return, args=(1,))
+            self.assertIn("tracked=", repr(js))
+            f.result()
 
 
 class TestJobserverExecutorRepr(unittest.TestCase):
     """JobserverExecutor __repr__ reports state."""
 
     def test_active(self) -> None:
-        js = Jobserver(slots=1)
-        ex = JobserverExecutor(js)
-        r = repr(ex)
-        self.assertIn("active", r)
-        self.assertIn("pending=", r)
-        self.assertIn("jobserver=", r)
-        self.assertIn("Jobserver(", r)
-        self.assertEqual(str(ex), repr(ex))
-        ex.shutdown(wait=True)
+        with Jobserver(slots=1) as js:
+            ex = JobserverExecutor(js)
+            r = repr(ex)
+            self.assertIn("active", r)
+            self.assertIn("pending=", r)
+            self.assertIn("jobserver=", r)
+            self.assertIn("Jobserver(", r)
+            self.assertEqual(str(ex), repr(ex))
+            ex.shutdown(wait=True)
 
     def test_shutdown(self) -> None:
-        js = Jobserver(slots=1)
-        ex = JobserverExecutor(js)
-        ex.shutdown(wait=True)
-        r = repr(ex)
-        self.assertIn("shutdown", r)
-        self.assertIn("jobserver=", r)
-        self.assertEqual(str(ex), repr(ex))
+        with Jobserver(slots=1) as js:
+            ex = JobserverExecutor(js)
+            ex.shutdown(wait=True)
+            r = repr(ex)
+            self.assertIn("shutdown", r)
+            self.assertIn("jobserver=", r)
+            self.assertEqual(str(ex), repr(ex))
 
 
 class TestMinimalQueueRepr(unittest.TestCase):
     """MinimalQueue __repr__ reports pipe state."""
 
     def test_open(self) -> None:
-        mq: MinimalQueue[int] = MinimalQueue()
-        r = repr(mq)
-        self.assertIn("reader=open", r)
-        self.assertIn("writer=open", r)
-        self.assertIn("fd=", r)
-        self.assertEqual(str(mq), repr(mq))
+        with MinimalQueue() as mq:
+            r = repr(mq)
+            self.assertIn("reader=open", r)
+            self.assertIn("writer=open", r)
+            self.assertIn("fd=", r)
+            self.assertEqual(str(mq), repr(mq))
 
     def test_closed_reader(self) -> None:
-        mq: MinimalQueue[int] = MinimalQueue()
-        mq.close_get()
-        self.assertIn("reader=closed", repr(mq))
-        self.assertIn("writer=open", repr(mq))
-        self.assertEqual(str(mq), repr(mq))
+        with MinimalQueue() as mq:
+            mq.close_get()
+            self.assertIn("reader=closed", repr(mq))
+            self.assertIn("writer=open", repr(mq))
+            self.assertEqual(str(mq), repr(mq))
 
     def test_closed_writer(self) -> None:
-        mq: MinimalQueue[int] = MinimalQueue()
-        mq.close_put()
-        self.assertIn("reader=open", repr(mq))
-        self.assertIn("writer=closed", repr(mq))
-        self.assertEqual(str(mq), repr(mq))
+        with MinimalQueue() as mq:
+            mq.close_put()
+            self.assertIn("reader=open", repr(mq))
+            self.assertIn("writer=closed", repr(mq))
+            self.assertEqual(str(mq), repr(mq))
