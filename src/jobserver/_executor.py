@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, Optional, TypeVar
 
 from . import _request, _response
+from ._compat import ignore_sigpipe
 from ._jobserver import (
     Blocked,
     CallbackRaised,
@@ -259,6 +260,7 @@ def _dispatch_loop(
 ) -> None:
     """Main loop for the dispatcher process."""
     _LOG.debug("Dispatcher process started")
+    ignore_sigpipe()
 
     # Child only reads from requests and writes responses
     requests.close_put()
