@@ -321,6 +321,14 @@ def noop(*args, **kwargs) -> None:
     return None
 
 
+def _restore_tokens(slots: MinimalQueue, tokens: list) -> None:
+    """Return slot tokens to the queue, tolerating a closed queue."""
+    try:
+        slots.put(*tokens)
+    except ValueError:
+        pass  # Queue closed; Jobserver is shutting down
+
+
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
@@ -381,6 +389,19 @@ class Jobserver:
         method = self._context.get_start_method()
         n = len(self._future_sentinels)
         return f"Jobserver({method!r}, tracked={n})"
+
+    def __enter__(self) -> "Jobserver":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.reclaim_resources()
+        # TODO: Decide what to do with Future instances still in
+        # _future_sentinels after reclaim_resources() (e.g. wait/signal).
+        # Clear allows garbage collection to proceed and allows any
+        # remaining Future callbacks to fire without issue.
+        self._future_sentinels.clear()
+        self._slots.close_put()
+        self._slots.close_get()
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""
@@ -541,9 +562,12 @@ class Jobserver:
         # As above process.start() succeeded, now Future must restore tokens
         # After any restoration, no longer track this Future within Jobserver
         if tokens:
-            future.when_done(self._slots.put, *tokens, _Future__internal=True)
+            future.when_done(
+                _restore_tokens, self._slots, tokens, _Future__internal=True
+            )
+        # None default allows Jobserver.__exit__ to occur prior to callback
         future.when_done(
-            self._future_sentinels.pop, future, _Future__internal=True
+            self._future_sentinels.pop, future, None, _Future__internal=True
         )
 
         # Finally, return a viable Future to the caller
