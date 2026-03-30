@@ -7,6 +7,7 @@
 
 import abc
 import concurrent.futures
+import functools
 import heapq
 import os
 import queue
@@ -121,6 +122,20 @@ class ExceptionWrapper(Wrapper[T]):
         raise self._raised
 
 
+def _possibly_raises(fn, *args, **kwargs) -> None:
+    """Call fn(*args, **kwargs), wrapping any Exception in CallbackRaised."""
+    try:
+        fn(*args, **kwargs)
+    except Exception as e:
+        # A re-entrant when_done() on an already-completed future
+        # triggers a nested _issue_callbacks(); without this
+        # guard the caller sees CallbackRaised wrapping another
+        # CallbackRaised instead of one layer around the cause.
+        if isinstance(e, CallbackRaised):
+            raise
+        raise CallbackRaised() from e
+
+
 # Callback priorities for the Future heapq-based callback queue.
 # Token restoration fires first, user callbacks in the middle,
 # and sentinel cleanup fires last.
@@ -208,8 +223,7 @@ class Future(Generic[T]):
                 (
                     __priority,
                     self._callback_seqno,
-                    __internal,
-                    fn,
+                    fn if __internal else functools.partial(_possibly_raises, fn),
                     args,
                     kwargs,
                 ),
@@ -310,24 +324,10 @@ class Future(Generic[T]):
             self._rlock.release()
 
     def _issue_callbacks(self):
-        # Only a non-internal callback may cause CallbackRaised
-        # Otherwise, we might obfuscate bugs within this module's logic
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
-            _, _, internal, fn, args, kwargs = heapq.heappop(self._callbacks)
-            if internal:
-                fn(*args, **kwargs)
-            else:
-                try:
-                    fn(*args, **kwargs)
-                except Exception as e:
-                    # A re-entrant when_done() on an already-completed future
-                    # triggers a nested _issue_callbacks(); without this
-                    # guard the caller sees CallbackRaised wrapping another
-                    # CallbackRaised instead of one layer around the cause.
-                    if isinstance(e, CallbackRaised):
-                        raise
-                    raise CallbackRaised() from e
+            _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
+            fn(*args, **kwargs)
 
     def result(self, timeout: Optional[float] = None) -> T:
         """
