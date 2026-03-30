@@ -507,6 +507,7 @@ class Jobserver:
         )
 
         # Then, with required slots consumed, begin consuming resources:
+        recv = send = None
         try:
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
@@ -525,7 +526,11 @@ class Jobserver:
             # Prepare to track the Future and the wait(...)-able sentinel
             self._future_sentinels[future] = process.sentinel
         except Exception:
-            # TODO: close recv/send fds to avoid leaking until GC
+            # Close pipe fds to avoid leaking until GC
+            if send is not None:
+                send.close()
+            if recv is not None:
+                recv.close()
             # Unwinding any consumed slots on unexpected errors
             while tokens:
                 self._slots.put(tokens.pop())
