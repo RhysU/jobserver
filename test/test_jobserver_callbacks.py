@@ -171,13 +171,6 @@ class TestJobserverCallbacks(unittest.TestCase):
         self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
         self.assertNotIsInstance(c.exception.__cause__, CallbackRaised)
 
-    # test_reclaim_resources_raises_callback_raised and
-    # test_exit_drains_callback_raised share the same fixture (4 futures,
-    # multiple raising callbacks).  The former exercises reclaim_resources()
-    # as a public API; the latter exercises the __exit__ drain loop
-    # (_jobserver.py lines 437-438) that silently absorbs every
-    # CallbackRaised.  Coverage Jaccard between them is 0.994; the two
-    # lines unique to __exit__ are meaningful enough to keep both tests.
     def test_reclaim_resources_raises_callback_raised(self) -> None:
         """reclaim_resources() surfaces CallbackRaised one at a time."""
         with Jobserver(slots=4) as js:

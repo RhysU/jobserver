@@ -89,9 +89,7 @@ class TestJobserverWorker(unittest.TestCase):
         raises KeyboardInterrupt – both are BaseException subclasses that
         fall outside the ``except Exception:`` guard in _worker_entrypoint(),
         so the worker closes the result pipe without writing, which the
-        parent sees as SubmissionDied.  Coverage measurements confirm the
-        two call sites exercise identical source lines; both are kept here
-        as subTests to document the intent.
+        parent sees as SubmissionDied.
         """
         base_exceptions: list[tuple] = [
             (sys.exit, (1,)),

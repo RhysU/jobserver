@@ -109,8 +109,6 @@ class TestConcurrencyStress(unittest.TestCase):
         Run _threaded_submit_stress twice: once at the default switch
         interval and once at 1 µs (maximum GIL contention) to catch
         races that only surface under rapid thread interleaving.
-        Coverage measurements showed the two cases differed by a single
-        line in the dispatcher, so they are folded into one test.
         """
         with Jobserver(context=FAST, slots=4) as js:
             with JobserverExecutor(js) as exe:

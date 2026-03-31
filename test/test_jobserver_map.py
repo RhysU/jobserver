@@ -280,12 +280,7 @@ class TestJobserverMap(unittest.TestCase):
     # ---- Error propagation ----
 
     def test_exception_propagates(self) -> None:
-        """Exception raised by fn surfaces from __next__ across all start methods.
-
-        Uses all start methods (unlike the FAST-only exception tests) to
-        confirm that the exception-propagation path works with fork,
-        spawn, and forkserver.
-        """
+        """Exception raised by fn surfaces from __next__ across all start methods."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
@@ -301,12 +296,7 @@ class TestJobserverMap(unittest.TestCase):
                         next(it)
 
     def test_exception_midstream(self) -> None:
-        """Exception propagates at the right position (first or mid-stream).
-
-        Two cases are folded into one test because coverage measurements
-        show they differ by only a single line (ResultWrapper.unwrap() is
-        reached only after at least one successful result).
-        """
+        """Exception propagates at the right position (first or mid-stream)."""
         cases = [
             # (fail_at, argses, values_expected_before_raise)
             (0, [(0, 0), (1, 0), (2, 0)], []),
