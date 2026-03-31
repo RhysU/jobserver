@@ -54,6 +54,7 @@ include = ["jobserver*"]
 
 [tool.ruff]
 line-length = 79
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP", "W"]
