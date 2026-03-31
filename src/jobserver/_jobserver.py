@@ -504,23 +504,11 @@ class Jobserver:
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Build a reverse map from each wait()-able object to its Future.
-        # Both the pipe Connection and the process sentinel (int fd) signal
-        # completion; including both ensures we find futures whose worker has
-        # written its result but not yet fully exited.
-        waitable_to_future: dict = {}
-        for future, sentinel in self._future_sentinels.items():
-            waitable_to_future[sentinel] = future
-            if future._connection is not None:
-                waitable_to_future[future._connection] = future
-
-        # One wait() call with timeout=0 returns only the ready waitables,
-        # so done() is called O(k) times for k ready futures rather than O(N).
-        seen: set = set()
-        for w in wait(list(waitable_to_future), timeout=0):
-            future = waitable_to_future[w]
-            if future not in seen:
-                seen.add(future)
+        # One wait() call identifies which sentinels are ready in O(1)/O(k).
+        # Snapshot items() so callbacks mutating _future_sentinels are safe.
+        ready = set(wait(list(self._future_sentinels.values()), timeout=0))
+        for future, sentinel in tuple(self._future_sentinels.items()):
+            if sentinel in ready:
                 future.done()
 
     def submit(
