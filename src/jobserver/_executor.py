@@ -66,17 +66,16 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
         self._dispatcher.start()
 
+        # Close before receiver so EOF propagates if receiver fails to start.
+        self._requests.close_get()
+        self._responses.close_put()
+
         self._receiver = threading.Thread(
             target=self._receive_loop,
             daemon=True,
             name="JobserverExecutor-receiver",
         )
         self._receiver.start()
-
-        # Close unused pipe ends so EOF propagates on crash.
-        # Parent only writes to requests and reads responses.
-        self._requests.close_get()
-        self._responses.close_put()
 
         # Keep a reference so the Jobserver (and its slot semaphores) outlives
         # the dispatcher Process, which drops _args after start() in 3.11+.
