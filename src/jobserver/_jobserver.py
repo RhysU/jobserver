@@ -130,10 +130,8 @@ _PRIORITY_USER = 1
 _PRIORITY_CLEANUP = 2
 
 
-# Only a non-internal callback may cause CallbackRaised
-# Otherwise, we might obfuscate bugs within this module's logic
-def _possibly_raises(fn, *args, **kwargs) -> None:
-    """Call fn(*args, **kwargs), wrapping any Exception in CallbackRaised."""
+def _callback_wrapper(fn, *args, **kwargs) -> None:
+    """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised."""
     try:
         fn(*args, **kwargs)
     except Exception as e:
@@ -204,35 +202,33 @@ class Future(Generic[T]):
         # In particular, because pickles create copies
         raise NotImplementedError("Futures cannot be pickled.")
 
-    def when_done(
-        self,
-        fn: Callable,
-        *args,
-        __internal: bool = False,
-        __priority: int = _PRIORITY_USER,
-        **kwargs,
-    ) -> None:
+    def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> None:
         """
-        Register a function for execution sometime after Future.done(...).
+        Register fn(*args, **kwargs) for execution after Future.done(...).
 
         When already done(...) the requested function is immediately invoked.
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
+        return self._when_done(
+            fn=functools.partial(_callback_wrapper, fn),
+            args=args,
+            kwargs=kwargs,
+            priority=_PRIORITY_USER,
+        )
+
+    def _when_done(
+        self,
+        fn: Callable,
+        priority: int,
+        args: tuple[Any, ...] = (),
+        kwargs: Optional[Mapping[str, Any]] = None,
+    ) -> None:
+        """Internal method for registering a callback with some priority."""
         with self._rlock:
             heapq.heappush(
                 self._callbacks,
-                (
-                    __priority,
-                    self._callback_seqno,
-                    (
-                        fn
-                        if __internal
-                        else functools.partial(_possibly_raises, fn)
-                    ),
-                    args,
-                    kwargs,
-                ),
+                (priority, self._callback_seqno, fn, args, kwargs or {}),
             )
             self._callback_seqno += 1
             if self._connection is None:
@@ -565,11 +561,10 @@ class Jobserver:
 
         # Next, either obtain requested tokens or else raise Blocked
         # Work submission only reclaims tokens when callbacks are enabled
-        reclaim_tokens_fn = self.reclaim_resources if callbacks else noop
         tokens = _obtain_tokens(
             consume=consume,
             deadline=absolute_deadline(timeout),
-            reclaim_tokens_fn=reclaim_tokens_fn,
+            reclaim_tokens_fn=self.reclaim_resources if callbacks else noop,
             sentinels_fn=self._future_sentinels.values,
             sleep_fn=sleep_fn,
             slots=self._slots,
@@ -595,7 +590,7 @@ class Jobserver:
             # Prepare to track the Future and the wait(...)-able sentinel
             self._future_sentinels[future] = process.sentinel
         except Exception:
-            # Close pipe fds to avoid leaking until GC
+            # Close pipe fds to avoid leaking until garbage collection
             if send is not None:
                 send.close()
             if recv is not None:
@@ -608,19 +603,15 @@ class Jobserver:
         # As above process.start() succeeded, now Future must restore tokens
         # After any restoration, no longer track this Future within Jobserver
         if tokens:
-            future.when_done(
-                _restore_tokens,
-                self._slots,
-                tokens,
-                _Future__internal=True,
-                _Future__priority=_PRIORITY_TOKEN,
+            future._when_done(
+                fn=_restore_tokens,
+                args=(self._slots, tokens),
+                priority=_PRIORITY_TOKEN,
             )
-        future.when_done(
-            self._future_sentinels.pop,
-            future,
-            None,
-            _Future__internal=True,
-            _Future__priority=_PRIORITY_CLEANUP,
+        future._when_done(
+            fn=self._future_sentinels.pop,
+            args=(future, None),
+            priority=_PRIORITY_CLEANUP,
         )
 
         # Finally, return a viable Future to the caller
