@@ -66,20 +66,21 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
         self._dispatcher.start()
 
-        # Close unused pipe ends immediately after the dispatcher has
-        # inherited/pickled them, so that EOF propagates even if the receiver
-        # thread fails to start.  Parent only writes requests and reads
-        # responses.
-        try:
-            self._receiver = threading.Thread(
-                target=self._receive_loop,
-                daemon=True,
-                name="JobserverExecutor-receiver",
-            )
-            self._receiver.start()
-        finally:
-            self._requests.close_get()
-            self._responses.close_put()
+        # Close unused pipe ends as soon as the dispatcher has inherited
+        # (fork) or pickled (spawn/forkserver) them.  Doing this before
+        # starting the receiver eliminates the window where an exception in
+        # receiver start leaves the parent holding both ends and the
+        # dispatcher unable to see EOF.  Parent only writes requests and
+        # reads responses.
+        self._requests.close_get()
+        self._responses.close_put()
+
+        self._receiver = threading.Thread(
+            target=self._receive_loop,
+            daemon=True,
+            name="JobserverExecutor-receiver",
+        )
+        self._receiver.start()
 
         # Keep a reference so the Jobserver (and its slot semaphores) outlives
         # the dispatcher Process, which drops _args after start() in 3.11+.
