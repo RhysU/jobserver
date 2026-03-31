@@ -507,13 +507,14 @@ class Jobserver:
         See CallbackRaised documentation for callback error semantics.
         """
         # Let N = in-flight futures and k = newly completed futures.
-        # The wait() call polls all N sentinel fds to find the k ready
-        # ones, costing O(N) in the underlying select/poll/epoll syscall.
-        # Building the ready set is O(k).  The loop snapshots and iterates
-        # all N items but only calls done() on the k ready ones, so
-        # done() runs O(k) times rather than O(N).  Overall cost is O(N).
+        # One wait() syscall polls all N sentinel fds, doing O(N) work
+        # inside the kernel, to return the k ready ones.  Building the
+        # ready set from the result is O(k).  The loop snapshots all N
+        # items in O(N) Python iteration but calls done() only on the
+        # k ready ones.  Overall: 1 syscall with O(N) kernel work,
+        # O(N) Python iteration, O(k) done() calls.
         # A reverse mapping (sentinel -> future) would reduce the Python
-        # iteration to O(k) but the wait() syscall remains O(N).
+        # iteration to O(k) but the single O(N) syscall remains.
         # sentinel-ready implies connection-ready, so sentinel alone is
         # sufficient to detect completion.  Snapshot items() since done()
         # triggers a callback that mutates _future_sentinels.
