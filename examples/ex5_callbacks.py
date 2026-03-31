@@ -32,8 +32,8 @@ def main() -> None:
     info("Callbacks after completion: %s", accumulator)
 
     # When a callback raises, CallbackRaised wraps the original exception.
-    # Each wait() call fires the next pending callback; those that raise surface
-    # as CallbackRaised while those that succeed run silently.  Loop until no
+    # Each wait() fires the next pending callback; raising ones surface as
+    # CallbackRaised while succeeding ones run silently.  Loop until no
     # error is raised to ensure all callbacks have been drained.
     future2 = jobserver.submit(fn=len, args=("world",))
     future2.when_done(raise_exception, klass=ValueError)
