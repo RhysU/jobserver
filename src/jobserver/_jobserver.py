@@ -38,7 +38,6 @@ __all__ = (
     "CallbackRaised",
     "Future",
     "Jobserver",
-    "MinimalQueue",
     "SubmissionDied",
 )
 
