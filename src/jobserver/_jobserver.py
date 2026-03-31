@@ -300,7 +300,7 @@ class Future(Generic[T]):
                 timeout=relative_timeout(deadline),
             )
             # Sentinel ready implies process exited; trust it over is_alive()
-            # because Linux closes fds before marking the process as a zombie.
+            # because Linux closes fds before marking the process as a zombie
             if not ready and self._process.is_alive():
                 return False
 
@@ -317,7 +317,7 @@ class Future(Generic[T]):
             self._process.join()
             self._process = None
 
-            # Should close() throw notice it will never be retried
+            # Should close() throw notice it can never be retried
             connection, self._connection = self._connection, None
             connection.close()
             self._issue_callbacks()
@@ -353,7 +353,7 @@ def noop(*args, **kwargs) -> None:
 
 
 def _restore_tokens(slots: MinimalQueue, tokens: list) -> None:
-    """Return slot tokens to the queue, tolerating a closed queue."""
+    """Restore tokens to slots, tolerating a closed queue."""
     try:
         slots.put(*tokens)
     except ValueError:
@@ -439,6 +439,7 @@ class Jobserver:
             break
         # Allow any still-incomplete futures to be garbage collected
         self._future_sentinels.clear()
+        # Finally, stop any further manipulation of slots
         self._slots.close_put()
         self._slots.close_get()
 
@@ -468,6 +469,7 @@ class Jobserver:
             self._sleep_fn,
         ) = state
 
+    # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
         """Shallow copies return the original Jobserver unchanged."""
         # Because any "copy" should and can only mutate same slots/sentinels
@@ -595,19 +597,18 @@ class Jobserver:
                 send.close()
             if recv is not None:
                 recv.close()
-            # Unwinding any consumed slots on unexpected errors
-            while tokens:
-                self._slots.put(tokens.pop())
+            # Unwind any consumed slots on unexpected errors
+            self._slots.put(*tokens)
             raise
 
         # As above process.start() succeeded, now Future must restore tokens
-        # After any restoration, no longer track this Future within Jobserver
-        if tokens:
-            future._when_done(
-                fn=_restore_tokens,
-                args=(self._slots, tokens),
-                priority=_PRIORITY_TOKEN,
-            )
+        future._when_done(
+            fn=_restore_tokens,
+            args=(self._slots, tokens),
+            priority=_PRIORITY_TOKEN,
+        )
+
+        # After token restoration, stop tracking this Future by this Jobserver
         future._when_done(
             fn=self._future_sentinels.pop,
             args=(future, None),
