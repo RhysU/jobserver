@@ -17,7 +17,7 @@ import time
 import types
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from itertools import islice, zip_longest
+from itertools import islice
 
 # Implementation depends upon an explicit subset of multiprocessing
 from multiprocessing.connection import Connection, wait
@@ -678,9 +678,9 @@ class Jobserver:
         if argses is not None and kwargses is not None:
             pairs = _strict_zip(argses, kwargses)
         elif kwargses is not None:
-            pairs = zip_longest((), kwargses, fillvalue=())
+            pairs = (((), kw) for kw in kwargses)
         else:
-            pairs = zip_longest(argses or (), (), fillvalue={})
+            pairs = ((args, {}) for args in (argses or ()))
 
         collected = list(pairs) if buffersize is None else None
         return _map_generate(
