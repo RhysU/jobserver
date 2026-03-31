@@ -16,6 +16,7 @@ import os
 import signal
 import sys
 import time
+import typing
 import unittest
 from multiprocessing import get_all_start_methods, get_context
 
@@ -281,6 +282,49 @@ class TestJobserverWorker(unittest.TestCase):
                     # retrieved implying above submissions finalized results.
                     self.assertEqual(1, f.result())
                     self.assertEqual(0, g.result())
+
+    def test_sleep_fn_timeout_not_overshot(self) -> None:
+        """sleep_fn veto must raise Blocked once the deadline passes.
+
+        _obtain_tokens must re-sample time.monotonic() after sleeping so the
+        post-sleep deadline check is current.  A stale pre-sleep sample always
+        compared less-than the deadline, allowing an extra loop iteration; if
+        sleep_fn returned None on that call the free token was grabbed and work
+        was submitted past the caller's timeout.
+        """
+        # sleep_fn vetoes once (the clamped sleep consumes the timeout budget)
+        # then allows work.  With a stale check the extra iteration calls
+        # sleep_fn again, gets None, grabs the free token, and submit()
+        # succeeds instead of raising Blocked.
+        call_count = [0]
+
+        def sleep_fn() -> typing.Optional[float]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 2.0  # veto: clamped to remaining budget
+            return None  # allow: only reached with the bug
+
+        timeout = 0.5
+        with Jobserver(context="fork", slots=1) as js:
+            # Free the slot before the second submit so the token is
+            # available; sleep_fn alone should prevent the submission.
+            f = js.submit(fn=time.sleep, args=(0.01,))
+            f.result(timeout=5)
+
+            with self.assertRaises(Blocked):
+                js.submit(
+                    fn=len,
+                    args=((),),
+                    sleep_fn=sleep_fn,
+                    timeout=timeout,
+                )
+
+        self.assertEqual(
+            1,
+            call_count[0],
+            "sleep_fn called more than once: stale monotonic allowed an "
+            "extra loop iteration past the deadline",
+        )
 
     def test_sleep_fn_raises_propagates(self) -> None:
         """Exception from sleep_fn propagates out of submit()."""
