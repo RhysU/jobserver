@@ -66,12 +66,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
         self._dispatcher.start()
 
-        # Close unused pipe ends as soon as the dispatcher has inherited
-        # (fork) or pickled (spawn/forkserver) them.  Doing this before
-        # starting the receiver eliminates the window where an exception in
-        # receiver start leaves the parent holding both ends and the
-        # dispatcher unable to see EOF.  Parent only writes requests and
-        # reads responses.
+        # Close before receiver so EOF propagates if receiver fails to start.
         self._requests.close_get()
         self._responses.close_put()
 
