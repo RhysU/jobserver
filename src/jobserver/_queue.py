@@ -106,10 +106,10 @@ class MinimalQueue(Generic[T]):
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
-    def waitable(self) -> int:
+    def waitable(self) -> Connection:
         """The object on which to wait(...) to get(...) new data."""
         assert self._reader is not None, "waitable() after close_get()"
-        return self._reader.fileno()
+        return self._reader
 
     def close_get(self) -> None:
         """Close the receiving end; get() may no longer be called.
