@@ -15,6 +15,14 @@ from multiprocessing.context import BaseContext
 from multiprocessing.reduction import ForkingPickler
 from typing import Any, Generic, Optional, TypeVar, Union
 
+# Maximum seconds safely passable to poll() without overflow.  poll(2) on
+# Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
+# is INT_MAX ms = 2**31-1 ms = 2_147_483_647 ms = 2_147_483.647 s (~24.85 d).
+# Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
+# _PyTime_t max; all overflow somewhere in the call chain.
+# See https://stackoverflow.com/q/45704243
+_MAX_TIMEOUT_SECS: float = (2**31 - 1) / 1000  # INT_MAX ms ≈ 24.85 days
+
 __all__ = (
     "MinimalQueue",
     "absolute_deadline",
@@ -29,14 +37,12 @@ def absolute_deadline(relative_timeout: Optional[float]) -> float:
     """
     Convert relative_timeout in seconds into a monotonic, absolute deadline.
 
-    A large, absolute timeout is returned whenever relative_timeout is None.
+    When relative_timeout is None the deadline is set _MAX_TIMEOUT_SECS from
+    now, the largest value that does not overflow CPython's _PyTime_t when
+    later converted back to a relative timeout and passed to select/poll.
     """
-    # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
-    # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
     return time.monotonic() + (
-        (60 * 60 * 24 * 7)  # 604.8k seconds ought to be enough for anyone
-        if relative_timeout is None
-        else relative_timeout
+        _MAX_TIMEOUT_SECS if relative_timeout is None else relative_timeout
     )
 
 
