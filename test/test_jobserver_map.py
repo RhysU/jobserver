@@ -280,7 +280,7 @@ class TestJobserverMap(unittest.TestCase):
     # ---- Error propagation ----
 
     def test_exception_propagates(self) -> None:
-        """Exception raised by fn surfaces from __next__ across all start methods."""
+        """Exception raised by fn surfaces from __next__, all start methods."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
