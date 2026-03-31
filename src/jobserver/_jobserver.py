@@ -514,9 +514,9 @@ class Jobserver:
         # k ready ones.  Overall: 1 syscall with O(N) kernel work,
         # O(N) Python iteration, O(k) done() calls.
         # sentinel-ready implies connection-ready, so sentinel alone is
-        # sufficient to detect completion.  Snapshot items() since done()
-        # triggers a callback that mutates _future_sentinels.
+        # sufficient to detect completion.
         ready = set(wait(self._future_sentinels.values(), timeout=0))
+        # Snapshot items() since done() triggers a callback that mutates _future_sentinels.
         for future, sentinel in tuple(self._future_sentinels.items()):
             if sentinel in ready:
                 future.done()
