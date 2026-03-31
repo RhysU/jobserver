@@ -701,7 +701,7 @@ class Jobserver:
 
 
 def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
-    """Entry point for workers to fun fn(...) due to some  submit(...)."""
+    """Entry point for workers to run fn(...) due to some submit(...)."""
     ignore_sigpipe()
 
     # Wrapper usage tracks whether a value was returned or raised
