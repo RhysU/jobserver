@@ -12,6 +12,8 @@ from jobserver import Jobserver
 
 def main() -> None:
     """Shows submitting jobs and collecting results."""
+    # "spawn" starts fresh interpreter processes and is safe on all platforms.
+    # It is the recommended default unless a specific context is required.
     jobserver = Jobserver(context="spawn", slots=2)
 
     # Full Jobserver.submit(...) example with args and kwargs
@@ -30,6 +32,7 @@ def main() -> None:
     info("pow(2, 10, mod=1000) = %s", future_a.result())
 
     # Map over multiple inputs, results yielded in order
+    # argses and kwargses are the plurals of args and kwargs
     lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
     info("lengths via map: %s", lengths)
 

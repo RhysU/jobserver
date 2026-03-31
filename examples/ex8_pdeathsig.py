@@ -20,7 +20,7 @@ from jobserver import Jobserver
 
 def main() -> None:
     """Shows preexec_fn setting PR_SET_PDEATHSIG via prctl."""
-    jobserver = Jobserver(context="forkserver", slots=2)
+    jobserver = Jobserver(context="spawn", slots=2)
 
     # preexec_fn runs before the task function, here establishing
     # PR_SET_PDEATHSIG so the child receives SIGTERM if the parent dies

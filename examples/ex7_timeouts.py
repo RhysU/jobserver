@@ -18,10 +18,8 @@ def main() -> None:
     # Submit a slow task that occupies the only slot
     future = jobserver.submit(fn=task_slow, args=(0.5,))
 
-    # Method done() polls without blocking while wait() blocks indefinitely
-    # However, both the done() and wait() methods accept a timeout in seconds
-    info("done(): %s", future.done())
-    info("wait(): %s", future.wait(timeout=0))
+    # done() is a non-blocking poll; False while the task is still running
+    info("done() before: %s", future.done())
 
     # result() with a finite timeout raises Blocked if not ready
     try:
@@ -37,7 +35,10 @@ def main() -> None:
     except Blocked:
         info("Caught expected Blocked: no slots for new work")
 
-    # After the slow task finishes, its result is available
+    # wait() blocks until the future is ready and returns True
+    info("wait() after: %s", future.wait())
+    # done() on a completed future also returns True (non-blocking)
+    info("done() after: %s", future.done())
     info("Slow task result: %s", future.result())
 
 
