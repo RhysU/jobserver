@@ -12,8 +12,8 @@ import queue
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator
-from multiprocessing.connection import wait
-from typing import Any, Optional, TypeVar
+from multiprocessing.connection import Connection, wait
+from typing import Any, Optional, TypeVar, Union
 
 from . import _request, _response
 from ._compat import ignore_sigpipe
@@ -427,8 +427,10 @@ def _poll_requests_briefly(
         return False
 
     waitable = requests.waitable()
-    augmented = [waitable]
-    augmented.extend(f._process.sentinel for f in running)
+    augmented: list[Union[Connection, int]] = [waitable]
+    augmented.extend(
+        f._process.sentinel for f in running if f._process is not None
+    )
 
     # 1s timeout is a robustness fallback; normally a sentinel fires first
     if waitable in wait(augmented, timeout=1.0):
