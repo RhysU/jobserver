@@ -32,7 +32,7 @@ class Failed(typing.NamedTuple):
     """Work finished with an exception."""
 
     work_id: int
-    exc: BaseException
+    exc: Exception
 
 
 class Cancelled(typing.NamedTuple):
