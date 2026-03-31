@@ -14,10 +14,10 @@ The scenario
 
 A Jobserver(slots=2) starts with tokens {0, 1} in its pipe:
 
-    Parent --submit(consume=1)--> P1 --submit(consume=1)--> P2 ---> ...
-      |                            |                          |
-      |  holds token 0             |  holds token 1           |  needs a token
-      |  waits for P1              |  waits for P2            |  but none exist
+    Parent --> P1 --> P2 --> ...
+      |          |       |
+      | token 0  | token 1  needs a token
+      | waits P1 | waits P2  but none exist
 
 P2 cannot start.  P1 cannot finish.  The parent cannot finish.
 With consume=0, P2 runs without acquiring a token and the recursion
@@ -37,8 +37,10 @@ def _recurse(js: Jobserver, depth: int, consume: int = 1) -> int:
     if depth <= 0:
         return 0
     future = js.submit(
-        fn=_recurse, args=(js, depth - 1, consume),
-        consume=consume, timeout=0,
+        fn=_recurse,
+        args=(js, depth - 1, consume),
+        consume=consume,
+        timeout=0,
     )
     return 1 + future.result(timeout=5)
 
@@ -71,9 +73,7 @@ class TestDesignConsume(unittest.TestCase):
         with Jobserver(context="fork", slots=self.SLOTS) as js:
             held = []
             for _ in range(self.SLOTS):
-                held.append(
-                    js.submit(fn=time.sleep, args=(10.0,), timeout=5)
-                )
+                held.append(js.submit(fn=time.sleep, args=(10.0,), timeout=5))
 
             with self.assertRaises(Blocked):
                 js.submit(fn=time.sleep, args=(0,), timeout=0)
