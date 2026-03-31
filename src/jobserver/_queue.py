@@ -15,14 +15,6 @@ from multiprocessing.context import BaseContext
 from multiprocessing.reduction import ForkingPickler
 from typing import Any, Generic, Optional, TypeVar, Union
 
-# Maximum seconds safely passable to poll() without overflow.  poll(2) on
-# Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
-# is INT_MAX ms = 2**31-1 ms = 2_147_483_647 ms = 2_147_483.647 s (~24.85 d).
-# Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
-# _PyTime_t max; all overflow somewhere in the call chain.
-# See https://stackoverflow.com/q/45704243
-_MAX_TIMEOUT_SECS = float((2**31 - 1) / 1000)  # INT_MAX ms ≈ 24.85 days
-
 __all__ = (
     "MinimalQueue",
     "absolute_deadline",
@@ -31,6 +23,14 @@ __all__ = (
 )
 
 T = TypeVar("T")
+
+# Maximum seconds safely passable to poll() without overflow.  poll(2) on
+# Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
+# is INT_MAX ms = 2**31-1 ms = 2_147_483_647 ms = 2_147_483.647 s (~24.85 d).
+# Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
+# _PyTime_t max; all overflow somewhere in the call chain.
+# See https://stackoverflow.com/q/45704243
+_MAX_TIMEOUT_SECS = float((2**31 - 1) / 1000)  # INT_MAX ms ≈ 24.85 days
 
 
 def absolute_deadline(relative_timeout: Optional[float]) -> float:
