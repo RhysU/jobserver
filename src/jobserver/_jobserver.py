@@ -23,6 +23,7 @@ from itertools import islice
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
+from selectors import EVENT_READ, DefaultSelector
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
@@ -359,13 +360,28 @@ def _restore_tokens(slots: MinimalQueue, tokens: list) -> None:
         pass  # Queue closed; Jobserver is shutting down
 
 
+def _unregister_sentinel(
+    selector: DefaultSelector,
+    sentinel: int,
+    _process: BaseProcess,
+) -> None:
+    """Unregister sentinel from selector, tolerating prior close."""
+    # Argument _process is unused but required to prevent garbage
+    # collection of the Process until after this callback fires.
+    try:
+        selector.unregister(sentinel)
+    except KeyError:
+        pass  # Already unregistered or selector closed
+
+
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
     __slots__ = (
         "_context",
         "_slots",
-        "_future_sentinels",
+        "_selector",
+        "_selector_map",
         "_env",
         "_preexec_fn",
         "_sleep_fn",
@@ -406,8 +422,12 @@ class Jobserver:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
         self._slots.put(*range(slots))
 
-        # Tracks outstanding Futures (and wait-able sentinels)
-        self._future_sentinels: dict[Future, int] = {}
+        # Tracks outstanding Futures via their process sentinels.
+        # _selector_map is the live view from get_map(), captured once
+        # so that post-close() access returns an empty view rather
+        # than the None that get_map() itself returns after close().
+        self._selector = DefaultSelector()
+        self._selector_map = self._selector.get_map()
 
         # Instance-level defaults for submit(...)
         # Defensive copy: consume any one-shot iterable and guard against
@@ -420,7 +440,7 @@ class Jobserver:
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
-        n = len(self._future_sentinels)
+        n = len(self._selector_map)
         return f"Jobserver({method!r}, tracked={n})"
 
     def __enter__(self) -> "Jobserver":
@@ -439,11 +459,12 @@ class Jobserver:
             except CallbackRaised:
                 continue
             break
-        # Allow any still-incomplete futures to be garbage collected
-        self._future_sentinels.clear()
         # Finally, stop any further manipulation of slots
         self._slots.close_put()
         self._slots.close_get()
+        # Release the selector's underlying fd and all registrations.
+        # _selector_map survives close() as an empty live view.
+        self._selector.close()
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures."""
@@ -453,7 +474,6 @@ class Jobserver:
         return (
             self._context,
             self._slots,
-            {},
             self._env,
             self._preexec_fn,
             self._sleep_fn,
@@ -461,15 +481,16 @@ class Jobserver:
 
     def __setstate__(self, state: tuple) -> None:
         """Set instance state."""
-        assert isinstance(state, tuple) and len(state) == 6
+        assert isinstance(state, tuple) and len(state) == 5
         (
             self._context,
             self._slots,
-            self._future_sentinels,
             self._env,
             self._preexec_fn,
             self._sleep_fn,
         ) = state
+        self._selector = DefaultSelector()
+        self._selector_map = self._selector.get_map()
 
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
@@ -506,20 +527,14 @@ class Jobserver:
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Let N = in-flight futures and k = newly completed futures.
-        # One wait() syscall polls all N sentinel fds, doing O(N) work
-        # inside the kernel, to return the k ready ones.  Building the
-        # ready set from the result is O(k).  The loop snapshots all N
-        # items in O(N) Python iteration but calls done() only on the
-        # k ready ones.  Overall: 1 syscall with O(N) kernel work,
-        # O(N) Python iteration, O(k) done() calls.
-        # sentinel-ready implies connection-ready, so sentinel alone is
-        # sufficient to detect completion.
-        ready = set(wait(self._future_sentinels.values(), timeout=0))
-        # Copy items(); done() triggers callbacks mutating _future_sentinels
-        for future, sentinel in tuple(self._future_sentinels.items()):
-            if sentinel in ready:
-                future.done()
+        # O(k) where k = newly completed futures.  The persistent
+        # selector maintains the interest set incrementally so no
+        # O(N) rebuild occurs on each call.  select(timeout=0) is
+        # a non-blocking poll returning only the k ready entries.
+        # done() triggers callbacks mutating the selector.
+        for key, _ in self._selector.select(timeout=0):
+            assert isinstance(key.data, Future), type(key.data)
+            key.data.done()
 
     def submit(
         self,
@@ -584,7 +599,7 @@ class Jobserver:
             consume=consume,
             deadline=absolute_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources if callbacks else noop,
-            sentinels_fn=self._future_sentinels.values,
+            sentinels_fn=self._selector_map.keys,
             sleep_fn=sleep_fn,
             slots=self._slots,
         )
@@ -606,8 +621,12 @@ class Jobserver:
             process.start()
             send.close()
 
-            # Prepare to track the Future and the wait(...)-able sentinel
-            self._future_sentinels[future] = process.sentinel
+            # Register sentinel for O(k) polling in reclaim_resources
+            self._selector.register(
+                process.sentinel,
+                EVENT_READ,
+                data=future,
+            )
         except Exception:
             # Close pipe fds to avoid leaking until garbage collection
             if send is not None:
@@ -625,10 +644,13 @@ class Jobserver:
             priority=_PRIORITY_TOKEN,
         )
 
-        # After token restoration, stop tracking this Future by this Jobserver
+        # After token restoration, stop tracking this Future's sentinel.
+        # Prevent premature garbage collection of process (which closes
+        # the sentinel fd and silently removes it from epoll) by
+        # holding a reference until this last-priority callback fires.
         future._when_done(
-            fn=self._future_sentinels.pop,
-            args=(future, None),
+            fn=_unregister_sentinel,
+            args=(self._selector, process.sentinel, process),
             priority=_PRIORITY_CLEANUP,
         )
 
@@ -747,7 +769,7 @@ def _obtain_tokens(
     consume: int,
     deadline: float,
     reclaim_tokens_fn: Callable[[], Any],
-    sentinels_fn: Callable[[], Iterable[int]],
+    sentinels_fn: Callable[[], Iterable],
     sleep_fn: Callable[[], Optional[float]],
     slots: MinimalQueue[int],
     *,

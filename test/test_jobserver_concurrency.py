@@ -55,8 +55,8 @@ class TestJobserverConcurrency(unittest.TestCase):
 
             # Drain futures left incomplete when the race caused an
             # exception
-            for future in list(js._future_sentinels.keys()):
-                future.wait(timeout=10)
+            for key in list(js._selector_map.values()):
+                key.data.wait(timeout=10)
             self.assertEqual(
                 errors, [], f"Concurrent wait() crashed: {errors}"
             )

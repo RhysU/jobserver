@@ -187,23 +187,26 @@ class TestJobserverCallbacks(unittest.TestCase):
             d.when_done(order.append, "ok")
             time.sleep(1.0)  # ensure all children finish
 
-            with self.assertRaises(CallbackRaised) as ctx:
-                js.reclaim_resources()
-            self.assertIsInstance(ctx.exception.__cause__, ValueError)
+            # Collect all CallbackRaised causes; ordering across
+            # futures is kernel-determined and not guaranteed.
+            causes: list[type] = []
+            while True:
+                try:
+                    js.reclaim_resources()
+                except CallbackRaised as e:
+                    causes.append(type(e.__cause__))
+                    continue
+                break
 
-            with self.assertRaises(CallbackRaised) as ctx:
-                js.reclaim_resources()
-            self.assertIsInstance(ctx.exception.__cause__, TypeError)
-
-            with self.assertRaises(CallbackRaised) as ctx:
-                js.reclaim_resources()
-            self.assertIsInstance(ctx.exception.__cause__, ArithmeticError)
-
-            with self.assertRaises(CallbackRaised) as ctx:
-                js.reclaim_resources()
-            self.assertIsInstance(ctx.exception.__cause__, LookupError)
-
-            js.reclaim_resources()  # clean return
+            # All four raising callbacks were surfaced
+            self.assertCountEqual(
+                causes,
+                [ValueError, TypeError, ArithmeticError, LookupError],
+            )
+            # Intra-future ordering is guaranteed by heapq:
+            # a's ValueError always fires before a's TypeError.
+            self.assertLess(causes.index(ValueError), causes.index(TypeError))
+            # d's non-raising callback fired
             self.assertEqual(order, ["ok"])
 
     def test_exit_drains_callback_raised(self) -> None:
