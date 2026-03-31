@@ -401,9 +401,7 @@ class Jobserver:
         if slots is None:
             slots = sched_getaffinity0()
         if not isinstance(slots, int):
-            raise TypeError(
-                f"slots must be an int, got {type(slots).__name__}"
-            )
+            raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
         self._slots.put(*range(slots))
@@ -561,17 +559,11 @@ class Jobserver:
         if fn is None:
             raise TypeError("fn must not be None")
         if not isinstance(args, Iterable):
-            raise TypeError(
-                f"args must be Iterable, got {type(args).__name__}"
-            )
+            raise TypeError(f"args: Iterable, got {type(args).__name__}")
         if not isinstance(kwargs, Mapping):
-            raise TypeError(
-                f"kwargs must be a Mapping, got {type(kwargs).__name__}"
-            )
+            raise TypeError(f"kwargs: Mapping, got {type(kwargs).__name__}")
         if not isinstance(callbacks, bool):
-            raise TypeError(
-                f"callbacks must be bool, got {type(callbacks).__name__}"
-            )
+            raise TypeError(f"callbacks: bool, got {type(callbacks).__name__}")
 
         # Resolve None to the instance-level default for each optional param
         env = self._env if env is None else env
