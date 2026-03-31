@@ -60,8 +60,3 @@ select = ["B", "E", "F", "I", "UP", "W"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["jobserver"]
-
-[dependency-groups]
-dev = [
-    "coverage>=7.10.7",
-]
