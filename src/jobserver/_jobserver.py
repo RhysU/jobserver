@@ -400,7 +400,12 @@ class Jobserver:
         # Issue one token for each requested slot
         if slots is None:
             slots = sched_getaffinity0()
-        assert isinstance(slots, int) and slots >= 1, type(slots)
+        if not isinstance(slots, int):
+            raise TypeError(
+                f"slots must be an int, got {type(slots).__name__}"
+            )
+        if slots < 1:
+            raise ValueError(f"slots must be >= 1, got {slots!r}")
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures (and wait-able sentinels)
@@ -553,10 +558,20 @@ class Jobserver:
         instance defaults.
         """
         # First, check any arguments not for _obtain_tokens(...)
-        assert fn is not None
-        assert isinstance(args, Iterable), type(args)
-        assert isinstance(kwargs, Mapping), type(kwargs)
-        assert isinstance(callbacks, bool), type(callbacks)
+        if fn is None:
+            raise TypeError("fn must not be None")
+        if not isinstance(args, Iterable):
+            raise TypeError(
+                f"args must be Iterable, got {type(args).__name__}"
+            )
+        if not isinstance(kwargs, Mapping):
+            raise TypeError(
+                f"kwargs must be a Mapping, got {type(kwargs).__name__}"
+            )
+        if not isinstance(callbacks, bool):
+            raise TypeError(
+                f"callbacks must be bool, got {type(callbacks).__name__}"
+            )
 
         # Resolve None to the instance-level default for each optional param
         env = self._env if env is None else env
@@ -743,8 +758,10 @@ def _obtain_tokens(
 ) -> list[int]:
     """Either retrieve requested tokens or raise Blocked while trying."""
     # Defensively check arguments
-    assert consume == 0 or consume == 1, "Invalid or deadlock possible"
-    assert deadline > 0.0
+    if consume not in (0, 1):
+        raise ValueError(f"consume must be 0 or 1, got {consume!r}")
+    if deadline <= 0.0:
+        raise ValueError(f"deadline must be positive, got {deadline!r}")
 
     # Acquire the requested retval or raise Blocked when impossible
     retval: list[int] = []
