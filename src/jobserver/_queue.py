@@ -21,7 +21,7 @@ from typing import Any, Generic, Optional, TypeVar, Union
 # Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
 # _PyTime_t max; all overflow somewhere in the call chain.
 # See https://stackoverflow.com/q/45704243
-_MAX_TIMEOUT_SECS: float = (2**31 - 1) / 1000  # INT_MAX ms ≈ 24.85 days
+_MAX_TIMEOUT_SECS = float((2**31 - 1) / 1000)  # INT_MAX ms ≈ 24.85 days
 
 __all__ = (
     "MinimalQueue",
@@ -37,20 +37,19 @@ def absolute_deadline(relative_timeout: Optional[float]) -> float:
     """
     Convert relative_timeout in seconds into a monotonic, absolute deadline.
 
-    When relative_timeout is None the deadline is set _MAX_TIMEOUT_SECS from
-    now.  Deadlines are consumed via relative_timeout(), which enforces the
-    _MAX_TIMEOUT_SECS cap regardless of how the deadline was constructed.
+    When relative_timeout is None a large, finite deadline is returned per
+    poll()/select() restrictions.
     """
-    return time.monotonic() + (
+    return (
         _MAX_TIMEOUT_SECS if relative_timeout is None else relative_timeout
-    )
+    ) + time.monotonic()
 
 
 def relative_timeout(deadline: float) -> float:
-    """Return seconds remaining until deadline, capped at _MAX_TIMEOUT_SECS.
+    """Return seconds remaining until deadline, non-negative and finite.
 
-    Intended to be paired with absolute_deadline().  The cap ensures the
-    result is safe to pass directly to poll()/select() on any platform.
+    Intended to be paired with absolute_deadline().  The result is safe to
+    pass directly to poll()/select() on any platform.
     """
     return min(_MAX_TIMEOUT_SECS, max(0.0, deadline - time.monotonic()))
 
