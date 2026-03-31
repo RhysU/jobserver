@@ -42,7 +42,9 @@ def absolute_deadline(relative_timeout: Optional[float]) -> float:
     later converted back to a relative timeout and passed to select/poll.
     """
     return time.monotonic() + (
-        _MAX_TIMEOUT_SECS if relative_timeout is None else relative_timeout
+        _MAX_TIMEOUT_SECS
+        if relative_timeout is None
+        else min(relative_timeout, _MAX_TIMEOUT_SECS)
     )
 
 
