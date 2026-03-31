@@ -282,6 +282,55 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual(1, f.result())
                     self.assertEqual(0, g.result())
 
+    def test_sleep_fn_timeout_not_overshot(self) -> None:
+        """sleep_fn veto must raise Blocked once deadline passes.
+
+        Regression test for issue #111: _obtain_tokens sampled time.monotonic()
+        *before* sleeping, then checked the stale value after the sleep.  The
+        stale check always passed (pre-sleep time < deadline), allowing one
+        extra loop iteration.  If sleep_fn returned None on that extra call
+        the now-free slot token was grabbed and work was submitted PAST the
+        deadline.
+        """
+        # sleep_fn vetoes on the first call (consumes the full timeout budget
+        # via a long clamped sleep) then allows work on the second call.
+        # With the bug the extra iteration after the stale check calls
+        # sleep_fn a second time, gets None, grabs the free token, and
+        # submit() SUCCEEDS (wrong).  With the fix time.monotonic() is
+        # re-sampled after the sleep, the deadline is detected, and Blocked
+        # is raised before any second call.
+        call_count = [0]
+
+        def sleep_fn() -> float | None:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 2.0  # veto: clamped to remaining budget
+            return None  # allow: second call only reached with the bug
+
+        timeout = 0.5
+        with Jobserver(context="fork", slots=1) as js:
+            # Drain the only slot then immediately return it so the slot is
+            # free when the second submit() starts.  The sleep_fn veto – not
+            # slot exhaustion – is what should block the submission.
+            f = js.submit(fn=time.sleep, args=(0.01,))
+            f.result(timeout=5)
+
+            with self.assertRaises(Blocked):
+                js.submit(
+                    fn=len,
+                    args=((),),
+                    sleep_fn=sleep_fn,
+                    timeout=timeout,
+                )
+
+        self.assertEqual(
+            1,
+            call_count[0],
+            "sleep_fn was called more than once: the stale pre-sleep "
+            "monotonic value allowed an extra loop iteration past the "
+            "deadline (issue #111)",
+        )
+
     def test_sleep_fn_raises_propagates(self) -> None:
         """Exception from sleep_fn propagates out of submit()."""
         for method in get_all_start_methods():

@@ -763,7 +763,7 @@ def _obtain_tokens(
         if sleep is not None:
             assert sleep >= 0.0
             time.sleep(max(resolution, min(sleep, deadline - monotonic)))
-            if monotonic >= deadline:
+            if time.monotonic() >= deadline:
                 raise Blocked()
             continue
 
