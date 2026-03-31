@@ -403,3 +403,12 @@ class TestJobserverBasic(unittest.TestCase):
         f.when_done(lambda: results.append("fired"))
         self.assertEqual(99, f.result())
         self.assertEqual(["fired"], results)
+
+    def test_cleanup_callback_after_selector_close(self) -> None:
+        """Cleanup callback tolerates a closed selector after __exit__."""
+        # Submit a slow task so the future is still running at __exit__
+        with Jobserver(slots=2) as js:
+            f = js.submit(fn=time.sleep, args=(0.5,), timeout=5)
+        # __exit__ closed the selector; result() fires all callbacks
+        # including the _unregister_sentinel cleanup callback
+        self.assertIsNone(f.result(timeout=5))
