@@ -516,7 +516,7 @@ class Jobserver:
         # sentinel-ready implies connection-ready, so sentinel alone is
         # sufficient to detect completion.
         ready = set(wait(self._future_sentinels.values(), timeout=0))
-        # Snapshot items() since done() triggers a callback that mutates _future_sentinels.
+        # Copy items(); done() triggers callbacks mutating _future_sentinels
         for future, sentinel in tuple(self._future_sentinels.items()):
             if sentinel in ready:
                 future.done()
