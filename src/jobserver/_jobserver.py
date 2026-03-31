@@ -599,7 +599,7 @@ class Jobserver:
             consume=consume,
             deadline=absolute_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources if callbacks else noop,
-            sentinels_fn=self._selector_map.keys,
+            selector=self._selector,
             sleep_fn=sleep_fn,
             slots=self._slots,
         )
@@ -769,7 +769,7 @@ def _obtain_tokens(
     consume: int,
     deadline: float,
     reclaim_tokens_fn: Callable[[], Any],
-    sentinels_fn: Callable[[], Iterable],
+    selector: DefaultSelector,
     sleep_fn: Callable[[], Optional[float]],
     slots: MinimalQueue[int],
     *,
@@ -813,11 +813,16 @@ def _obtain_tokens(
                 raise Blocked() from None
 
             # (6) ...then block until some interesting event.
-            wait(
-                tuple(sentinels_fn())  # "Child" result
-                + (slots.waitable(),),  # "Grandchild" restores token
-                timeout=deadline - monotonic,
-            )
+            # O(k) via the persistent selector: temporarily register
+            # the slots waitable (1 epoll_ctl ADD), block in one
+            # epoll_wait returning k ready fds, then unregister
+            # (1 epoll_ctl DEL).  No O(N) rebuild of the interest set.
+            waitable = slots.waitable()
+            selector.register(waitable, EVENT_READ)
+            try:
+                selector.select(timeout=deadline - monotonic)
+            finally:
+                selector.unregister(waitable)
 
     assert len(retval) == consume, "Postcondition"
     return retval
