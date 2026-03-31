@@ -513,8 +513,6 @@ class Jobserver:
         # items in O(N) Python iteration but calls done() only on the
         # k ready ones.  Overall: 1 syscall with O(N) kernel work,
         # O(N) Python iteration, O(k) done() calls.
-        # A reverse mapping (sentinel -> future) would reduce the Python
-        # iteration to O(k) but the single O(N) syscall remains.
         # sentinel-ready implies connection-ready, so sentinel alone is
         # sufficient to detect completion.  Snapshot items() since done()
         # triggers a callback that mutates _future_sentinels.
