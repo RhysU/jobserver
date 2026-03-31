@@ -750,7 +750,7 @@ def _obtain_tokens(
 ) -> list[int]:
     """Either retrieve requested tokens or raise Blocked while trying."""
     # Defensively check arguments
-    if consume not in (0, 1):
+    if consume != 0 and consume != 1:
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
     if deadline <= 0.0:
         raise ValueError(f"deadline must be positive, got {deadline!r}")
