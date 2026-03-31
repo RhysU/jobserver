@@ -504,9 +504,12 @@ class Jobserver:
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # One wait() call identifies which sentinels are ready in O(1)/O(k).
-        # Snapshot items() so callbacks mutating _future_sentinels are safe.
-        ready = set(wait(list(self._future_sentinels.values()), timeout=0))
+        # Strategy: one wait() identifies the k ready sentinels in one shot,
+        # so done() is called O(k) times rather than O(N).  sentinel-ready
+        # implies connection-ready, so sentinel alone is sufficient to detect
+        # completion.  Snapshot items() since done() triggers a callback that
+        # mutates _future_sentinels.
+        ready = set(wait(self._future_sentinels.values(), timeout=0))
         for future, sentinel in tuple(self._future_sentinels.items()):
             if sentinel in ready:
                 future.done()
