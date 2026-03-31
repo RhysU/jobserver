@@ -148,7 +148,8 @@ class MinimalQueue(Generic[T]):
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = absolute_deadline(timeout)
-        if not self._read_lock.acquire(block=True, timeout=timeout):
+        lock_timeout = relative_timeout(deadline)
+        if not self._read_lock.acquire(block=True, timeout=lock_timeout):
             raise queue.Empty
         try:
             if not self._reader.poll(relative_timeout(deadline)):
