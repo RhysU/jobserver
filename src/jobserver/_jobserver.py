@@ -54,7 +54,7 @@ class CallbackRaised(Exception):
     """
     Reports an Exception raised from callbacks registered with a Future.
 
-    Instances of this type must have non-None __cause__ members (see PEP 3154).
+    Instances of this type must have non-None __cause__ members (see PEP 3134).
     The __cause__ member will be the Exception raised by client code.
 
     When raised by some method, e.g. by Future.done(...), Future.wait(...),
