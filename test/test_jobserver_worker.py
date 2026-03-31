@@ -83,26 +83,27 @@ class TestJobserverWorker(unittest.TestCase):
                         f.result()
 
     def test_base_exception_surfaces_as_submission_died(self) -> None:
-        """SystemExit in fn must surface as SubmissionDied."""
-        for method in get_all_start_methods():
-            with self.subTest(method=method):
-                with Jobserver(context=method, slots=1) as js:
-                    f = js.submit(fn=sys.exit, args=(1,))
-                    with self.assertRaises(SubmissionDied):
-                        f.result(timeout=5)
+        """BaseException subclasses escaping fn must surface as SubmissionDied.
 
-    def test_keyboard_interrupt_becomes_submission_died(self) -> None:
-        """KeyboardInterrupt (BaseException) surfaces as SubmissionDied."""
+        sys.exit(1) raises SystemExit and helper_raise(KeyboardInterrupt)
+        raises KeyboardInterrupt – both are BaseException subclasses that
+        fall outside the ``except Exception:`` guard in _worker_entrypoint(),
+        so the worker closes the result pipe without writing, which the
+        parent sees as SubmissionDied.  Coverage measurements confirm the
+        two call sites exercise identical source lines; both are kept here
+        as subTests to document the intent.
+        """
+        base_exceptions: list[tuple] = [
+            (sys.exit, (1,)),
+            (helper_raise, (KeyboardInterrupt,)),
+        ]
         for method in get_all_start_methods():
-            with self.subTest(method=method):
-                with Jobserver(context=method, slots=1) as js:
-                    f = js.submit(
-                        fn=helper_raise,
-                        args=(KeyboardInterrupt,),
-                        timeout=5,
-                    )
-                    with self.assertRaises(SubmissionDied):
-                        f.result(timeout=5)
+            for fn, args in base_exceptions:
+                with self.subTest(method=method, fn=fn.__name__):
+                    with Jobserver(context=method, slots=1) as js:
+                        f = js.submit(fn=fn, args=args, timeout=5)
+                        with self.assertRaises(SubmissionDied):
+                            f.result(timeout=5)
 
     def test_os_exit_becomes_submission_died(self) -> None:
         """os._exit() in worker produces SubmissionDied."""

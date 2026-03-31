@@ -104,13 +104,17 @@ class TestConcurrencyStress(unittest.TestCase):
         self.assertEqual(sorted(range(200)), vals)
 
     def test_concurrent_submit_threads(self) -> None:
-        """Concurrent submit() from multiple threads."""
+        """Concurrent submit() from multiple threads, also under GIL stress.
+
+        Run _threaded_submit_stress twice: once at the default switch
+        interval and once at 1 µs (maximum GIL contention) to catch
+        races that only surface under rapid thread interleaving.
+        Coverage measurements showed the two cases differed by a single
+        line in the dispatcher, so they are folded into one test.
+        """
         with Jobserver(context=FAST, slots=4) as js:
             with JobserverExecutor(js) as exe:
                 self._threaded_submit_stress(exe)
-
-    def test_setswitchinterval_stress(self) -> None:
-        """sys.setswitchinterval stress test."""
         old = sys.getswitchinterval()
         try:
             sys.setswitchinterval(1e-6)

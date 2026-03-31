@@ -280,11 +280,16 @@ class TestJobserverMap(unittest.TestCase):
     # ---- Error propagation ----
 
     def test_exception_propagates(self) -> None:
-        """Exception raised by fn surfaces from __next__."""
+        """Exception raised by fn surfaces from __next__ across all start methods.
+
+        Uses all start methods (unlike the FAST-only exception tests) to
+        confirm that the exception-propagation path works with fork,
+        spawn, and forkserver.
+        """
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
-                    argses = [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5)]
+                    argses = [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]
                     it = js.map(
                         fn=raising_at_position,
                         argses=argses,
@@ -292,33 +297,33 @@ class TestJobserverMap(unittest.TestCase):
                     )
                     self.assertEqual(next(it), 0)
                     self.assertEqual(next(it), 1)
-                    self.assertEqual(next(it), 2)
-                    self.assertEqual(next(it), 3)
-                    self.assertEqual(next(it), 4)
-
-    def test_exception_at_first(self) -> None:
-        """Exception on the very first call propagates."""
-        with Jobserver(context=FAST, slots=2) as js:
-            it = js.map(
-                fn=raising_at_position,
-                argses=[(0, 0), (1, 0), (2, 0)],
-                timeout=TIMEOUT,
-            )
-            with self.assertRaises(ValueError):
-                next(it)
+                    with self.assertRaises(ValueError):
+                        next(it)
 
     def test_exception_midstream(self) -> None:
-        """Exception mid-stream propagates at the right position."""
+        """Exception propagates at the right position (first or mid-stream).
+
+        Two cases are folded into one test because coverage measurements
+        show they differ by only a single line (ResultWrapper.unwrap() is
+        reached only after at least one successful result).
+        """
+        cases = [
+            # (fail_at, argses, values_expected_before_raise)
+            (0, [(0, 0), (1, 0), (2, 0)], []),
+            (2, [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)], [0, 1]),
+        ]
         with Jobserver(context=FAST, slots=2) as js:
-            it = js.map(
-                fn=raising_at_position,
-                argses=[(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)],
-                timeout=TIMEOUT,
-            )
-            self.assertEqual(next(it), 0)
-            self.assertEqual(next(it), 1)
-            with self.assertRaises(ValueError):
-                next(it)
+            for fail_at, argses, before in cases:
+                with self.subTest(fail_at=fail_at):
+                    it = js.map(
+                        fn=raising_at_position,
+                        argses=argses,
+                        timeout=TIMEOUT,
+                    )
+                    for expected in before:
+                        self.assertEqual(next(it), expected)
+                    with self.assertRaises(ValueError):
+                        next(it)
 
     def test_exception_with_chunksize(self) -> None:
         """Exception within a chunk fails the entire chunk."""
