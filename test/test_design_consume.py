@@ -80,7 +80,3 @@ class TestDesignConsume(unittest.TestCase):
 
             for f in held:
                 f.wait(signal=signal.SIGKILL)
-                try:
-                    f.result()
-                except Exception:
-                    pass
