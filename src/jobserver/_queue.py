@@ -38,22 +38,21 @@ def absolute_deadline(relative_timeout: Optional[float]) -> float:
     Convert relative_timeout in seconds into a monotonic, absolute deadline.
 
     When relative_timeout is None the deadline is set _MAX_TIMEOUT_SECS from
-    now, the largest value that does not overflow CPython's _PyTime_t when
-    later converted back to a relative timeout and passed to select/poll.
+    now.  Deadlines are consumed via relative_timeout(), which enforces the
+    _MAX_TIMEOUT_SECS cap regardless of how the deadline was constructed.
     """
     return time.monotonic() + (
-        _MAX_TIMEOUT_SECS
-        if relative_timeout is None
-        else min(relative_timeout, _MAX_TIMEOUT_SECS)
+        _MAX_TIMEOUT_SECS if relative_timeout is None else relative_timeout
     )
 
 
 def relative_timeout(deadline: float) -> float:
-    """Return seconds remaining until deadline, strictly non-negative.
+    """Return seconds remaining until deadline, capped at _MAX_TIMEOUT_SECS.
 
-    Intended to be paired with absolute_deadline().
+    Intended to be paired with absolute_deadline().  The cap ensures the
+    result is safe to pass directly to poll()/select() on any platform.
     """
-    return max(0.0, deadline - time.monotonic())
+    return min(_MAX_TIMEOUT_SECS, max(0.0, deadline - time.monotonic()))
 
 
 def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
