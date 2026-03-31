@@ -12,7 +12,7 @@ from jobserver import CallbackRaised, Jobserver
 
 def main() -> None:
     """Shows callbacks, exception handling, and CallbackRaised."""
-    jobserver = Jobserver(context="fork", slots=2)
+    jobserver = Jobserver(context="spawn", slots=2)
     future1 = jobserver.submit(fn=len, args=("hello",))
 
     # Register callbacks to fire after observing the future completes
@@ -32,7 +32,9 @@ def main() -> None:
     info("Callbacks after completion: %s", accumulator)
 
     # When a callback raises, CallbackRaised wraps the original exception.
-    # Re-calling wait() drains the remaining callbacks one by one.
+    # Each wait() call fires the next pending callback; those that raise surface
+    # as CallbackRaised while those that succeed run silently.  Loop until no
+    # error is raised to ensure all callbacks have been drained.
     future2 = jobserver.submit(fn=len, args=("world",))
     future2.when_done(raise_exception, klass=ValueError)
     future2.when_done(raise_exception, klass=TypeError)
