@@ -12,6 +12,7 @@ import queue
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator
+from multiprocessing.connection import wait
 from typing import Any, Optional, TypeVar
 
 from . import _request, _response
@@ -422,10 +423,19 @@ def _poll_requests_briefly(
 
     Returns True when shutdown was requested.
     """
-    if not (running or pending):
+    if not running and not pending:
         return False
-    try:
-        msg = requests.get(timeout=0.005)
-    except (queue.Empty, EOFError):
-        return False
-    return _handle_request(msg, pending, responses)
+
+    waitable = requests.waitable()
+    augmented = [waitable]
+    augmented.extend(f._process.sentinel for f in running)
+
+    # 1s timeout is a robustness fallback; normally a sentinel fires first
+    if waitable in wait(augmented, timeout=1.0):
+        try:
+            msg = requests.get(timeout=0)
+        except (queue.Empty, EOFError):
+            return False
+        return _handle_request(msg, pending, responses)
+
+    return False
