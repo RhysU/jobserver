@@ -506,11 +506,17 @@ class Jobserver:
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # Strategy: one wait() identifies the k ready sentinels in one shot,
-        # so done() is called O(k) times rather than O(N).  sentinel-ready
-        # implies connection-ready, so sentinel alone is sufficient to detect
-        # completion.  Snapshot items() since done() triggers a callback that
-        # mutates _future_sentinels.
+        # Let N = in-flight futures and k = newly completed futures.
+        # The wait() call polls all N sentinel fds to find the k ready
+        # ones, costing O(N) in the underlying select/poll/epoll syscall.
+        # Building the ready set is O(k).  The loop snapshots and iterates
+        # all N items but only calls done() on the k ready ones, so
+        # done() runs O(k) times rather than O(N).  Overall cost is O(N).
+        # A reverse mapping (sentinel -> future) would reduce the Python
+        # iteration to O(k) but the wait() syscall remains O(N).
+        # sentinel-ready implies connection-ready, so sentinel alone is
+        # sufficient to detect completion.  Snapshot items() since done()
+        # triggers a callback that mutates _future_sentinels.
         ready = set(wait(self._future_sentinels.values(), timeout=0))
         for future, sentinel in tuple(self._future_sentinels.items()):
             if sentinel in ready:
