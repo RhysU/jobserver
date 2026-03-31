@@ -24,28 +24,34 @@ __all__ = (
 
 T = TypeVar("T")
 
+# Maximum seconds safely passable to poll() without overflow.  poll(2) on
+# Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
+# is INT_MAX ms = 2**31-1 ms = 2_147_483_647 ms = 2_147_483.647 s (~24.85 d).
+# Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
+# _PyTime_t max; all overflow somewhere in the call chain.
+# See https://stackoverflow.com/q/45704243
+_MAX_TIMEOUT_SECS = float((2**31 - 1) / 1000)  # INT_MAX ms ≈ 24.85 days
+
 
 def absolute_deadline(relative_timeout: Optional[float]) -> float:
     """
     Convert relative_timeout in seconds into a monotonic, absolute deadline.
 
-    A large, absolute timeout is returned whenever relative_timeout is None.
+    When relative_timeout is None a large, finite deadline is returned per
+    poll()/select() restrictions.
     """
-    # Cannot be Inf nor sys.float_info.max nor sys.maxsize / 1000
-    # nor _PyTime_t per https://stackoverflow.com/questions/45704243!
-    return time.monotonic() + (
-        (60 * 60 * 24 * 7)  # 604.8k seconds ought to be enough for anyone
-        if relative_timeout is None
-        else relative_timeout
-    )
+    return (
+        _MAX_TIMEOUT_SECS if relative_timeout is None else relative_timeout
+    ) + time.monotonic()
 
 
 def relative_timeout(deadline: float) -> float:
-    """Return seconds remaining until deadline, strictly non-negative.
+    """Return seconds remaining until deadline, non-negative and finite.
 
-    Intended to be paired with absolute_deadline().
+    Intended to be paired with absolute_deadline().  The result is safe to
+    pass directly to poll()/select() on any platform.
     """
-    return max(0.0, deadline - time.monotonic())
+    return min(_MAX_TIMEOUT_SECS, max(0.0, deadline - time.monotonic()))
 
 
 def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
