@@ -12,9 +12,8 @@ Purpose
 
  * First, the implementation choices are based upon the [GNU Make
    Jobserver](https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html).
- * Second, as a result, the Jobserver is nestable for fork or forkserver
-   multiprocessing contexts, meaning that resource constraints will be
-   shared with work submitted by other work.
+ * Second, as a result, the Jobserver is "nestable" meaning that resource
+   constraints will be shared with work submitted by other work.
  * Third, no background threads are spun up to handle any backing
    queues consequently permitting the implementation to play well with
    more 3rd party libraries.
