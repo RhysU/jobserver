@@ -445,6 +445,11 @@ class Jobserver:
         return f"Jobserver({method!r}, tracked={n})"
 
     def __del__(self) -> None:
+        """Emit ResourceWarning if any Futures are still running.
+
+        A Jobserver with no undone Futures is implicitly closed upon
+        finalization; one with running Futures emits a ResourceWarning.
+        """
         n = len(self._selector_map)
         if n > 0:
             warnings.warn(
