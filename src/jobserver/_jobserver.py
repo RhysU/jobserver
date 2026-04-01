@@ -468,15 +468,22 @@ class Jobserver:
         """Clean up slots and drain all callbacks.
 
         Never raises CallbackRaised.  Calls reclaim_resources()
-        repeatedly until every registered callback has been attempted.
+        repeatedly until every ready callback has been attempted.
+        Each suppressed CallbackRaised emits a RuntimeWarning.
         """
         # Each call drains at most one CallbackRaised per future
         while True:
             try:
                 self.reclaim_resources()
-            except CallbackRaised:
-                continue
-            break
+                break
+            except CallbackRaised as e:
+                warnings.warn(
+                    "Jobserver.__exit__ suppressed"
+                    f" CallbackRaised with cause: {e.__cause__!r}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                    source=self,
+                )
         # Finally, stop any further manipulation of slots
         self._slots.close_put()
         self._slots.close_get()
