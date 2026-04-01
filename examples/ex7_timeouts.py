@@ -13,33 +13,32 @@ from jobserver import Blocked, Jobserver
 
 def main() -> None:
     """Shows non-blocking polling, finite deadlines, and Blocked."""
-    jobserver = Jobserver(context="spawn", slots=1)
+    with Jobserver(context="spawn", slots=1) as jobserver:
+        # Submit a slow task that occupies the only slot
+        future = jobserver.submit(fn=task_slow, args=(0.5,))
 
-    # Submit a slow task that occupies the only slot
-    future = jobserver.submit(fn=task_slow, args=(0.5,))
+        # done() is a non-blocking poll; False while the task is still running
+        info("done() before: %s", future.done())
 
-    # done() is a non-blocking poll; False while the task is still running
-    info("done() before: %s", future.done())
+        # result() with a finite timeout raises Blocked if not ready
+        try:
+            future.result(timeout=0.1)
+            raise RuntimeError("Expected Blocked was not raised")
+        except Blocked:
+            info("Caught expected Blocked from result(timeout=0.1)")
 
-    # result() with a finite timeout raises Blocked if not ready
-    try:
-        future.result(timeout=0.1)
-        raise RuntimeError("Expected Blocked was not raised")
-    except Blocked:
-        info("Caught expected Blocked from result(timeout=0.1)")
+        # submit() with timeout=0 raises Blocked when no slots available
+        try:
+            jobserver.submit(fn=len, args=("rejected",), timeout=0)
+            raise RuntimeError("Expected Blocked was not raised")
+        except Blocked:
+            info("Caught expected Blocked: no slots for new work")
 
-    # submit() with timeout=0 raises Blocked when no slots available
-    try:
-        jobserver.submit(fn=len, args=("rejected",), timeout=0)
-        raise RuntimeError("Expected Blocked was not raised")
-    except Blocked:
-        info("Caught expected Blocked: no slots for new work")
-
-    # wait() blocks until the future is ready and returns True
-    info("wait() after: %s", future.wait())
-    # done() on a completed future also returns True (non-blocking)
-    info("done() after: %s", future.done())
-    info("Slow task result: %s", future.result())
+        # wait() blocks until the future is ready and returns True
+        info("wait() after: %s", future.wait())
+        # done() on a completed future also returns True (non-blocking)
+        info("done() after: %s", future.done())
+        info("Slow task result: %s", future.result())
 
 
 def task_slow(seconds: float) -> str:

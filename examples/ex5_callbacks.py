@@ -12,52 +12,53 @@ from jobserver import CallbackRaised, Jobserver
 
 def main() -> None:
     """Shows callbacks, exception handling, and CallbackRaised."""
-    jobserver = Jobserver(context="spawn", slots=2)
-    future1 = jobserver.submit(fn=len, args=("hello",))
+    with Jobserver(context="spawn", slots=2) as jobserver:
+        future1 = jobserver.submit(fn=len, args=("hello",))
 
-    # Register callbacks to fire after observing the future completes
-    # Callbacks receive exactly and only the arguments given to when_done(...)
-    accumulator: list = []
-    future1.when_done(accumulator.append, "first")
-    future1.when_done(accumulator.append, "second")
-    info("Result: %s", future1.result())
-    info("Callbacks fired: %s", accumulator)
+        # Register callbacks to fire after observing the future
+        # completes.  Callbacks receive exactly and only the
+        # arguments given to when_done(...).
+        accumulator: list = []
+        future1.when_done(accumulator.append, "first")
+        future1.when_done(accumulator.append, "second")
+        info("Result: %s", future1.result())
+        info("Callbacks fired: %s", accumulator)
 
-    # Unlike concurrent.futures.Future.add_done_callback(...), you must
-    # pass the future as an argument if wanting the callback to receive it.
-    future1.when_done(type, future1)
+        # Unlike concurrent.futures.Future.add_done_callback(...), you must
+        # pass the future as an argument if wanting the callback to receive it.
+        future1.when_done(type, future1)
 
-    # Registering a callback after completion causes it to immediately fire
-    future1.when_done(accumulator.append, "after-completion")
-    info("Callbacks after completion: %s", accumulator)
+        # Registering a callback after completion causes it to immediately fire
+        future1.when_done(accumulator.append, "after-completion")
+        info("Callbacks after completion: %s", accumulator)
 
-    # When a callback raises, CallbackRaised wraps the original exception.
-    # Each wait() fires the next pending callback; raising ones surface as
-    # CallbackRaised while succeeding ones run silently.  Loop until no
-    # error is raised to ensure all callbacks have been drained.
-    future2 = jobserver.submit(fn=len, args=("world",))
-    future2.when_done(raise_exception, klass=ValueError)
-    future2.when_done(raise_exception, klass=TypeError)
-    future2.when_done(accumulator.append, "survivor")
+        # When a callback raises, CallbackRaised wraps the original exception.
+        # Each wait() fires the next pending callback; raising ones surface as
+        # CallbackRaised while succeeding ones run silently.  Loop until no
+        # error is raised to ensure all callbacks have been drained.
+        future2 = jobserver.submit(fn=len, args=("world",))
+        future2.when_done(raise_exception, klass=ValueError)
+        future2.when_done(raise_exception, klass=TypeError)
+        future2.when_done(accumulator.append, "survivor")
 
-    for i in range(3):
-        try:
-            future2.wait()
-            info("wait() call %d: no more errors", i)
-            break
-        except CallbackRaised as e:
-            info(
-                "wait() call %d: caught %s",
-                i,
-                type(e.__cause__).__name__,
-            )
+        for i in range(3):
+            try:
+                future2.wait()
+                info("wait() call %d: no more errors", i)
+                break
+            except CallbackRaised as e:
+                info(
+                    "wait() call %d: caught %s",
+                    i,
+                    type(e.__cause__).__name__,
+                )
 
-    # The result is still available after all callbacks drain
-    info("Result after errors: %s", future2.result())
+        # The result is still available after all callbacks drain
+        info("Result after errors: %s", future2.result())
 
-    # Callbacks may register additional callbacks or be provided any future
-    future1.when_done(future1.when_done, tuple)
-    future1.when_done(future2.when_done, list)
+        # Callbacks may register additional callbacks or be provided any future
+        future1.when_done(future1.when_done, tuple)
+        future1.when_done(future2.when_done, list)
 
 
 def raise_exception(klass: type) -> None:

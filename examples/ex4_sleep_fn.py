@@ -19,35 +19,34 @@ from jobserver import Blocked, Jobserver
 
 def main() -> None:
     """Shows gating work acceptance on external conditions."""
-    jobserver = Jobserver(context="spawn", slots=2)
+    with Jobserver(context="spawn", slots=2) as jobserver:
+        with tempfile.NamedTemporaryFile() as tmp:
+            gate_path = tmp.name
+            info("Gate file: %s", gate_path)
 
-    with tempfile.NamedTemporaryFile() as tmp:
-        gate_path = tmp.name
-        info("Gate file: %s", gate_path)
+            # sleep_fn returns None (proceed) when gate exists, 0.1 otherwise
+            def sleep_fn_gate() -> Optional[float]:
+                if os.path.exists(gate_path):
+                    return None
+                return 0.1
 
-        # sleep_fn returns None (proceed) when gate exists, 0.1 otherwise
-        def sleep_fn_gate() -> Optional[float]:
-            if os.path.exists(gate_path):
-                return None
-            return 0.1
+            # Submission proceeds because the gate file exists
+            future = jobserver.submit(
+                fn=sorted, args=([3, 1, 2],), sleep_fn=sleep_fn_gate
+            )
+            info("With gate file: %s", future.result())
 
-        # Submission proceeds because the gate file exists
-        future = jobserver.submit(
-            fn=sorted, args=([3, 1, 2],), sleep_fn=sleep_fn_gate
-        )
-        info("With gate file: %s", future.result())
-
-    # Gate file is now removed; sleep_fn keeps returning 0.1 until timeout
-    try:
-        jobserver.submit(
-            fn=sorted,
-            args=([3, 1, 2],),
-            sleep_fn=sleep_fn_gate,
-            timeout=0.35,
-        )
-        raise RuntimeError("Expected Blocked was not raised")
-    except Blocked:
-        info("Caught expected Blocked: gate file absent")
+        # Gate file is now removed; sleep_fn keeps returning 0.1 until timeout
+        try:
+            jobserver.submit(
+                fn=sorted,
+                args=([3, 1, 2],),
+                sleep_fn=sleep_fn_gate,
+                timeout=0.35,
+            )
+            raise RuntimeError("Expected Blocked was not raised")
+        except Blocked:
+            info("Caught expected Blocked: gate file absent")
 
 
 if __name__ == "__main__":

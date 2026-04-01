@@ -21,6 +21,7 @@ def example(context: str) -> None:
     """Shows nested submissions sharing slot constraints."""
     # Using slots=2 here; slots=None would use os.sched_getaffinity(0)
     # to match the number of usable CPUs for the current process.
+    # Jobserver may be used as a context manager but isn't required.
     jobserver_a = Jobserver(context=context, slots=2)
 
     # slots=2: parent(1) + child(1) + grandchild(Blocked) -> depth 1
@@ -32,13 +33,14 @@ def example(context: str) -> None:
     assert depth_a == 1, depth_a
 
     # slots=4: depth 3 (N slots -> depth N-1)
-    jobserver_b = Jobserver(context=context, slots=4)
-    future_b = jobserver_b.submit(
-        fn=task_recurse, args=(jobserver_b, 10), timeout=5
-    )
-    depth_b = future_b.result()
-    info("context=%s: Reached depth %d with 4 slots", context, depth_b)
-    assert depth_b == 3, depth_b
+    # Jobserver may be used as a context manager but isn't required.
+    with Jobserver(context=context, slots=4) as jobserver_b:
+        future_b = jobserver_b.submit(
+            fn=task_recurse, args=(jobserver_b, 10), timeout=5
+        )
+        depth_b = future_b.result()
+        info("context=%s: Reached depth %d with 4 slots", context, depth_b)
+        assert depth_b == 3, depth_b
 
 
 def task_recurse(jobserver: Jobserver, max_depth: int) -> int:
