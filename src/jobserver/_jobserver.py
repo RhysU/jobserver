@@ -542,7 +542,6 @@ class Jobserver:
         *,
         args: Iterable = (),
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
-        callbacks: bool = True,
         consume: int = 1,
         env: Union[
             None,
@@ -558,7 +557,6 @@ class Jobserver:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
         Raises Blocked when insufficient resources available to accept work.
-        This method issues callbacks on completed work when callbacks is True.
         Timeout is given in seconds with None meaning block indefinitely.
 
         When consume == 0, no job slot is consumed by the submission.
@@ -582,8 +580,6 @@ class Jobserver:
             raise TypeError(f"args: Iterable, got {type(args).__name__}")
         if not isinstance(kwargs, Mapping):
             raise TypeError(f"kwargs: Mapping, got {type(kwargs).__name__}")
-        if not isinstance(callbacks, bool):
-            raise TypeError(f"callbacks: bool, got {type(callbacks).__name__}")
 
         # Resolve None to the instance-level default for each optional param
         env = self._env if env is None else env
@@ -594,11 +590,10 @@ class Jobserver:
         assert preexec_fn is not None
 
         # Next, either obtain requested tokens or else raise Blocked
-        # Work submission only reclaims tokens when callbacks are enabled
         tokens = _obtain_tokens(
             consume=consume,
             deadline=absolute_deadline(timeout),
-            reclaim_tokens_fn=self.reclaim_resources if callbacks else noop,
+            reclaim_tokens_fn=self.reclaim_resources,
             selector=self._selector,
             sleep_fn=sleep_fn,
             slots=self._slots,

@@ -32,7 +32,7 @@ class TestJobserverConcurrency(unittest.TestCase):
         Two threads calling wait() on the same Future concurrently must not
         cause an AttributeError or AssertionError.  This naturally happens
         when one thread calls reclaim_resources() while another is inside
-        submit() with callbacks=True.
+        submit().
         """
         with Jobserver(slots=4) as js:
             errors: list[Exception] = []

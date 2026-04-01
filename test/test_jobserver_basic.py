@@ -13,8 +13,10 @@ normal operation, slot exhaustion, timeouts, and edge-case payloads.
 import contextlib
 import copy
 import itertools
+import os
 import pickle
 import sys
+import tempfile
 import time
 import typing
 import unittest
@@ -27,6 +29,7 @@ from jobserver import (
 )
 
 from .helpers import (
+    barrier_wait,
     helper_callback,
     helper_nonblocking,
     helper_recurse,
@@ -59,91 +62,109 @@ class TestJobserverBasic(unittest.TestCase):
                 # Prepare how callbacks will be observed
                 mutable = [0, 0, 0]
 
-                # Prepare work filling all slots
-                context = get_context(method)
-                with Jobserver(context=context, slots=3) as js:
-                    f = js.submit(
-                        fn=len,
-                        args=((1, 2, 3),),
-                        callbacks=False,
-                        consume=1,
-                        timeout=None,
-                    )
-                    f.when_done(helper_callback, mutable, 0, 1)
-                    g = js.submit(
-                        fn=str,
-                        kwargs=dict(object=2),
-                        callbacks=False,
-                        consume=1,
-                        timeout=None,
-                    )
-                    g.when_done(helper_callback, mutable, 1, 2)
-                    g.when_done(helper_callback, mutable, 1, 3)
-                    h = js.submit(
-                        fn=len,
-                        args=((1,),),
-                        callbacks=False,
-                        consume=1,
-                        timeout=None,
-                    )
-                    h.when_done(
-                        helper_callback, lizt=mutable, index=2, increment=7
-                    )
+                # Use a barrier file to hold worker slots open during
+                # Blocked tests; workers block until the file appears.
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    barrier_path = os.path.join(tmpdir, "go")
 
-                    # Try too much work given fixed slot count
-                    with self.assertRaises(Blocked):
-                        js.submit(
-                            fn=len,
-                            args=((),),
-                            callbacks=False,
+                    # Prepare work filling all slots
+                    context = get_context(method)
+                    with Jobserver(context=context, slots=3) as js:
+                        f = js.submit(
+                            fn=barrier_wait,
+                            args=(barrier_path,),
                             consume=1,
+                            timeout=None,
+                        )
+                        f.when_done(helper_callback, mutable, 0, 1)
+                        g = js.submit(
+                            fn=barrier_wait,
+                            args=(barrier_path,),
+                            consume=1,
+                            timeout=None,
+                        )
+                        g.when_done(helper_callback, mutable, 1, 2)
+                        g.when_done(helper_callback, mutable, 1, 3)
+                        h = js.submit(
+                            fn=barrier_wait,
+                            args=(barrier_path,),
+                            consume=1,
+                            timeout=None,
+                        )
+                        h.when_done(
+                            helper_callback, lizt=mutable, index=2, increment=7
+                        )
+
+                        # Try too much work given fixed slot count
+                        with self.assertRaises(Blocked):
+                            js.submit(
+                                fn=len,
+                                args=((),),
+                                consume=1,
+                                timeout=0,
+                            )
+
+                        # Confirm zero-consumption requests accepted
+                        # immediately
+                        i = js.submit(
+                            fn=len,
+                            args=((1, 2, 3, 4),),
+                            consume=0,
                             timeout=0,
                         )
 
-                    # Confirm zero-consumption requests accepted immediately
-                    i = js.submit(
-                        fn=len,
-                        args=((1, 2, 3, 4),),
-                        callbacks=False,
-                        consume=0,
-                        timeout=0,
-                    )
+                        # Again, try too much work given fixed slot count
+                        with self.assertRaises(Blocked):
+                            js.submit(
+                                fn=len,
+                                args=((),),
+                                consume=1,
+                                timeout=0,
+                            )
 
-                    # Again, try too much work given fixed slot count
-                    with self.assertRaises(Blocked):
-                        js.submit(
-                            fn=len,
-                            args=((),),
-                            callbacks=False,
-                            consume=1,
-                            timeout=0,
+                        # Release all workers by creating the barrier file
+                        open(barrier_path, "w").close()
+
+                        # Confirm results and callbacks
+                        self.assertEqual("released", g.result())
+                        self.assertEqual(
+                            mutable[1], 5, "Two callbacks observed"
                         )
-
-                    # Confirm results in something other than submission order
-                    self.assertEqual("2", g.result())
-                    self.assertEqual(mutable[1], 5, "Two callbacks observed")
-                    if check_done:
-                        self.assertTrue(f.wait())
-                    self.assertTrue(h.wait())  # No check_done guard!
-                    self.assertEqual(mutable[2], 7)
-                    self.assertEqual(1, h.result())
-                    self.assertEqual(1, h.result(), "Multiple calls OK")
-                    h.when_done(
-                        helper_callback, lizt=mutable, index=2, increment=11
-                    )
-                    self.assertEqual(
-                        mutable[2], 18, "Callback after completion"
-                    )
-                    self.assertEqual(1, h.result())
-                    self.assertTrue(h.wait())
-                    self.assertEqual(mutable[2], 18, "Callbacks idempotent")
-                    self.assertEqual(4, i.result(), "Zero-consumption request")
-                    if check_done:
-                        self.assertTrue(g.wait())
-                        self.assertTrue(g.wait(), "Multiple calls OK")
-                    self.assertEqual(3, f.result())
-                    self.assertEqual(mutable[0], 1, "One callback observed")
-                    self.assertEqual(4, i.result(), "Zero-consumption repeat")
+                        if check_done:
+                            self.assertTrue(f.wait())
+                        self.assertTrue(h.wait())  # No check_done guard!
+                        self.assertEqual(mutable[2], 7)
+                        self.assertEqual("released", h.result())
+                        self.assertEqual(
+                            "released", h.result(), "Multiple calls OK"
+                        )
+                        h.when_done(
+                            helper_callback,
+                            lizt=mutable,
+                            index=2,
+                            increment=11,
+                        )
+                        self.assertEqual(
+                            mutable[2], 18, "Callback after completion"
+                        )
+                        self.assertEqual("released", h.result())
+                        self.assertTrue(h.wait())
+                        self.assertEqual(
+                            mutable[2], 18, "Callbacks idempotent"
+                        )
+                        self.assertEqual(
+                            4, i.result(), "Zero-consumption request"
+                        )
+                        if check_done:
+                            self.assertTrue(g.wait())
+                            self.assertTrue(g.wait(), "Multiple calls OK")
+                        self.assertEqual("released", f.result())
+                        self.assertEqual(
+                            mutable[0], 1, "One callback observed"
+                        )
+                        self.assertEqual(
+                            4, i.result(), "Zero-consumption repeat"
+                        )
 
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self) -> None:
@@ -270,8 +291,8 @@ class TestJobserverBasic(unittest.TestCase):
                 with Jobserver(context=context, slots=slots) as js:
                     # Alternate between submissions with/without timeouts
                     kwargs: list[dict[str, typing.Any]] = [
-                        dict(callbacks=True, timeout=None),
-                        dict(callbacks=True, timeout=1000),
+                        dict(timeout=None),
+                        dict(timeout=1000),
                     ]
                     fs = [
                         js.submit(fn=len, args=("x" * i,), **(kwargs[i % 2]))
