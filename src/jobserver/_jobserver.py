@@ -123,11 +123,15 @@ class ExceptionWrapper(Wrapper[T]):
 
 
 # Callback priorities for the Future heapq-based callback queue.
-# Token restoration fires first, user callbacks in the middle,
-# and sentinel cleanup fires last.
-_PRIORITY_TOKEN = 0
-_PRIORITY_USER = 1
-_PRIORITY_CLEANUP = 2
+# Token restoration fires first so that submit() can reclaim freed slots
+# without triggering user callbacks.  User callbacks fire second.
+# Sentinel unregistration fires last: this keeps the future discoverable
+# via the selector across successive reclaim_resources() calls while any
+# user callbacks remain, since a dead process sentinel stays permanently
+# readable and selector.select() uses that to re-find the future.
+_PRIORITY_TOKEN = 0    # _restore_tokens
+_PRIORITY_USER = 1     # registered via when_done()
+_PRIORITY_CLEANUP = 2  # _unregister_sentinel
 
 
 def _callback_wrapper(fn, *args, **kwargs) -> None:
@@ -538,14 +542,16 @@ class Jobserver:
 
         Internal helper used both by the public reclaim_resources() and by
         the token-acquisition loop in submit().  When called with
-        _PRIORITY_TOKEN only slot-restoration callbacks fire, so user
-        callbacks cannot escape into submit() as CallbackRaised.
+        _PRIORITY_TOKEN only slot-restoration fires, so user callbacks cannot
+        escape into submit() as CallbackRaised.  The sentinel stays registered
+        until _PRIORITY_CLEANUP fires, keeping the future discoverable by
+        subsequent reclaim_resources() calls while user callbacks remain.
         """
         # O(k) where k = newly completed futures.  The persistent
         # selector maintains the interest set incrementally so no
         # O(N) rebuild occurs on each call.  select(timeout=0) is
         # a non-blocking poll returning only the k ready entries.
-        # done() triggers callbacks mutating the selector.
+        # _done() triggers callbacks that mutate the selector.
         for key, _ in self._selector.select(timeout=0):
             assert isinstance(key.data, Future), type(key.data)
             key.data._done(priority_max=priority_max)
@@ -664,16 +670,17 @@ class Jobserver:
             raise
 
         # As above process.start() succeeded, now Future must restore tokens
+        # then unregister the sentinel.  _unregister_sentinel fires last
+        # (_PRIORITY_CLEANUP) so that the selector keeps finding this future
+        # on each reclaim_resources() call until all user callbacks have run.
+        # _process is passed unused to _unregister_sentinel to hold a
+        # reference and prevent premature GC, which would close the sentinel
+        # fd and silently remove it from epoll before cleanup fires.
         future._when_done(
             fn=_restore_tokens,
             args=(self._slots, tokens),
             priority=_PRIORITY_TOKEN,
         )
-
-        # After token restoration, stop tracking this Future's sentinel.
-        # Prevent premature garbage collection of process (which closes
-        # the sentinel fd and silently removes it from epoll) by
-        # holding a reference until this last-priority callback fires.
         future._when_done(
             fn=_unregister_sentinel,
             args=(self._selector, process.sentinel, process),
