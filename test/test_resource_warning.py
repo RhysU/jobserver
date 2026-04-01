@@ -21,52 +21,40 @@ def setUpModule() -> None:
 class TestResourceWarning(unittest.TestCase):
     """Jobserver emits ResourceWarning when finalized with running Futures."""
 
-    def test_warning_emitted_with_running_future(self) -> None:
-        """__del__ warns when outstanding Futures remain."""
-        js = Jobserver(context=FAST, slots=1)
-        f = js.submit(fn=helper_return, args=(42,))
-        f.result(timeout=TIMEOUT)
-        # Re-submit so a Future is outstanding at finalization time.
-        f2 = js.submit(fn=helper_return, args=(99,))
-        # Drop the Jobserver without closing it.
+    def _assert_no_resource_warning(self, js: Jobserver) -> None:
+        """Assert that finalizing *js* emits no ResourceWarning."""
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             del js
             gc.collect()
-        resource_warnings = [
-            w for w in caught if issubclass(w.category, ResourceWarning)
-        ]
-        self.assertEqual(len(resource_warnings), 1)
-        self.assertIn("running Future(s)", str(resource_warnings[0].message))
-        # Clean up the orphaned future (best-effort).
-        try:
-            f2.result(timeout=TIMEOUT)
-        except Exception:
-            pass
+        self.assertEqual(
+            [w for w in caught if issubclass(w.category, ResourceWarning)],
+            [],
+        )
+
+    def test_warning_emitted_with_running_future(self) -> None:
+        """__del__ warns when outstanding Futures remain."""
+        js = Jobserver(context=FAST, slots=1)
+        # One submit is enough: _selector_map retains the entry until
+        # reclaim_resources() or __exit__, so the subprocess finishing
+        # before del/gc does not create a race.
+        _f = js.submit(fn=helper_return, args=(42,))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            del js
+            gc.collect()
+        rw = [w for w in caught if issubclass(w.category, ResourceWarning)]
+        self.assertEqual(len(rw), 1)
+        self.assertRegex(str(rw[0].message), r"Finalizing .* running Future")
+        self.assertIsNotNone(rw[0].source)
 
     def test_no_warning_when_properly_closed(self) -> None:
         """__del__ is silent after the context manager cleans up."""
         with Jobserver(context=FAST, slots=1) as js:
             f = js.submit(fn=helper_return, args=(42,))
             f.result(timeout=TIMEOUT)
-        # js.__exit__ already ran; dropping the last reference is safe.
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            del js
-            gc.collect()
-        resource_warnings = [
-            w for w in caught if issubclass(w.category, ResourceWarning)
-        ]
-        self.assertEqual(len(resource_warnings), 0)
+        self._assert_no_resource_warning(js)
 
     def test_no_warning_when_no_futures_submitted(self) -> None:
         """__del__ is silent when no Futures were ever submitted."""
-        js = Jobserver(context=FAST, slots=1)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            del js
-            gc.collect()
-        resource_warnings = [
-            w for w in caught if issubclass(w.category, ResourceWarning)
-        ]
-        self.assertEqual(len(resource_warnings), 0)
+        self._assert_no_resource_warning(Jobserver(context=FAST, slots=1))
