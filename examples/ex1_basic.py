@@ -21,7 +21,7 @@ def main() -> None:
         # Simpler shorthand via Jobserver.__call__(...) with positional args
         future_b = jobserver(len, (1, 2, 3))
 
-        # Simpler shorthand also permits kwargs or mixed args/kwargs (not shown)
+        # Shorthand also permits kwargs or mixed args/kwargs (not shown)
         future_c = jobserver(str, object=42)
 
         # Results retrieved in arbitrary order

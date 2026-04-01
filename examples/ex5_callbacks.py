@@ -15,8 +15,9 @@ def main() -> None:
     with Jobserver(context="spawn", slots=2) as jobserver:
         future1 = jobserver.submit(fn=len, args=("hello",))
 
-        # Register callbacks to fire after observing the future completes
-        # Callbacks receive exactly and only the arguments given to when_done(...)
+        # Register callbacks to fire after observing the future
+        # completes.  Callbacks receive exactly and only the
+        # arguments given to when_done(...).
         accumulator: list = []
         future1.when_done(accumulator.append, "first")
         future1.when_done(accumulator.append, "second")

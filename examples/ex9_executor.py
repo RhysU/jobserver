@@ -28,7 +28,7 @@ def main() -> None:
     # Jobserver configuration applies to any JobserverExecutor backed by it.
     with Jobserver(context="spawn", slots=1, preexec_fn=process_start) as js:
         with JobserverExecutor(js) as executor:
-            # map() applies a function to every item and yields results in order
+            # map() applies fn to every item, yielding results in order
             lengths = list(
                 executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"])
             )
@@ -49,7 +49,7 @@ def main() -> None:
             except CancelledError:
                 pass
 
-            # Collect the slow task's result; executor shuts down cleanly on exit
+            # Collect the slow task's result; executor exits cleanly
             assert slow.result() is None
 
 
