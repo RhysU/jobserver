@@ -37,32 +37,14 @@ class JobserverExecutor(concurrent.futures.Executor):
 
     Decouples submission from dispatch so that returned
     concurrent.futures.Future instances are genuinely PENDING and
-    cancellable before execution begins.  A dispatcher process
-    manages slot acquisition and worker spawning via the Jobserver,
-    while a thin receiver thread bridges results back to
-    concurrent.futures.Future instances.
-
-    When constructed with jobserver=None (the default), a default
-    Jobserver is created internally and owned by the executor.
-    shutdown(wait=True) will close it automatically.
-
-    When an explicit Jobserver is provided, the executor does not own
-    it.  shutdown() releases only executor-internal resources
-    (dispatcher process, receiver thread, pipes).  The caller closes
-    the Jobserver.
+    cancellable before execution begins.
     """
 
     def __init__(self, jobserver: Optional[Jobserver] = None) -> None:
         """Initialize the executor with an optional Jobserver.
 
         When jobserver is None, a default-constructed Jobserver is
-        created and owned by this executor; shutdown(wait=True) will
-        close it automatically.  Slot count defaults to the number of
-        usable CPUs; the default multiprocessing context is used.
-
-        When jobserver is provided, slot count, start method, and
-        other execution parameters are controlled by that instance,
-        and the caller is responsible for closing it.
+        created and owned by this executor.
         """
         # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
@@ -160,16 +142,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         chunksize: int = 1,
         buffersize: Optional[int] = None,
     ) -> Iterator[T]:
-        """Return an iterator of fn applied to each iterables entry.
-
-        Calls may be evaluated out-of-order.  Raises TimeoutError if
-        results cannot be generated before timeout seconds elapse.
-        Chunksize groups calls into batches sent to each worker.
-        Buffersize limits outstanding submissions; None collects all
-        inputs eagerly.
-
-        Overrides Executor.map() for efficiency.
-        """
+        """Return an iterator of fn applied to each iterables entry."""
         return self._jobserver.map(
             fn=fn,
             argses=zip(*iterables),
@@ -181,14 +154,7 @@ class JobserverExecutor(concurrent.futures.Executor):
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
-        """Shut down the executor, optionally cancelling pending futures.
-
-        When the executor owns its Jobserver (constructed with
-        jobserver=None), shutdown(wait=True) also closes the Jobserver
-        after all dispatcher and receiver activity has finished.
-        When an explicit Jobserver was provided, it is not closed here;
-        the caller remains responsible for closing it.
-        """
+        """Shut down the executor, optionally cancelling pending futures."""
         with self._lock:
             already = self._shutdown
             self._shutdown = True
