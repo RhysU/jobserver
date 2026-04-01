@@ -53,7 +53,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         self._futures: dict[int, concurrent.futures.Future] = {}
 
         # Own the jobserver when none is supplied; caller owns it otherwise.
-        self._own_jobserver: bool = jobserver is None
+        self._own_jobserver = jobserver is None
         if jobserver is None:
             jobserver = Jobserver()
 
