@@ -28,7 +28,7 @@ def example(context: str) -> None:
         fn=task_recurse, args=(jobserver_a, 10), timeout=5
     )
     depth_a = future_a.result()
-    info("context=%s: Reached recursion depth %d with 2 slots", context, depth_a)
+    info("context=%s: Reached depth %d with 2 slots", context, depth_a)
     assert depth_a == 1, depth_a
 
     # slots=4: depth 3 (N slots -> depth N-1)
@@ -37,7 +37,7 @@ def example(context: str) -> None:
         fn=task_recurse, args=(jobserver_b, 10), timeout=5
     )
     depth_b = future_b.result()
-    info("context=%s: Reached recursion depth %d with 4 slots", context, depth_b)
+    info("context=%s: Reached depth %d with 4 slots", context, depth_b)
     assert depth_b == 3, depth_b
 
 
