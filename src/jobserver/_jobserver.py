@@ -448,7 +448,7 @@ class Jobserver:
         n = len(self._selector_map)
         if n > 0:
             warnings.warn(
-                f"unclosed {self!r}",
+                f"Finalizing {self!r} with running Future(s)",
                 ResourceWarning,
                 stacklevel=2,
                 source=self,
