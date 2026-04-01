@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 10 shows JobserverExecutor with and without an explicit Jobserver."""
+"""Example 10 shows JobserverExecutor with an owned or shared Jobserver."""
 
 import os
 import time
@@ -27,18 +27,14 @@ def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
     # Pattern A: executor owns its Jobserver -- no explicit Jobserver needed.
     with JobserverExecutor() as executor:
-        lengths = list(
-            executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"])
-        )
+        lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
         info("lengths via map (owned jobserver): %s", lengths)
 
     # Pattern B: caller owns the Jobserver and passes it to the executor.
     js = Jobserver(context="spawn", slots=1, preexec_fn=process_start)
     with js, JobserverExecutor(js) as executor:
         # map() applies fn to every item, yielding results in order
-        lengths = list(
-            executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"])
-        )
+        lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
         info("lengths via map (shared jobserver): %s", lengths)
 
         # Submit a slow task that holds the only available slot
