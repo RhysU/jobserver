@@ -43,6 +43,7 @@ Issues = "https://github.com/RhysU/jobserver/issues"
 line-length = 79
 target-version = ["py39", "py310", "py311", "py312", "py313", "py314"]
 
+# NB: Typehinting tests are tedious relative to the benefits they provide.
 [tool.mypy]
 files = ["src", "examples"]  # test/ deliberately excluded
 

@@ -12,7 +12,7 @@ done
 # Then, linting (PEP8, imports, bugbear, pyupgrade)
 uvx ruff check
 
-# Then, Typehint linting requires a new-enough mypy
+# Then, typehint with a newer mypy
 uvx --from "mypy>1.18" mypy
 
 # Then, check for formatting issues
