@@ -18,6 +18,7 @@ import types
 import warnings
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import AbstractContextManager, ExitStack
 from itertools import islice
 
 # Implementation depends upon an explicit subset of multiprocessing
@@ -44,6 +45,13 @@ __all__ = (
 )
 
 T = TypeVar("T")
+
+# preexec_fn may return None (plain setup) or a context manager
+# that wraps fn execution, providing entry/exit semantics.
+PreexecFn = Callable[[], Union[None, AbstractContextManager]]
+# sleep_fn returns None when work is acceptable or a non-negative
+# number of seconds for which the process should sleep before retrying.
+SleepFn = Callable[[], Optional[float]]
 
 
 class Blocked(Exception):
@@ -412,8 +420,8 @@ class Jobserver:
             Mapping[str, Optional[str]],
             Iterable[tuple[str, Optional[str]]],
         ] = (),
-        preexec_fn: Callable[[], None] = noop,
-        sleep_fn: Callable[[], Optional[float]] = noop,
+        preexec_fn: PreexecFn = noop,
+        sleep_fn: SleepFn = noop,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -423,7 +431,7 @@ class Jobserver:
         which reports the number of usable CPUs for the current process.
 
         The env, preexec_fn, and sleep_fn parameters set instance-level
-        defaults for submit(...).
+        defaults for submit(...).  See submit() for preexec_fn semantics.
         """
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
@@ -593,10 +601,8 @@ class Jobserver:
             Mapping[str, Optional[str]],
             Iterable[tuple[str, Optional[str]]],
         ] = None,
-        preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
-        sleep_fn: Optional[  # None uses instance default
-            Callable[[], Optional[float]]
-        ] = None,
+        preexec_fn: Optional[PreexecFn] = None,  # None: use default
+        sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
@@ -607,7 +613,12 @@ class Jobserver:
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
         When env provided, child updates os.environ unsetting None-valued keys.
-        When preexec_fn provided, child calls it just before fn(...).
+
+        The preexec_fn callable is invoked in the child just before fn.
+        If preexec_fn() returns a context manager, fn runs inside it;
+        if it returns None, it acts as a plain pre-execution hook.
+        A context manager's __exit__ may suppress exceptions from fn,
+        in which case the result is None.
 
         Optional sleep_fn() permits injecting additional logic as
         to when a slot may be consumed.  For example, one can accept work
@@ -733,10 +744,8 @@ class Jobserver:
             Mapping[str, Optional[str]],
             Iterable[tuple[str, Optional[str]]],
         ] = None,
-        preexec_fn: Optional[Callable[[], None]] = None,  # None: use default
-        sleep_fn: Optional[  # None uses instance default
-            Callable[[], Optional[float]]
-        ] = None,
+        preexec_fn: Optional[PreexecFn] = None,  # None: use default
+        sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
         chunksize: int = 1,
         buffersize: Optional[int] = None,
@@ -757,7 +766,7 @@ class Jobserver:
         workers in groups of chunksize.
 
         When env provided, child updates os.environ unsetting None-valued keys.
-        When preexec_fn provided, child calls it just before fn(...).
+        See submit() for preexec_fn semantics.
 
         Optional sleep_fn() permits injecting additional logic as
         to when a slot may be consumed.
@@ -813,8 +822,16 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        preexec_fn()
-        result = ResultWrapper(fn(*args, **kwargs))
+        # preexec_fn() may return a context manager wrapping fn execution.
+        # If __exit__ suppresses an exception from fn, raw keeps its
+        # pre-call value of None so the result becomes ResultWrapper(None).
+        raw = None
+        with ExitStack() as stack:
+            cm = preexec_fn()
+            if cm is not None:
+                stack.enter_context(cm)
+            raw = fn(*args, **kwargs)
+        result = ResultWrapper(raw)
     except Exception as exception:
         result = ExceptionWrapper(exception)
     finally:
@@ -835,7 +852,7 @@ def _obtain_tokens(
     deadline: float,
     reclaim_tokens_fn: Callable[[], Any],
     selector: DefaultSelector,
-    sleep_fn: Callable[[], Optional[float]],
+    sleep_fn: SleepFn,
     slots: MinimalQueue[int],
     *,
     resolution: float = 1.0e-2,
@@ -923,8 +940,8 @@ def _map_generate(
         Mapping[str, Optional[str]],
         Iterable[tuple[str, Optional[str]]],
     ] = None,
-    preexec_fn: Optional[Callable[[], None]] = None,
-    sleep_fn: Optional[Callable[[], Optional[float]]] = None,
+    preexec_fn: Optional[PreexecFn] = None,
+    sleep_fn: Optional[SleepFn] = None,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map() which yields results in order."""
     futures: deque[Future] = deque()  # Future[list[T]] in practice

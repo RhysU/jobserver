@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 7 shows non-blocking polling, finite deadlines, and Blocked."""
+"""Example 8 shows non-blocking polling, finite deadlines, and Blocked."""
 
 import time
 from logging import INFO, basicConfig, captureWarnings, info

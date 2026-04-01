@@ -123,6 +123,38 @@ def helper_preexec_fn() -> None:
     os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
 
 
+class HelperContextManager:
+    """A picklable context manager recording entry/exit via os.environ."""
+
+    def __enter__(self):
+        os.environ["JOBSERVER_TEST_CM"] = "ENTERED"
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        os.environ["JOBSERVER_TEST_CM"] = "EXITED"
+        return False
+
+
+class HelperSuppressingContextManager:
+    """A picklable context manager that suppresses exceptions."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return exc_type is not None
+
+
+def helper_preexec_cm() -> HelperContextManager:
+    """Factory returning a context manager that records entry/exit."""
+    return HelperContextManager()
+
+
+def helper_preexec_suppressing_cm() -> HelperSuppressingContextManager:
+    """Factory returning a context manager that suppresses exceptions."""
+    return HelperSuppressingContextManager()
+
+
 def helper_current_process_name() -> str:
     """Return the name of the current process."""
     return multiprocessing.current_process().name
