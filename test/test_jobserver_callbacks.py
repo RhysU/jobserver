@@ -62,14 +62,10 @@ class TestJobserverCallbacks(unittest.TestCase):
             f.when_done(helper_raise, ZeroDivisionError, "45")
             with self.assertRaises(CallbackRaised) as c:
                 f.wait(timeout=None)
-            self.assertIsInstance(
-                c.exception.__cause__, ArithmeticError
-            )
+            self.assertIsInstance(c.exception.__cause__, ArithmeticError)
             with self.assertRaises(CallbackRaised) as c:
                 f.wait(timeout=None)
-            self.assertIsInstance(
-                c.exception.__cause__, ZeroDivisionError
-            )
+            self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
             self.assertTrue(f.wait(timeout=None))
             self.assertTrue(f.done())
 
@@ -106,9 +102,7 @@ class TestJobserverCallbacks(unittest.TestCase):
             for i in range(5):
                 with self.assertRaises(CallbackRaised) as c:
                     f.wait(timeout=5)
-                self.assertIsInstance(
-                    c.exception.__cause__, ValueError
-                )
+                self.assertIsInstance(c.exception.__cause__, ValueError)
                 self.assertIn(f"cb-{i}", str(c.exception.__cause__))
             self.assertTrue(f.done())
             self.assertEqual(f.result(), 1)
@@ -216,9 +210,7 @@ class TestJobserverCallbacks(unittest.TestCase):
             # blocks until "a" is done then fires its callbacks.
             with self.assertRaises(CallbackRaised) as ctx:
                 b = js.submit(fn=len, args=((1, 2),), timeout=5)
-                self.assertIsInstance(
-                    ctx.exception.__cause__, ValueError
-                )
+                self.assertIsInstance(ctx.exception.__cause__, ValueError)
                 self.assertIn("from-cb", str(ctx.exception.__cause__))
 
             # The caller MAY re-submit and should see "b" complete
