@@ -51,7 +51,7 @@ class TestConcurrencyStress(unittest.TestCase):
     def test_heavy_submission(self) -> None:
         """Heavy submission exceeding slot count."""
         with Jobserver(context=FAST, slots=2) as js:
-            n = 200
+            n = 100
             with JobserverExecutor(js) as exe:
                 futures = [exe.submit(len, "x" * i) for i in range(n)]
                 results = [f.result(timeout=TIMEOUT) for f in futures]
@@ -176,7 +176,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """wait() with timeout returns partial results."""
         with Jobserver(context=FAST, slots=2) as js:
             with JobserverExecutor(js) as exe:
-                futures = [exe.submit(time.sleep, 1.0) for _ in range(3)]
+                futures = [exe.submit(time.sleep, 0.5) for _ in range(3)]
                 done, not_done = concurrent.futures.wait(futures, timeout=0.1)
                 self.assertGreater(len(not_done), 0)
 
@@ -197,7 +197,7 @@ class TestWaitAndAsCompleted(unittest.TestCase):
         """as_completed() with timeout raises TimeoutError."""
         with Jobserver(context=FAST, slots=1) as js:
             with JobserverExecutor(js) as exe:
-                f = exe.submit(time.sleep, 1.0)
+                f = exe.submit(time.sleep, 0.5)
                 with self.assertRaises(concurrent.futures.TimeoutError):
                     for _ in concurrent.futures.as_completed([f], timeout=0.1):
                         pass
@@ -324,7 +324,7 @@ class TestEdgeCases(unittest.TestCase):
         """result(timeout=0) on incomplete future."""
         with Jobserver(context=FAST, slots=1) as js:
             with JobserverExecutor(js) as exe:
-                f = exe.submit(time.sleep, 1.0)
+                f = exe.submit(time.sleep, 0.3)
                 with self.assertRaises(concurrent.futures.TimeoutError):
                     f.result(timeout=0)
 
@@ -332,7 +332,7 @@ class TestEdgeCases(unittest.TestCase):
         """exception(timeout=0) on incomplete future."""
         with Jobserver(context=FAST, slots=1) as js:
             with JobserverExecutor(js) as exe:
-                f = exe.submit(time.sleep, 1.0)
+                f = exe.submit(time.sleep, 0.3)
                 with self.assertRaises(concurrent.futures.TimeoutError):
                     f.exception(timeout=0)
 

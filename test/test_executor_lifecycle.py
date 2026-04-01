@@ -93,7 +93,7 @@ class TestCancellation(unittest.TestCase):
         with Jobserver(context=FAST, slots=1) as js:
             exe = JobserverExecutor(js)
             try:
-                blocker = exe.submit(time.sleep, 1.0)
+                blocker = exe.submit(time.sleep, 0.5)
                 time.sleep(0.1)
                 f = exe.submit(len, (1, 2, 3))
                 time.sleep(0.05)
@@ -127,11 +127,11 @@ class TestShutdown(unittest.TestCase):
         """shutdown(wait=False) returns immediately."""
         with Jobserver(context=FAST, slots=2) as js:
             exe = JobserverExecutor(js)
-            f = exe.submit(time.sleep, 1.0)
+            f = exe.submit(time.sleep, 0.5)
             t0 = time.monotonic()
             exe.shutdown(wait=False)
             elapsed = time.monotonic() - t0
-            self.assertLess(elapsed, 0.5)
+            self.assertLess(elapsed, 0.3)
             # Future should eventually complete
             f.result(timeout=TIMEOUT)
 
@@ -139,7 +139,7 @@ class TestShutdown(unittest.TestCase):
         """shutdown(cancel_futures=True) cancels pending."""
         with Jobserver(context=FAST, slots=1) as js:
             exe = JobserverExecutor(js)
-            blocker = exe.submit(time.sleep, 1.0)
+            blocker = exe.submit(time.sleep, 0.5)
             time.sleep(0.2)
             pending = [exe.submit(len, (i,)) for i in range(5)]
             exe.shutdown(wait=True, cancel_futures=True)

@@ -74,7 +74,7 @@ class TestDesignShortcoming(unittest.TestCase):
                     future = js.submit(
                         fn=_child_work, args=(js, 0.5), timeout=5
                     )
-                    time.sleep(1.0)  # Let Child start and submit Grandchild
+                    time.sleep(0.5)  # Let Child start and submit Grandchild
 
                     # Kill the intermediate Child and collect it
                     future.wait(signal=signal.SIGKILL, timeout=5)
@@ -82,7 +82,7 @@ class TestDesignShortcoming(unittest.TestCase):
                         future.result()
 
                     # Grandchild finishes but nobody reclaims its token
-                    time.sleep(2.0)
+                    time.sleep(1.0)
 
                     # One fewer slot is usable now: the last is leaked.
                     # Hold workers alive so their tokens stay consumed.
