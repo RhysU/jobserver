@@ -13,7 +13,8 @@ import ctypes
 import ctypes.util
 import os
 import signal
-from logging import INFO, basicConfig, info
+import sys
+from logging import INFO, basicConfig, info, warning
 
 from jobserver import Jobserver
 
@@ -57,4 +58,7 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    main()
+    if sys.platform == "linux":
+        main()
+    else:
+        warning("PR_SET_PDEATHSIG unavailable on %s; skipping", sys.platform)
