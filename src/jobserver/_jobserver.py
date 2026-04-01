@@ -15,6 +15,7 @@ import signal
 import threading
 import time
 import types
+import warnings
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from itertools import islice
@@ -442,6 +443,23 @@ class Jobserver:
         method = self._context.get_start_method()
         n = len(self._selector_map)
         return f"Jobserver({method!r}, tracked={n})"
+
+    def __del__(self) -> None:
+        """Emit ResourceWarning if any Futures are still running.
+
+        A Jobserver with no undone Futures is implicitly closed upon
+        finalization; one with running Futures emits a ResourceWarning.
+        """
+        n = len(self._selector_map)
+        if n > 0:
+            warnings.warn(
+                f"Finalizing {self!r} with running Future(s)",
+                ResourceWarning,
+                stacklevel=2,
+                source=self,
+            )
+        self._slots.close_put()
+        self._slots.close_get()
 
     def __enter__(self) -> "Jobserver":
         return self

@@ -11,7 +11,7 @@ Availability of RAM is a more common use case but ill-suited for an example.
 
 import os
 import tempfile
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, captureWarnings, info
 from typing import Optional
 
 from jobserver import Blocked, Jobserver
@@ -55,4 +55,5 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     main()

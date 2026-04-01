@@ -8,7 +8,7 @@
 import os
 import time
 from concurrent.futures import CancelledError
-from logging import DEBUG, INFO, basicConfig, getLogger, info
+from logging import DEBUG, INFO, basicConfig, captureWarnings, getLogger, info
 
 from jobserver import Jobserver, JobserverExecutor
 
@@ -55,4 +55,5 @@ if __name__ == "__main__":
     # Configure logging, showing lifecycle messages, and announce startup
     process_start()
     getLogger("jobserver").setLevel(DEBUG)
+    captureWarnings(True)
     main()
