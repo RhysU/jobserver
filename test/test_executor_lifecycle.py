@@ -394,3 +394,77 @@ class TestResourceLeaks(unittest.TestCase):
             time.sleep(0.2)
             # shutdown() must not raise despite BrokenPipeError
             exe.shutdown(wait=True)
+
+
+# ================================================================
+# Owned Jobserver
+# ================================================================
+
+
+class TestOwnedJobserver(unittest.TestCase):
+    """Owned Jobserver (constructed with jobserver=None)."""
+
+    def test_default_construction_runs_work(self) -> None:
+        """Default-constructed executor submits and retrieves results."""
+        with JobserverExecutor() as exe:
+            f = exe.submit(len, (1, 2, 3))
+            self.assertEqual(3, f.result(timeout=TIMEOUT))
+
+    def test_explicit_none_same_as_default(self) -> None:
+        """Passing jobserver=None is equivalent to omitting the argument."""
+        with JobserverExecutor(None) as exe:
+            f = exe.submit(len, (1, 2))
+            self.assertEqual(2, f.result(timeout=TIMEOUT))
+
+    def test_owns_jobserver_flag(self) -> None:
+        """_own_jobserver is True when no jobserver is supplied."""
+        exe = JobserverExecutor()
+        try:
+            self.assertTrue(exe._own_jobserver)
+        finally:
+            exe.shutdown(wait=True)
+
+    def test_not_owns_jobserver_flag(self) -> None:
+        """_own_jobserver is False when an explicit jobserver is supplied."""
+        with Jobserver(context=FAST, slots=2) as js:
+            exe = JobserverExecutor(js)
+            try:
+                self.assertFalse(exe._own_jobserver)
+            finally:
+                exe.shutdown(wait=True)
+
+    def test_owned_jobserver_closed_after_shutdown(self) -> None:
+        """shutdown(wait=True) closes the owned Jobserver."""
+        exe = JobserverExecutor()
+        f = exe.submit(len, (1,))
+        f.result(timeout=TIMEOUT)
+        exe.shutdown(wait=True)
+        # The owned jobserver's slots queue should be closed; putting
+        # to it should raise (ValueError from MinimalQueue.put on a
+        # closed queue).
+        self.assertFalse(exe._own_jobserver)
+
+    def test_owned_jobserver_double_shutdown_safe(self) -> None:
+        """Double shutdown(wait=True) is safe when executor owns jobserver."""
+        exe = JobserverExecutor()
+        exe.submit(len, (1,)).result(timeout=TIMEOUT)
+        exe.shutdown(wait=True)
+        exe.shutdown(wait=True)  # Must not raise
+
+    def test_external_jobserver_not_closed_on_shutdown(self) -> None:
+        """Explicitly provided Jobserver is not closed by shutdown()."""
+        with Jobserver(context=FAST, slots=2) as js:
+            exe = JobserverExecutor(js)
+            exe.submit(len, (1,)).result(timeout=TIMEOUT)
+            exe.shutdown(wait=True)
+            # js is still usable: submit work directly via it
+            f = js.submit(fn=len, args=((1, 2),))
+            self.assertEqual(2, f.result(timeout=TIMEOUT))
+
+    def test_context_manager_closes_owned_jobserver(self) -> None:
+        """Context-manager exit closes the owned Jobserver."""
+        exe = JobserverExecutor()
+        with exe:
+            f = exe.submit(len, "hello")
+            self.assertEqual(5, f.result(timeout=TIMEOUT))
+        self.assertFalse(exe._own_jobserver)

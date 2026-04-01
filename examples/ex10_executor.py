@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 10 shows JobserverExecutor as a context manager."""
+"""Example 10 shows JobserverExecutor with an owned or shared Jobserver."""
 
 import os
 import time
@@ -25,32 +25,35 @@ def process_start() -> None:
 
 def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
-    # Jobserver configuration applies to any JobserverExecutor backed by it.
-    with Jobserver(context="spawn", slots=1, preexec_fn=process_start) as js:
-        with JobserverExecutor(js) as executor:
-            # map() applies fn to every item, yielding results in order
-            lengths = list(
-                executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"])
-            )
-            info("lengths via map: %s", lengths)
+    # Pattern A: executor owns its Jobserver -- no explicit Jobserver needed.
+    with JobserverExecutor() as executor:
+        lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
+        info("lengths via map (owned jobserver): %s", lengths)
 
-            # Submit a slow task that holds the only available slot
-            slow = executor.submit(time.sleep, 0.5)
+    # Pattern B: caller owns the Jobserver and passes it to the executor.
+    js = Jobserver(context="spawn", slots=1, preexec_fn=process_start)
+    with js, JobserverExecutor(js) as executor:
+        # map() applies fn to every item, yielding results in order
+        lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
+        info("lengths via map (shared jobserver): %s", lengths)
 
-            # Because of slow, this future queues as PENDING and is cancellable
-            pending = executor.submit(len, "pending")
+        # Submit a slow task that holds the only available slot
+        slow = executor.submit(time.sleep, 0.5)
 
-            # Cancel PENDING future before it is dispatched to a worker
-            cancelled = pending.cancel()
-            info("pending cancelled: %s", cancelled)
-            try:
-                pending.result()
-                raise AssertionError("Unexpected")
-            except CancelledError:
-                pass
+        # Because of slow, this future queues as PENDING and is cancellable
+        pending = executor.submit(len, "pending")
 
-            # Collect the slow task's result; executor exits cleanly
-            assert slow.result() is None
+        # Cancel PENDING future before it is dispatched to a worker
+        cancelled = pending.cancel()
+        info("pending cancelled: %s", cancelled)
+        try:
+            pending.result()
+            raise AssertionError("Unexpected")
+        except CancelledError:
+            pass
+
+        # Collect the slow task's result; executor exits cleanly
+        assert slow.result() is None
 
 
 if __name__ == "__main__":
