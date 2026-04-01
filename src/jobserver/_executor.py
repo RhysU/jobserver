@@ -42,22 +42,39 @@ class JobserverExecutor(concurrent.futures.Executor):
     while a thin receiver thread bridges results back to
     concurrent.futures.Future instances.
 
-    The executor does not own the jobserver passed to it.  shutdown()
-    releases only executor-internal resources (dispatcher process,
-    receiver thread, pipes).  The caller closes the Jobserver.
+    When constructed with jobserver=None (the default), a default
+    Jobserver is created internally and owned by the executor.
+    shutdown(wait=True) will close it automatically.
+
+    When an explicit Jobserver is provided, the executor does not own
+    it.  shutdown() releases only executor-internal resources
+    (dispatcher process, receiver thread, pipes).  The caller closes
+    the Jobserver.
     """
 
-    def __init__(self, jobserver: Jobserver) -> None:
-        """Initialize the executor with a configured Jobserver.
+    def __init__(self, jobserver: Optional[Jobserver] = None) -> None:
+        """Initialize the executor with an optional Jobserver.
 
-        Slot count, start method, and other execution parameters are
-        controlled by the Jobserver instance passed here.
+        When jobserver is None, a default-constructed Jobserver is
+        created and owned by this executor; shutdown(wait=True) will
+        close it automatically.  Slot count defaults to the number of
+        usable CPUs; the default multiprocessing context is used.
+
+        When jobserver is provided, slot count, start method, and
+        other execution parameters are controlled by that instance,
+        and the caller is responsible for closing it.
         """
         # One lock guards _shutdown, _work_ids, and _futures together.
         self._lock = threading.Lock()
         self._shutdown = False
         self._work_ids: Iterator[int] = itertools.count()
         self._futures: dict[int, concurrent.futures.Future] = {}
+
+        # Own the jobserver when none is supplied; caller owns it otherwise.
+        self._own_jobserver: bool = jobserver is None
+        self._jobserver_exited: bool = False
+        if jobserver is None:
+            jobserver = Jobserver()
 
         self._requests: MinimalQueue = MinimalQueue(jobserver.context)
         self._responses: MinimalQueue = MinimalQueue(jobserver.context)
@@ -167,7 +184,11 @@ class JobserverExecutor(concurrent.futures.Executor):
     ) -> None:
         """Shut down the executor, optionally cancelling pending futures.
 
-        The Jobserver is not closed because the executor does not own it.
+        When the executor owns its Jobserver (constructed with
+        jobserver=None), shutdown(wait=True) also closes the Jobserver
+        after all dispatcher and receiver activity has finished.
+        When an explicit Jobserver was provided, it is not closed here;
+        the caller remains responsible for closing it.
         """
         with self._lock:
             already = self._shutdown
@@ -190,6 +211,9 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._receiver.join()
             self._requests.close_put()
             self._responses.close_get()
+            if self._own_jobserver and not self._jobserver_exited:
+                self._jobserver_exited = True
+                self._jobserver.__exit__(None, None, None)
 
     # ---- Receiver thread (bridges responses to c.f.Futures) ----
 
