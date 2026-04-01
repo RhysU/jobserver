@@ -209,6 +209,34 @@ class TestJobserverCallbacks(unittest.TestCase):
             # d's non-raising callback fired
             self.assertEqual(order, ["ok"])
 
+    def test_submit_raises_callback_raised_when_blocking(self) -> None:
+        """submit() propagates CallbackRaised from a prior future's callback.
+
+        When submit() blocks waiting for a slot and a previously submitted
+        future completes with a raising callback, CallbackRaised propagates
+        through the internal reclaim_resources() call inside submit().
+        The slot token is properly restored (priority-0 _restore_tokens fires
+        before priority-1 user callbacks), so a subsequent submit() succeeds.
+        """
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # Submit work A that completes quickly; attach a raising cb
+                    a = js.submit(fn=time.sleep, args=(0.2,), timeout=5)
+                    a.when_done(helper_raise, ValueError, "from-callback")
+
+                    # Submit work B: the single slot is taken, so _obtain_tokens
+                    # loops calling reclaim_resources().  When A finishes,
+                    # the callback fires and CallbackRaised escapes submit().
+                    with self.assertRaises(CallbackRaised) as ctx:
+                        js.submit(fn=len, args=((1,),), timeout=5)
+                    self.assertIsInstance(ctx.exception.__cause__, ValueError)
+                    self.assertIn("from-callback", str(ctx.exception.__cause__))
+
+                    # Token was restored; a retry of submit() must succeed.
+                    b = js.submit(fn=len, args=((1, 2),), timeout=5)
+                    self.assertEqual(b.result(timeout=5), 2)
+
     def test_exit_drains_callback_raised(self) -> None:
         """__exit__ drains all CallbackRaised without propagating."""
         order: list[str] = []

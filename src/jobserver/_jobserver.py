@@ -559,6 +559,11 @@ class Jobserver:
         Raises Blocked when insufficient resources available to accept work.
         Timeout is given in seconds with None meaning block indefinitely.
 
+        May raise CallbackRaised when, while blocking for a slot, a previously
+        submitted future completes and one of its callbacks raises.  The slot
+        is still properly restored in that case, so the caller may retry.
+        See CallbackRaised documentation for callback error semantics.
+
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
         When env provided, child updates os.environ unsetting None-valued keys.
