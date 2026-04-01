@@ -209,6 +209,32 @@ class TestJobserverCallbacks(unittest.TestCase):
             # d's non-raising callback fired
             self.assertEqual(order, ["ok"])
 
+    def test_submit_issues_callback_raised_when_blocking(self) -> None:
+        """submit() does not raise CallbackRaised while blocking for a slot.
+
+        When submit() blocks waiting for a slot and a previous future
+        completes with a raising callback, submit() raise CallbackRaised.
+        """
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # Submit work A completing quickly; attach a raising cb
+                    a = js.submit(fn=time.sleep, args=(0.2,), timeout=5)
+                    a.when_done(helper_raise, ValueError, "from-cb")
+
+                    # Submit work B: the single slot taken, so _obtain_tokens
+                    # blocks until "a" is done then fires its callbacks.
+                    with self.assertRaises(CallbackRaised) as ctx:
+                        b = js.submit(fn=len, args=((1, 2),), timeout=5)
+                        self.assertIsInstance(
+                            ctx.exception.__cause__, ValueError
+                        )
+                        self.assertIn("from-cb", str(ctx.exception.__cause__))
+
+                    # The caller MAY re-submit and should see "b" complete
+                    b = js.submit(fn=len, args=((1, 2),), timeout=5)
+                    self.assertEqual(b.result(timeout=5), 2)
+
     def test_exit_drains_callback_raised(self) -> None:
         """__exit__ drains all CallbackRaised without propagating."""
         order: list[str] = []

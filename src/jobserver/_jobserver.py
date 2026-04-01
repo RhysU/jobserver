@@ -590,6 +590,10 @@ class Jobserver:
 
         For env, preexec_fn, and sleep_fn non-None values override any
         instance defaults.
+
+        May raise CallbackRaised from at most one registered callback
+        due to a prior Future's completion.  The caller may resubmit.
+        See CallbackRaised documentation for callback error semantics.
         """
         # First, check any arguments not for _obtain_tokens(...)
         if fn is None:
@@ -608,6 +612,27 @@ class Jobserver:
         assert preexec_fn is not None
 
         # Next, either obtain requested tokens or else raise Blocked
+        #
+        # Choosing "reclaim_tokens_fn=self.reclaim_resources"
+        # may cause submit(...) to raise due to Future callbacks that raise.
+        # Design-wise, these other alternatives were CONSIDERED and REJECTED:
+        #
+        #   (A) Silently ignore the CallbackRaised?
+        #       No, client code must know about Exceptions it causes.
+        #   (B) Issue callback priorities <= _PRIORITY_TOKEN?
+        #       No, client used a callback because client wanted immediacy.
+        #       Otherwise, the client could do its own work after done()
+        #       and would not have employed callbacks in the first place.
+        #   (C) Issue callbacks until the first CallbackRaised is observed
+        #       then delay raising it until done() or wait() or result()?
+        #       No, that would incur very messy semantics inside Future
+        #       which would be (a) rare and (b) hard to reason about.
+        #       If the client wants to avoid CallbackRaised the client
+        #       is free to never let Exception escape from a callback.
+        #
+        # ASIDE: If another design is desired, instead of reclaim_resources
+        # any other method could be injected below.  Notice that the
+        # callback priority mechanism does permit issuing callback subsets.
         tokens = _obtain_tokens(
             consume=consume,
             deadline=absolute_deadline(timeout),
@@ -788,7 +813,11 @@ def _obtain_tokens(
     *,
     resolution: float = 1.0e-2,
 ) -> list[int]:
-    """Either retrieve requested tokens or raise Blocked while trying."""
+    """
+    Either retrieve requested tokens or raise Blocked while trying.
+
+    May raise CallbackRaised via reclaim_tokens_fn so raising.
+    """
     # Defensively check arguments
     if consume != 0 and consume != 1:
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
@@ -798,7 +827,6 @@ def _obtain_tokens(
     # Acquire the requested retval or raise Blocked when impossible
     retval: list[int] = []
     while True:
-
         # (1) Eagerly clean up any completed work to avoid deadlocks
         reclaim_tokens_fn()
 

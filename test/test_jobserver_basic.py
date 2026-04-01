@@ -391,7 +391,7 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual(
                         0,
                         helper_recurse(js=js, max_depth=0),
-                        msg="Recursive base case must terminate " "recursion",
+                        msg="Recursive base case must terminate recursion",
                     )
                 with Jobserver(context=context, slots=3) as js:
                     self.assertEqual(
