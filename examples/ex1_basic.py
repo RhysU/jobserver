@@ -12,9 +12,8 @@ from jobserver import Jobserver
 
 def main() -> None:
     """Shows submitting jobs and collecting results."""
-    # "spawn" starts fresh interpreter processes and is safe on all platforms.
-    # It is the recommended default unless a specific context is required.
-    jobserver = Jobserver(context="spawn", slots=2)
+    # Instance will use the default multiprocessing context for this platform
+    jobserver = Jobserver(slots=2)
 
     # Full Jobserver.submit(...) example with args and kwargs
     # The submit(...) method has many additional options
@@ -23,7 +22,7 @@ def main() -> None:
     # Simpler shorthand via Jobserver.__call__(...) with positional args
     future_b = jobserver(len, (1, 2, 3))
 
-    # Simpler shorthand also permits kwargs or mixed args/kwargs
+    # Simpler shorthand also permits kwargs or mixed args/kwargs (not shown)
     future_c = jobserver(str, object=42)
 
     # Results retrieved in arbitrary order
@@ -31,8 +30,8 @@ def main() -> None:
     info("len((1, 2, 3)) = %s", future_b.result())
     info("pow(2, 10, mod=1000) = %s", future_a.result())
 
-    # Map over multiple inputs, results yielded in order
-    # argses and kwargses are the plurals of args and kwargs
+    # Map over multiple inputs yielding results in order
+    # (argses and kwargses are the plurals of args and kwargs)
     lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
     info("lengths via map: %s", lengths)
 
