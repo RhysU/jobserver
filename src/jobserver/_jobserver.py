@@ -7,7 +7,6 @@
 
 import abc
 import concurrent.futures
-import warnings
 import functools
 import heapq
 import os
@@ -16,6 +15,7 @@ import signal
 import threading
 import time
 import types
+import warnings
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from itertools import islice

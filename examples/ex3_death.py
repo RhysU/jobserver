@@ -6,7 +6,7 @@
 """Example 3 shows detecting when a worker process dies unexpectedly."""
 
 import signal
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, captureWarnings, info
 
 from jobserver import Jobserver, SubmissionDied
 
@@ -40,4 +40,5 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     main()

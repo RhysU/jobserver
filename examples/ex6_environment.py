@@ -6,7 +6,7 @@
 """Example 6 shows environment variable injection for child processes."""
 
 import os
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, captureWarnings, info
 
 from jobserver import Jobserver
 
@@ -42,4 +42,5 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     main()

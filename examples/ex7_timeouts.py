@@ -6,7 +6,7 @@
 """Example 7 shows non-blocking polling, finite deadlines, and Blocked."""
 
 import time
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, captureWarnings, info
 
 from jobserver import Blocked, Jobserver
 
@@ -53,4 +53,5 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     main()

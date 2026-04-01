@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 1 shows submitting jobs and collecting results."""
 
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, captureWarnings, info
 
 from jobserver import Jobserver
 
@@ -41,4 +41,5 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     main()

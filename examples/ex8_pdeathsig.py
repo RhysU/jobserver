@@ -14,7 +14,7 @@ import ctypes.util
 import os
 import signal
 import sys
-from logging import INFO, basicConfig, info, warning
+from logging import INFO, basicConfig, captureWarnings, info, warning
 
 from jobserver import Jobserver
 
@@ -58,6 +58,7 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     if sys.platform == "linux":
         main()
     else:

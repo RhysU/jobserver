@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 2 shows nested submissions sharing slot constraints."""
 
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, captureWarnings, info
 from multiprocessing import get_all_start_methods
 
 from jobserver import Blocked, Jobserver
@@ -59,4 +59,5 @@ if __name__ == "__main__":
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     main()
