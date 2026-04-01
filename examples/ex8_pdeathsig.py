@@ -6,20 +6,47 @@
 """
 Example 8 shows preexec_fn setting PR_SET_PDEATHSIG via prctl.
 
-This example will not work on all operating systems.
+Falls back gracefully with warnings when prctl is unavailable.
 """
 
 import ctypes
 import ctypes.util
 import os
 import signal
-from logging import INFO, basicConfig, info
+from logging import INFO, basicConfig, info, warning
 
 from jobserver import Jobserver
+
+_PR_SET_PDEATHSIG = 1
+_PR_GET_PDEATHSIG = 2
+
+
+def _check_pdeathsig_available() -> bool:
+    """Return True if prctl(PR_SET_PDEATHSIG, ...) works on this platform."""
+    lib = ctypes.util.find_library("c")
+    if lib is None:
+        return False
+    libc = ctypes.CDLL(lib, use_errno=True)
+    try:
+        result = libc.prctl(_PR_SET_PDEATHSIG, signal.SIGTERM)
+    except OSError:
+        return False
+    if result != 0:
+        return False
+    # Undo immediately
+    libc.prctl(_PR_SET_PDEATHSIG, 0)
+    return True
 
 
 def main() -> None:
     """Shows preexec_fn setting PR_SET_PDEATHSIG via prctl."""
+    if not _check_pdeathsig_available():
+        warning(
+            "prctl(PR_SET_PDEATHSIG) unavailable on this platform;"
+            " skipping example"
+        )
+        return
+
     jobserver = Jobserver(context="spawn", slots=2)
 
     # preexec_fn runs before the task function, here establishing
@@ -33,10 +60,15 @@ def main() -> None:
 
 def task_check_pdeathsig() -> bool:
     """Return True if PR_SET_PDEATHSIG has been set to a nonzero signal."""
-    PR_GET_PDEATHSIG = 2
-    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    lib = ctypes.util.find_library("c")
+    if lib is None:
+        return False
+    libc = ctypes.CDLL(lib, use_errno=True)
     sig = ctypes.c_int(0)
-    result = libc.prctl(PR_GET_PDEATHSIG, ctypes.byref(sig))
+    try:
+        result = libc.prctl(_PR_GET_PDEATHSIG, ctypes.byref(sig))
+    except OSError:
+        return False
     if result != 0:
         return False
     return sig.value != 0
@@ -44,9 +76,8 @@ def task_check_pdeathsig() -> bool:
 
 def preexec_set_pdeathsig() -> None:
     """Set PR_SET_PDEATHSIG so child receives SIGTERM when parent dies."""
-    PR_SET_PDEATHSIG = 1
     libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-    result = libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
+    result = libc.prctl(_PR_SET_PDEATHSIG, signal.SIGTERM)
     if result != 0:
         errno = ctypes.get_errno()
         raise OSError(errno, os.strerror(errno))
