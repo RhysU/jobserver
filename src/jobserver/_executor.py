@@ -41,6 +41,10 @@ class JobserverExecutor(concurrent.futures.Executor):
     manages slot acquisition and worker spawning via the Jobserver,
     while a thin receiver thread bridges results back to
     concurrent.futures.Future instances.
+
+    The executor does not own the jobserver passed to it.  shutdown()
+    releases only executor-internal resources (dispatcher process,
+    receiver thread, pipes).  The caller closes the Jobserver.
     """
 
     def __init__(self, jobserver: Jobserver) -> None:
@@ -161,7 +165,10 @@ class JobserverExecutor(concurrent.futures.Executor):
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
-        """Shut down the executor, optionally cancelling pending futures."""
+        """Shut down the executor, optionally cancelling pending futures.
+
+        The Jobserver is not closed because the executor does not own it.
+        """
         with self._lock:
             already = self._shutdown
             self._shutdown = True
