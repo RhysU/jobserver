@@ -72,7 +72,6 @@ class JobserverExecutor(concurrent.futures.Executor):
 
         # Own the jobserver when none is supplied; caller owns it otherwise.
         self._own_jobserver: bool = jobserver is None
-        self._jobserver_exited: bool = False
         if jobserver is None:
             jobserver = Jobserver()
 
@@ -211,8 +210,12 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._receiver.join()
             self._requests.close_put()
             self._responses.close_get()
-            if self._own_jobserver and not self._jobserver_exited:
-                self._jobserver_exited = True
+            if self._own_jobserver:
+                # Clear ownership before closing so that a second call to
+                # shutdown(wait=True) skips this block -- _own_jobserver=False
+                # doubles as the "already closed" sentinel, eliminating the
+                # need for a separate flag.
+                self._own_jobserver = False
                 self._jobserver.__exit__(None, None, None)
 
     # ---- Receiver thread (bridges responses to c.f.Futures) ----

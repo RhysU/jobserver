@@ -442,7 +442,7 @@ class TestOwnedJobserver(unittest.TestCase):
         # The owned jobserver's slots queue should be closed; putting
         # to it should raise (ValueError from MinimalQueue.put on a
         # closed queue).
-        self.assertTrue(exe._jobserver_exited)
+        self.assertFalse(exe._own_jobserver)
 
     def test_owned_jobserver_double_shutdown_safe(self) -> None:
         """Double shutdown(wait=True) is safe when executor owns jobserver."""
@@ -467,4 +467,4 @@ class TestOwnedJobserver(unittest.TestCase):
         with exe:
             f = exe.submit(len, "hello")
             self.assertEqual(5, f.result(timeout=TIMEOUT))
-        self.assertTrue(exe._jobserver_exited)
+        self.assertFalse(exe._own_jobserver)
