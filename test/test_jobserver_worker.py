@@ -32,7 +32,9 @@ from .helpers import (
     helper_current_process_name,
     helper_nonblocking,
     helper_noop,
+    helper_preexec_cm,
     helper_preexec_fn,
+    helper_preexec_suppressing_cm,
     helper_raise,
     helper_return,
 )
@@ -412,3 +414,76 @@ class TestJobserverWorker(unittest.TestCase):
                 ) as js:
                     h = js.submit(fn=len, args=((1,),), sleep_fn=lambda: None)
                     self.assertEqual(1, h.result())
+
+    def test_preexec_fn_context_manager(self) -> None:
+        """preexec_fn returning a context manager wraps fn execution."""
+        key = "JOBSERVER_TEST_CM"
+        self.assertIsNone(os.environ.get(key, None))
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # fn reads the env var set by __enter__
+                    f = js.submit(
+                        fn=os.getenv,
+                        args=(key, "SENTINEL"),
+                        preexec_fn=helper_preexec_cm,
+                        timeout=5,
+                    )
+                    self.assertEqual("ENTERED", f.result(timeout=5))
+
+    def test_preexec_fn_context_manager_on_exception(self) -> None:
+        """Context manager __exit__ runs even when fn raises."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.submit(
+                        fn=helper_raise,
+                        args=(RuntimeError, "boom"),
+                        preexec_fn=helper_preexec_cm,
+                        timeout=5,
+                    )
+                    with self.assertRaises(RuntimeError):
+                        f.result(timeout=5)
+
+    def test_preexec_fn_context_manager_suppresses(self) -> None:
+        """Context manager __exit__ may suppress exceptions; result is None."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.submit(
+                        fn=helper_raise,
+                        args=(RuntimeError, "suppressed"),
+                        preexec_fn=helper_preexec_suppressing_cm,
+                        timeout=5,
+                    )
+                    self.assertIsNone(f.result(timeout=5))
+
+    def test_preexec_fn_cm_as_init_default(self) -> None:
+        """Context manager factory as __init__ default applies to all."""
+        key = "JOBSERVER_TEST_CM"
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(
+                    context=method, slots=1, preexec_fn=helper_preexec_cm
+                ) as js:
+                    f = js.submit(
+                        fn=os.getenv, args=(key, "SENTINEL"), timeout=5
+                    )
+                    self.assertEqual("ENTERED", f.result(timeout=5))
+
+    def test_preexec_fn_cm_override_at_submit(self) -> None:
+        """submit-level preexec_fn overrides init-level context manager."""
+        key = "JOBSERVER_TEST_CM"
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                # Init sets context manager; submit overrides with callable
+                with Jobserver(
+                    context=method, slots=1, preexec_fn=helper_preexec_cm
+                ) as js:
+                    f = js.submit(
+                        fn=os.getenv,
+                        args=(key, "SENTINEL"),
+                        preexec_fn=helper_noop,
+                        timeout=5,
+                    )
+                    self.assertEqual("SENTINEL", f.result(timeout=5))
