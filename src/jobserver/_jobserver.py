@@ -7,6 +7,7 @@
 
 import abc
 import concurrent.futures
+import warnings
 import functools
 import heapq
 import os
@@ -442,6 +443,18 @@ class Jobserver:
         method = self._context.get_start_method()
         n = len(self._selector_map)
         return f"Jobserver({method!r}, tracked={n})"
+
+    def __del__(self) -> None:
+        n = len(self._selector_map)
+        if n > 0:
+            warnings.warn(
+                f"unclosed {self!r} with {n} outstanding future(s)",
+                ResourceWarning,
+                stacklevel=2,
+                source=self,
+            )
+        self._slots.close_put()
+        self._slots.close_get()
 
     def __enter__(self) -> "Jobserver":
         return self
