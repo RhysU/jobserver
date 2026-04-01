@@ -234,7 +234,12 @@ class Future(Generic[T]):
             if self._connection is None:
                 self._issue_callbacks()
 
-    def done(self, timeout: Optional[float] = 0) -> bool:
+    def done(
+        self,
+        timeout: Optional[float] = 0,
+        *,
+        _priority_max: int = _PRIORITY_CLEANUP,
+    ) -> bool:
         """
         Never raising Blocked, returns True if result(timeout=0) must succeed.
 
@@ -249,13 +254,14 @@ class Future(Generic[T]):
         # Both done(...) and wait(...) in API because (a) concurrent.futures
         # API anchored peoples' expectations that done() non-blocking by
         # default and because (b) wait(...) more natural for signaling/joining.
-        return self.wait(timeout=timeout)  # Notice default is 0
+        return self.wait(timeout=timeout, _priority_max=_priority_max)  # Notice default is 0
 
     def wait(
         self,
         timeout: Optional[float] = None,
         *,
         signal: Union[None, int, signal.Signals] = None,
+        _priority_max: int = _PRIORITY_CLEANUP,
     ) -> bool:
         """
         Waiting at most timeout, return True if result(timeout=0) must succeed.
@@ -281,7 +287,7 @@ class Future(Generic[T]):
         try:
             # Multiple calls may be required to issue all callbacks
             if self._connection is None:
-                self._issue_callbacks()
+                self._issue_callbacks(_priority_max)
                 return True
 
             # Optionally, send any provided signal to the underlying process
@@ -320,14 +326,14 @@ class Future(Generic[T]):
             # Should close() throw notice it can never be retried
             connection, self._connection = self._connection, None
             connection.close()
-            self._issue_callbacks()
+            self._issue_callbacks(_priority_max)
             return True
         finally:
             self._rlock.release()
 
-    def _issue_callbacks(self):
+    def _issue_callbacks(self, priority_max: int = _PRIORITY_CLEANUP) -> None:
         assert self._connection is None and self._process is None, "Invariant"
-        while self._callbacks:
+        while self._callbacks and self._callbacks[0][0] <= priority_max:
             _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
             fn(*args, **kwargs)
 
@@ -516,6 +522,23 @@ class Jobserver:
         """Return the multiprocessing context used by this Jobserver."""
         return self._context
 
+    def _reclaim_resources(self, priority_max: int) -> None:
+        """Fire callbacks up to priority_max for any newly completed futures.
+
+        Internal helper used both by the public reclaim_resources() and by
+        the token-acquisition loop in submit().  When called with
+        _PRIORITY_TOKEN only slot-restoration callbacks fire, so user
+        callbacks cannot escape into submit() as CallbackRaised.
+        """
+        # O(k) where k = newly completed futures.  The persistent
+        # selector maintains the interest set incrementally so no
+        # O(N) rebuild occurs on each call.  select(timeout=0) is
+        # a non-blocking poll returning only the k ready entries.
+        # done() triggers callbacks mutating the selector.
+        for key, _ in self._selector.select(timeout=0):
+            assert isinstance(key.data, Future), type(key.data)
+            key.data.done(_priority_max=priority_max)
+
     def reclaim_resources(self) -> None:
         """
         Reclaim resources for any completed submissions and issue callbacks.
@@ -527,14 +550,7 @@ class Jobserver:
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
-        # O(k) where k = newly completed futures.  The persistent
-        # selector maintains the interest set incrementally so no
-        # O(N) rebuild occurs on each call.  select(timeout=0) is
-        # a non-blocking poll returning only the k ready entries.
-        # done() triggers callbacks mutating the selector.
-        for key, _ in self._selector.select(timeout=0):
-            assert isinstance(key.data, Future), type(key.data)
-            key.data.done()
+        self._reclaim_resources(_PRIORITY_CLEANUP)
 
     def submit(
         self,
@@ -558,11 +574,6 @@ class Jobserver:
 
         Raises Blocked when insufficient resources available to accept work.
         Timeout is given in seconds with None meaning block indefinitely.
-
-        May raise CallbackRaised when, while blocking for a slot, a previously
-        submitted future completes and one of its callbacks raises.  The slot
-        is still properly restored in that case, so the caller may retry.
-        See CallbackRaised documentation for callback error semantics.
 
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
@@ -594,11 +605,15 @@ class Jobserver:
         assert isinstance(env, Iterable), type(env)
         assert preexec_fn is not None
 
-        # Next, either obtain requested tokens or else raise Blocked
+        # Next, either obtain requested tokens or else raise Blocked.
+        # Only fire priority-0 (token-restoration) callbacks here so that
+        # user callbacks cannot escape as CallbackRaised into submit().
         tokens = _obtain_tokens(
             consume=consume,
             deadline=absolute_deadline(timeout),
-            reclaim_tokens_fn=self.reclaim_resources,
+            reclaim_tokens_fn=functools.partial(
+                self._reclaim_resources, _PRIORITY_TOKEN
+            ),
             selector=self._selector,
             sleep_fn=sleep_fn,
             slots=self._slots,

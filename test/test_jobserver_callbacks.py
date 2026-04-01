@@ -209,14 +209,15 @@ class TestJobserverCallbacks(unittest.TestCase):
             # d's non-raising callback fired
             self.assertEqual(order, ["ok"])
 
-    def test_submit_raises_callback_raised_when_blocking(self) -> None:
-        """submit() propagates CallbackRaised from a prior future's callback.
+    def test_submit_defers_callback_raised_when_blocking(self) -> None:
+        """submit() does not raise CallbackRaised while blocking for a slot.
 
         When submit() blocks waiting for a slot and a previously submitted
-        future completes with a raising callback, CallbackRaised propagates
-        through the internal reclaim_resources() call inside submit().
-        The slot token is properly restored (priority-0 _restore_tokens fires
-        before priority-1 user callbacks), so a subsequent submit() succeeds.
+        future completes with a raising callback, submit() must NOT raise
+        CallbackRaised.  Only priority-0 (token-restoration) callbacks fire
+        inside the token-acquisition loop; user callbacks are deferred until
+        the caller explicitly polls via reclaim_resources(), done(), wait(),
+        or result().
         """
         for method in get_all_start_methods():
             with self.subTest(method=method):
@@ -226,15 +227,16 @@ class TestJobserverCallbacks(unittest.TestCase):
                     a.when_done(helper_raise, ValueError, "from-callback")
 
                     # Submit work B: the single slot is taken, so _obtain_tokens
-                    # loops calling reclaim_resources().  When A finishes,
-                    # the callback fires and CallbackRaised escapes submit().
+                    # loops calling _reclaim_resources(_PRIORITY_TOKEN).  When A
+                    # finishes, only the token is restored; user callback deferred.
+                    b = js.submit(fn=len, args=((1, 2),), timeout=5)
+
+                    # User callback fires only when we explicitly poll A.
                     with self.assertRaises(CallbackRaised) as ctx:
-                        js.submit(fn=len, args=((1,),), timeout=5)
+                        a.done()
                     self.assertIsInstance(ctx.exception.__cause__, ValueError)
                     self.assertIn("from-callback", str(ctx.exception.__cause__))
 
-                    # Token was restored; a retry of submit() must succeed.
-                    b = js.submit(fn=len, args=((1, 2),), timeout=5)
                     self.assertEqual(b.result(timeout=5), 2)
 
     def test_exit_drains_callback_raised(self) -> None:
