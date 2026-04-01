@@ -36,6 +36,7 @@ class TestJobserverConcurrency(unittest.TestCase):
         """
         with Jobserver(slots=4) as js:
             errors: list[Exception] = []
+            futures: list[Future] = []
 
             def call_done(future: Future, barrier: threading.Barrier) -> None:
                 barrier.wait()
@@ -47,6 +48,7 @@ class TestJobserverConcurrency(unittest.TestCase):
             # Repeat to increase chance of hitting the race window
             for _ in range(10):
                 f = js.submit(fn=time.sleep, args=(0.05,), timeout=5)
+                futures.append(f)
                 barrier = threading.Barrier(2)
                 t = threading.Thread(target=call_done, args=(f, barrier))
                 t.start()
@@ -55,8 +57,8 @@ class TestJobserverConcurrency(unittest.TestCase):
 
             # Drain futures left incomplete when the race caused an
             # exception
-            for key in list(js._selector_map.values()):
-                key.data.wait(timeout=10)
+            for f in futures:
+                f.wait(timeout=10)
             self.assertEqual(
                 errors, [], f"Concurrent wait() crashed: {errors}"
             )

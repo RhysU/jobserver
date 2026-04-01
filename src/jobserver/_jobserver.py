@@ -24,7 +24,7 @@ from itertools import islice
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
-from selectors import EVENT_READ, DefaultSelector
+from selectors import EVENT_READ, DefaultSelector, SelectorKey
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
@@ -375,6 +375,21 @@ def _unregister_sentinel(
         pass  # Already unregistered or selector closed
 
 
+def _initialize_selector(
+    slots: MinimalQueue,
+) -> tuple[DefaultSelector, Mapping[Any, SelectorKey]]:
+    """Create a selector with slots pre-registered."""
+    selector = DefaultSelector()
+    # The SimpleNamespace provides the done() that
+    # reclaim_resources() calls on all selector keys.
+    selector.register(
+        slots.waitable(),
+        EVENT_READ,
+        data=types.SimpleNamespace(done=noop),
+    )
+    return selector, selector.get_map()
+
+
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing."""
 
@@ -427,8 +442,7 @@ class Jobserver:
         # _selector_map is the live view from get_map(), captured once
         # so that post-close() access returns an empty view rather
         # than the None that get_map() itself returns after close().
-        self._selector = DefaultSelector()
-        self._selector_map = self._selector.get_map()
+        self._selector, self._selector_map = _initialize_selector(self._slots)
 
         # Instance-level defaults for submit(...)
         # Defensive copy: consume any one-shot iterable and guard against
@@ -439,10 +453,17 @@ class Jobserver:
         self._preexec_fn = preexec_fn
         self._sleep_fn = sleep_fn
 
+    def _tracked(self) -> int:
+        """Futures in the selector, excluding any slots entry."""
+        if self._selector_map:
+            # Omit ever-present self._slots.waitable()
+            return len(self._selector_map) - 1
+        return 0
+
     def __repr__(self) -> str:
         method = self._context.get_start_method()
-        n = len(self._selector_map)
-        return f"Jobserver({method!r}, tracked={n})"
+        tracked = self._tracked()
+        return f"Jobserver({method!r}, tracked={tracked})"
 
     def __del__(self) -> None:
         """Emit ResourceWarning if any Futures are still running.
@@ -450,10 +471,10 @@ class Jobserver:
         A Jobserver with no undone Futures is implicitly closed upon
         finalization; one with running Futures emits a ResourceWarning.
         """
-        n = len(self._selector_map)
-        if n > 0:
+        tracked = self._tracked()
+        if tracked > 0:
             warnings.warn(
-                f"Finalizing {self!r} with running Future(s)",
+                f"Finalizing {self!r} with {tracked} running Futures",
                 ResourceWarning,
                 stacklevel=2,
                 source=self,
@@ -514,8 +535,7 @@ class Jobserver:
             self._preexec_fn,
             self._sleep_fn,
         ) = state
-        self._selector = DefaultSelector()
-        self._selector_map = self._selector.get_map()
+        self._selector, self._selector_map = _initialize_selector(self._slots)
 
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
@@ -558,7 +578,7 @@ class Jobserver:
         # a non-blocking poll returning only the k ready entries.
         # done() triggers callbacks mutating the selector.
         for key, _ in self._selector.select(timeout=0):
-            assert isinstance(key.data, Future), type(key.data)
+            assert hasattr(key.data, "done"), type(key.data)
             key.data.done()
 
     def submit(
@@ -861,16 +881,11 @@ def _obtain_tokens(
                 raise Blocked() from None
 
             # (6) ...then block until some interesting event.
-            # O(k) via the persistent selector: temporarily register
-            # the slots waitable (1 epoll_ctl ADD), block in one
-            # epoll_wait returning k ready fds, then unregister
-            # (1 epoll_ctl DEL).  No O(N) rebuild of the interest set.
-            waitable = slots.waitable()
-            selector.register(waitable, EVENT_READ)
-            try:
-                selector.select(timeout=deadline - monotonic)
-            finally:
-                selector.unregister(waitable)
+            # O(k) via the persistent selector:
+            # _initialize_selector() places slots.waitable() once
+            # so only one epoll_wait
+            # is needed here.  No rebuilding of the interest set.
+            selector.select(timeout=deadline - monotonic)
 
     assert len(retval) == consume, "Postcondition"
     return retval
