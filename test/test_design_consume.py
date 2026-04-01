@@ -28,6 +28,7 @@ bottoms out normally.
 import signal
 import time
 import unittest
+from multiprocessing import get_all_start_methods
 
 from jobserver import Blocked, Jobserver
 
@@ -52,31 +53,39 @@ class TestDesignConsume(unittest.TestCase):
 
     def test_consume_1_deadlocks_beyond_slot_count(self) -> None:
         """consume=1 (default) deadlocks when recursion depth > slots."""
-        with Jobserver(context="fork", slots=self.SLOTS) as js:
-            # depth=1 succeeds: parent + child = 2 tokens = 2 slots
-            f = js.submit(fn=_recurse, args=(js, 1), timeout=5)
-            self.assertEqual(f.result(timeout=10), 1)
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=self.SLOTS) as js:
+                    # depth=1 succeeds: parent + child = 2 tokens = 2 slots
+                    f = js.submit(fn=_recurse, args=(js, 1), timeout=5)
+                    self.assertEqual(f.result(timeout=10), 1)
 
-            # depth=2 deadlocks: 3 tokens needed, only 2 exist
-            f = js.submit(fn=_recurse, args=(js, 2), timeout=5)
-            with self.assertRaises(Blocked):
-                f.result(timeout=10)
+                    # depth=2 deadlocks: 3 tokens needed, only 2 exist
+                    f = js.submit(fn=_recurse, args=(js, 2), timeout=5)
+                    with self.assertRaises(Blocked):
+                        f.result(timeout=10)
 
     def test_consume_0_permits_arbitrary_depth(self) -> None:
         """consume=0 is the implicit free token, avoiding deadlock."""
-        with Jobserver(context="fork", slots=self.SLOTS) as js:
-            f = js.submit(fn=_recurse, args=(js, 10, 0), timeout=5)
-            self.assertEqual(f.result(timeout=30), 10)
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=self.SLOTS) as js:
+                    f = js.submit(fn=_recurse, args=(js, 10, 0), timeout=5)
+                    self.assertEqual(f.result(timeout=30), 10)
 
     def test_top_level_backpressure_preserved(self) -> None:
         """consume=0 is for interiors; the top level still obeys slots."""
-        with Jobserver(context="fork", slots=self.SLOTS) as js:
-            held = []
-            for _ in range(self.SLOTS):
-                held.append(js.submit(fn=time.sleep, args=(10.0,), timeout=5))
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=self.SLOTS) as js:
+                    held = []
+                    for _ in range(self.SLOTS):
+                        held.append(
+                            js.submit(fn=time.sleep, args=(10.0,), timeout=5)
+                        )
 
-            with self.assertRaises(Blocked):
-                js.submit(fn=time.sleep, args=(0,), timeout=0)
+                    with self.assertRaises(Blocked):
+                        js.submit(fn=time.sleep, args=(0,), timeout=0)
 
-            for f in held:
-                f.wait(signal=signal.SIGKILL)
+                    for f in held:
+                        f.wait(signal=signal.SIGKILL)
