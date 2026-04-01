@@ -26,30 +26,31 @@ def process_start() -> None:
 def main() -> None:
     """Shows JobserverExecutor: context manager, map, submit, and cancel."""
     # Jobserver configuration applies to any JobserverExecutor backed by it.
-    js = Jobserver(context="spawn", slots=1, preexec_fn=process_start)
+    with Jobserver(context="spawn", slots=1, preexec_fn=process_start) as js:
+        with JobserverExecutor(js) as executor:
+            # map() applies a function to every item and yields results in order
+            lengths = list(
+                executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"])
+            )
+            info("lengths via map: %s", lengths)
 
-    with JobserverExecutor(js) as executor:
-        # map() applies a function to every item and yields results in order
-        lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
-        info("lengths via map: %s", lengths)
+            # Submit a slow task that holds the only available slot
+            slow = executor.submit(time.sleep, 0.5)
 
-        # Submit a slow task that holds the only available slot
-        slow = executor.submit(time.sleep, 0.5)
+            # Because of slow, this future queues as PENDING and is cancellable
+            pending = executor.submit(len, "pending")
 
-        # Because of slow, this future queues as PENDING and is cancellable
-        pending = executor.submit(len, "pending")
+            # Cancel PENDING future before it is dispatched to a worker
+            cancelled = pending.cancel()
+            info("pending cancelled: %s", cancelled)
+            try:
+                pending.result()
+                raise AssertionError("Unexpected")
+            except CancelledError:
+                pass
 
-        # Cancel PENDING future before it is dispatched to a worker
-        cancelled = pending.cancel()
-        info("pending cancelled: %s", cancelled)
-        try:
-            pending.result()
-            raise AssertionError("Unexpected")
-        except CancelledError:
-            pass
-
-        # Collect the slow task's result; executor shuts down cleanly on exit
-        assert slow.result() is None
+            # Collect the slow task's result; executor shuts down cleanly on exit
+            assert slow.result() is None
 
 
 if __name__ == "__main__":

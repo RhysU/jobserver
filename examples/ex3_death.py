@@ -13,26 +13,25 @@ from jobserver import Jobserver, SubmissionDied
 
 def main() -> None:
     """Shows detecting when a worker process dies unexpectedly."""
-    jobserver = Jobserver(context="spawn", slots=2)
+    with Jobserver(context="spawn", slots=2) as jobserver:
+        # Submit work that will be killed
+        future_killed = jobserver.submit(
+            fn=signal.raise_signal, args=(signal.SIGKILL,)
+        )
 
-    # Submit work that will be killed
-    future_killed = jobserver.submit(
-        fn=signal.raise_signal, args=(signal.SIGKILL,)
-    )
+        # Submit normal work alongside the doomed submission
+        future_ok = jobserver.submit(fn=len, args=("hello",))
 
-    # Submit normal work alongside the doomed submission
-    future_ok = jobserver.submit(fn=len, args=("hello",))
+        # wait() returns True even for dead submissions
+        info("Killed worker wait: %s", future_killed.wait())  # Blocks by default
+        info("Normal result: %s", future_ok.result())  # Also blocks by default
 
-    # wait() returns True even for dead submissions
-    info("Killed worker wait: %s", future_killed.wait())  # Blocks by default
-    info("Normal result: %s", future_ok.result())  # Also blocks by default
-
-    # result() raises SubmissionDied for the killed worker
-    try:
-        future_killed.result()
-        raise RuntimeError("Expected SubmissionDied was not raised")
-    except SubmissionDied:
-        info("Caught expected SubmissionDied from SIGKILL worker")
+        # result() raises SubmissionDied for the killed worker
+        try:
+            future_killed.result()
+            raise RuntimeError("Expected SubmissionDied was not raised")
+        except SubmissionDied:
+            info("Caught expected SubmissionDied from SIGKILL worker")
 
 
 if __name__ == "__main__":

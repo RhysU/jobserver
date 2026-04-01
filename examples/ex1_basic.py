@@ -13,27 +13,26 @@ from jobserver import Jobserver
 def main() -> None:
     """Shows submitting jobs and collecting results."""
     # Instance will use the default multiprocessing context for this platform
-    jobserver = Jobserver(slots=2)
+    with Jobserver(slots=2) as jobserver:
+        # Full Jobserver.submit(...) example with args and kwargs
+        # The submit(...) method has many additional options
+        future_a = jobserver.submit(fn=pow, args=(2, 10), kwargs={"mod": 1000})
 
-    # Full Jobserver.submit(...) example with args and kwargs
-    # The submit(...) method has many additional options
-    future_a = jobserver.submit(fn=pow, args=(2, 10), kwargs={"mod": 1000})
+        # Simpler shorthand via Jobserver.__call__(...) with positional args
+        future_b = jobserver(len, (1, 2, 3))
 
-    # Simpler shorthand via Jobserver.__call__(...) with positional args
-    future_b = jobserver(len, (1, 2, 3))
+        # Simpler shorthand also permits kwargs or mixed args/kwargs (not shown)
+        future_c = jobserver(str, object=42)
 
-    # Simpler shorthand also permits kwargs or mixed args/kwargs (not shown)
-    future_c = jobserver(str, object=42)
+        # Results retrieved in arbitrary order
+        info("str(object=42) = %s", future_c.result())
+        info("len((1, 2, 3)) = %s", future_b.result())
+        info("pow(2, 10, mod=1000) = %s", future_a.result())
 
-    # Results retrieved in arbitrary order
-    info("str(object=42) = %s", future_c.result())
-    info("len((1, 2, 3)) = %s", future_b.result())
-    info("pow(2, 10, mod=1000) = %s", future_a.result())
-
-    # Map over multiple inputs yielding results in order
-    # (argses and kwargses are the plurals of args and kwargs)
-    lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
-    info("lengths via map: %s", lengths)
+        # Map over multiple inputs yielding results in order
+        # (argses and kwargses are the plurals of args and kwargs)
+        lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
+        info("lengths via map: %s", lengths)
 
 
 if __name__ == "__main__":
