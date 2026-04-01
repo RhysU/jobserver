@@ -238,18 +238,17 @@ class TestJobserverCallbacks(unittest.TestCase):
     def test_exit_drains_callback_raised(self) -> None:
         """__exit__ drains all CallbackRaised without propagating."""
         order: list[str] = []
-        with self.assertWarns(RuntimeWarning):
-            with Jobserver(slots=4) as js:
-                sleep = (0.3,)
-                a = js.submit(fn=time.sleep, args=sleep, timeout=5)
-                b = js.submit(fn=time.sleep, args=sleep, timeout=5)
-                c = js.submit(fn=time.sleep, args=sleep, timeout=5)
-                d = js.submit(fn=time.sleep, args=sleep, timeout=5)
-                a.when_done(helper_raise, ValueError, "a0")
-                a.when_done(helper_raise, TypeError, "a1")
-                b.when_done(helper_raise, ArithmeticError, "b")
-                c.when_done(helper_raise, LookupError, "c")
-                d.when_done(order.append, "ok")
-                time.sleep(1.0)  # ensure all children finish
+        with self.assertWarns(RuntimeWarning), Jobserver(slots=4) as js:
+            sleep = (0.3,)
+            a = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            b = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            c = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            d = js.submit(fn=time.sleep, args=sleep, timeout=5)
+            a.when_done(helper_raise, ValueError, "a0")
+            a.when_done(helper_raise, TypeError, "a1")
+            b.when_done(helper_raise, ArithmeticError, "b")
+            c.when_done(helper_raise, LookupError, "c")
+            d.when_done(order.append, "ok")
+            time.sleep(1.0)  # ensure all children finish
         # __exit__ ran without raising; all callbacks were drained
         self.assertEqual(order, ["ok"])
