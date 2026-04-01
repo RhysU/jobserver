@@ -342,7 +342,6 @@ def _dispatch_pending(
                 fn=item.fn,
                 args=item.args,
                 kwargs=dict(item.kwargs),
-                callbacks=True,
                 timeout=0,
             )
         except Blocked:
