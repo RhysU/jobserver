@@ -19,6 +19,7 @@ def process_start() -> None:
         level=INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    captureWarnings(True)
     info("started (pid=%d)", os.getpid())
 
 
@@ -55,5 +56,4 @@ if __name__ == "__main__":
     # Configure logging, showing lifecycle messages, and announce startup
     process_start()
     getLogger("jobserver").setLevel(DEBUG)
-    captureWarnings(True)
     main()
