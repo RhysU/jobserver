@@ -234,12 +234,7 @@ class Future(Generic[T]):
             if self._connection is None:
                 self._issue_callbacks()
 
-    def done(
-        self,
-        timeout: Optional[float] = 0,
-        *,
-        _priority_max: int = _PRIORITY_CLEANUP,
-    ) -> bool:
+    def done(self, timeout: Optional[float] = 0) -> bool:
         """
         Never raising Blocked, returns True if result(timeout=0) must succeed.
 
@@ -250,18 +245,25 @@ class Future(Generic[T]):
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
+        return self._done(timeout=timeout)
+
+    def _done(
+        self,
+        timeout: Optional[float] = 0,
+        *,
+        priority_max: int = _PRIORITY_CLEANUP,
+    ) -> bool:
         # Method done(...) is nothing but an impatient, simplified wait(...)
         # Both done(...) and wait(...) in API because (a) concurrent.futures
         # API anchored peoples' expectations that done() non-blocking by
         # default and because (b) wait(...) more natural for signaling/joining.
-        return self.wait(timeout=timeout, _priority_max=_priority_max)  # Notice default is 0
+        return self._wait(timeout=timeout, priority_max=priority_max)  # Notice default is 0
 
     def wait(
         self,
         timeout: Optional[float] = None,
         *,
         signal: Union[None, int, signal.Signals] = None,
-        _priority_max: int = _PRIORITY_CLEANUP,
     ) -> bool:
         """
         Waiting at most timeout, return True if result(timeout=0) must succeed.
@@ -277,6 +279,15 @@ class Future(Generic[T]):
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
         """
+        return self._wait(timeout=timeout, signal=signal)
+
+    def _wait(
+        self,
+        timeout: Optional[float] = None,
+        *,
+        signal: Union[None, int, signal.Signals] = None,
+        priority_max: int = _PRIORITY_CLEANUP,
+    ) -> bool:
         # Deadline computed before lock so acquisition time is deducted
         deadline = absolute_deadline(timeout)
 
@@ -287,7 +298,7 @@ class Future(Generic[T]):
         try:
             # Multiple calls may be required to issue all callbacks
             if self._connection is None:
-                self._issue_callbacks(_priority_max)
+                self._issue_callbacks(priority_max)
                 return True
 
             # Optionally, send any provided signal to the underlying process
@@ -326,7 +337,7 @@ class Future(Generic[T]):
             # Should close() throw notice it can never be retried
             connection, self._connection = self._connection, None
             connection.close()
-            self._issue_callbacks(_priority_max)
+            self._issue_callbacks(priority_max)
             return True
         finally:
             self._rlock.release()
@@ -537,7 +548,7 @@ class Jobserver:
         # done() triggers callbacks mutating the selector.
         for key, _ in self._selector.select(timeout=0):
             assert isinstance(key.data, Future), type(key.data)
-            key.data.done(_priority_max=priority_max)
+            key.data._done(priority_max=priority_max)
 
     def reclaim_resources(self) -> None:
         """
