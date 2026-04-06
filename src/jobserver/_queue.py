@@ -61,6 +61,17 @@ def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
     return context
 
 
+def _conn_repr(conn: Optional[Connection]) -> str:
+    """Describe a pipe end for MinimalQueue.__repr__, tolerating closed fds."""
+    if conn is None:
+        return "closed"
+    # fileno() raises ValueError/OSError on a closed fd.
+    try:
+        return f"open(fd={conn.fileno()})"
+    except (ValueError, OSError):
+        return "open(fd=closed)"
+
+
 class MinimalQueue(Generic[T]):
     """
     An unbounded SimpleQueue-variant with minimal functionality.
@@ -83,11 +94,10 @@ class MinimalQueue(Generic[T]):
         self._write_lock = context.Lock()
 
     def __repr__(self) -> str:
-        rd = self._reader
-        wr = self._writer
-        r = "closed" if rd is None else f"open(fd={rd.fileno()})"
-        w = "closed" if wr is None else f"open(fd={wr.fileno()})"
-        return f"MinimalQueue(reader={r}, writer={w})"
+        return (
+            f"MinimalQueue(reader={_conn_repr(self._reader)},"
+            f" writer={_conn_repr(self._writer)})"
+        )
 
     def __enter__(self) -> "MinimalQueue":
         return self
