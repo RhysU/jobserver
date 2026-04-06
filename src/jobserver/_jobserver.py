@@ -441,17 +441,20 @@ class Jobserver:
         The env, preexec_fn, and sleep_fn parameters set instance-level
         defaults for submit(...).  See submit() for preexec_fn semantics.
         """
-        # Obtain some multiprocessing Context and the slot-tracking queue
-        self._context = resolve_context(context)
-        self._slots: MinimalQueue[int] = MinimalQueue(self._context)
-
-        # Issue one token for each requested slot
+        # Validate arguments before allocating OS resources so that
+        # invalid inputs cannot leave pipes or semaphores behind.
         if slots is None:
             slots = sched_getaffinity0()
         if not isinstance(slots, int):
             raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
+
+        # Obtain some multiprocessing Context and the slot-tracking queue
+        self._context = resolve_context(context)
+        self._slots: MinimalQueue[int] = MinimalQueue(self._context)
+
+        # Issue one token for each requested slot
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures via their process sentinels.
