@@ -204,12 +204,14 @@ class Future(Generic[T]):
     def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
         # In particular, which copy would call self._process.join()?
-        raise NotImplementedError("Futures cannot be copied.")
+        # TypeError matches Python convention for operations unsupported
+        # by a type, e.g. copy.copy(threading.Lock()).
+        raise TypeError("Futures cannot be copied.")
 
     def __reduce__(self) -> NoReturn:
         """Disallow pickling as duplicates cannot sensibly share resources."""
-        # In particular, because pickles create copies
-        raise NotImplementedError("Futures cannot be pickled.")
+        # In particular, because pickles create copies.
+        raise TypeError("Futures cannot be pickled.")
 
     def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> None:
         """

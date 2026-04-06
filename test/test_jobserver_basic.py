@@ -325,18 +325,18 @@ class TestJobserverBasic(unittest.TestCase):
                 with Jobserver(context=method, slots=3) as js:
                     f = js.submit(fn=len, args=((1, 2, 3),))
                     # Cannot copy a Future
-                    with self.assertRaises(NotImplementedError):
+                    with self.assertRaises(TypeError):
                         copy.copy(f)
-                    with self.assertRaises(NotImplementedError):
+                    with self.assertRaises(TypeError):
                         copy.deepcopy(f)
                     # Cannot pickle a Future
-                    with self.assertRaises(NotImplementedError):
+                    with self.assertRaises(TypeError):
                         pickle.dumps(f)
                     # Cannot submit a Future as part of additional work
                     # (as a consequence of the above when pickling
                     # required)
                     if method != "fork":
-                        with self.assertRaises(NotImplementedError):
+                        with self.assertRaises(TypeError):
                             js.submit(fn=type, args=(f,))
 
     # No behavioral assertions made around pickling, however.
