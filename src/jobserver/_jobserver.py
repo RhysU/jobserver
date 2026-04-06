@@ -98,7 +98,7 @@ class Wrapper(abc.ABC, Generic[T]):
     @abc.abstractmethod
     def unwrap(self) -> T:
         """Raise any wrapped Exception otherwise return some result."""
-        raise NotImplementedError()
+        ...
 
 
 # Down the road, ResultWrapper might be extended with "big object"
