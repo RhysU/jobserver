@@ -239,7 +239,13 @@ class Future(Generic[T]):
         with self._rlock:
             heapq.heappush(
                 self._callbacks,
-                (priority, self._callback_seqno, fn, args, kwargs or {}),
+                (
+                    priority,
+                    self._callback_seqno,
+                    fn,
+                    args,
+                    {} if kwargs is None else kwargs,
+                ),
             )
             self._callback_seqno += 1
             if self._connection is None:
