@@ -106,6 +106,16 @@ class MinimalQueue(Generic[T]):
         self.close_put()
         self.close_get()
 
+    def __del__(self) -> None:
+        """Close pipe ends in a defined order on finalization."""
+        # A partially-constructed instance whose __init__ raised before
+        # _reader/_writer were assigned surfaces as AttributeError here.
+        try:
+            self.close_put()
+            self.close_get()
+        except AttributeError:
+            pass
+
     def __copy__(self) -> "MinimalQueue":
         """Shallow copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
