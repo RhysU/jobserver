@@ -341,7 +341,7 @@ def _dispatch_pending(
             f = jobserver.submit(
                 fn=item.fn,
                 args=item.args,
-                kwargs=dict(item.kwargs),
+                kwargs=item.kwargs,
                 timeout=0,
             )
         except Blocked:
