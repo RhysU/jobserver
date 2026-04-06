@@ -11,6 +11,7 @@ Using NamedTuple (dataclass slots require 3.10+).
 
 import typing
 from collections.abc import Callable
+from typing import Any
 
 __all__ = ["Submit", "Cancel", "Shutdown"]
 
@@ -21,7 +22,7 @@ class Submit(typing.NamedTuple):
     work_id: int
     fn: Callable
     args: tuple
-    kwargs: dict
+    kwargs: dict[str, Any]
 
 
 class Cancel(typing.NamedTuple):
