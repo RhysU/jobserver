@@ -654,8 +654,8 @@ class Jobserver:
         See CallbackRaised documentation for callback error semantics.
         """
         # First, check any arguments not for _obtain_tokens(...)
-        if fn is None:
-            raise TypeError("fn must not be None")
+        if not callable(fn):
+            raise TypeError(f"fn must be callable, got {type(fn).__name__}")
         if not isinstance(args, Iterable):
             raise TypeError(f"args: Iterable, got {type(args).__name__}")
         if not isinstance(kwargs, Mapping):
