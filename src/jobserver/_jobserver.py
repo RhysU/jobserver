@@ -221,7 +221,7 @@ class Future(Generic[T]):
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
-        return self._when_done(
+        self._when_done(
             fn=functools.partial(_callback_wrapper, fn),
             args=args,
             kwargs=kwargs,
