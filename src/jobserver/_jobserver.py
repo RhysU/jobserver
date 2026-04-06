@@ -659,8 +659,6 @@ class Jobserver:
         # First, check any arguments not for _obtain_tokens(...)
         if not callable(fn):
             raise TypeError(f"fn must be callable, got {type(fn).__name__}")
-        if isinstance(args, str):
-            raise TypeError("args must not be a string; use a tuple instead")
         if not isinstance(args, Iterable):
             raise TypeError(f"args: Iterable, got {type(args).__name__}")
         if not isinstance(kwargs, Mapping):
