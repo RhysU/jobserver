@@ -870,7 +870,10 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
                 send.send(result)  # ValueError => object too large
         except BrokenPipeError:
             pass
-        send.close()
+        try:
+            send.close()
+        except BrokenPipeError:
+            pass
 
 
 def _obtain_tokens(
