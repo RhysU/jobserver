@@ -30,7 +30,7 @@ T = TypeVar("T")
 # Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
 # _PyTime_t max; all overflow somewhere in the call chain.
 # See https://stackoverflow.com/q/45704243
-_MAX_TIMEOUT_SECS = float((2**31 - 1) / 1000)  # INT_MAX ms ≈ 24.85 days
+_MAX_TIMEOUT_SECS = (2**31 - 1) / 1000  # INT_MAX ms ≈ 24.85 days
 
 
 def absolute_deadline(relative_timeout: Optional[float]) -> float:
@@ -61,6 +61,17 @@ def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
     return context
 
 
+def _conn_repr(conn: Optional[Connection]) -> str:
+    """Describe a pipe end for MinimalQueue.__repr__, tolerating closed fds."""
+    if conn is None:
+        return "closed"
+    # fileno() raises ValueError/OSError on a closed fd.
+    try:
+        return f"open(fd={conn.fileno()})"
+    except (ValueError, OSError):
+        return "open(fd=closed)"
+
+
 class MinimalQueue(Generic[T]):
     """
     An unbounded SimpleQueue-variant with minimal functionality.
@@ -83,11 +94,10 @@ class MinimalQueue(Generic[T]):
         self._write_lock = context.Lock()
 
     def __repr__(self) -> str:
-        rd = self._reader
-        wr = self._writer
-        r = "closed" if rd is None else f"open(fd={rd.fileno()})"
-        w = "closed" if wr is None else f"open(fd={wr.fileno()})"
-        return f"MinimalQueue(reader={r}, writer={w})"
+        return (
+            f"MinimalQueue(reader={_conn_repr(self._reader)},"
+            f" writer={_conn_repr(self._writer)})"
+        )
 
     def __enter__(self) -> "MinimalQueue":
         return self
@@ -95,6 +105,16 @@ class MinimalQueue(Generic[T]):
     def __exit__(self, *exc: Any) -> None:
         self.close_put()
         self.close_get()
+
+    def __del__(self) -> None:
+        """Close pipe ends in a defined order on finalization."""
+        # A partially-constructed instance whose __init__ raised before
+        # _reader/_writer were assigned surfaces as AttributeError here.
+        try:
+            self.close_put()
+            self.close_get()
+        except AttributeError:
+            pass
 
     def __copy__(self) -> "MinimalQueue":
         """Shallow copies return the original MinimalQueue unchanged."""

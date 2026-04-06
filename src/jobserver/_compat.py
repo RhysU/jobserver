@@ -24,7 +24,12 @@ def sched_getaffinity0() -> int:
     Falls back to os.cpu_count() when os.sched_getaffinity is
     not available (e.g. PyPy, macOS).
     """
+    # The sched_getaffinity syscall may exist on some container runtimes
+    # yet raise OSError when invoked, so fall back on failure.
     if hasattr(os, "sched_getaffinity"):
-        return len(os.sched_getaffinity(0))
+        try:
+            return len(os.sched_getaffinity(0))
+        except OSError:
+            pass
     # os.cpu_count() can return None
     return os.cpu_count() or 1

@@ -98,7 +98,7 @@ class Wrapper(abc.ABC, Generic[T]):
     @abc.abstractmethod
     def unwrap(self) -> T:
         """Raise any wrapped Exception otherwise return some result."""
-        raise NotImplementedError()
+        ...
 
 
 # Down the road, ResultWrapper might be extended with "big object"
@@ -204,12 +204,14 @@ class Future(Generic[T]):
     def __copy__(self) -> NoReturn:
         """Disallow copying as duplicates cannot sensibly share resources."""
         # In particular, which copy would call self._process.join()?
-        raise NotImplementedError("Futures cannot be copied.")
+        # TypeError matches Python convention for operations unsupported
+        # by a type, e.g. copy.copy(threading.Lock()).
+        raise TypeError("Futures cannot be copied.")
 
     def __reduce__(self) -> NoReturn:
         """Disallow pickling as duplicates cannot sensibly share resources."""
-        # In particular, because pickles create copies
-        raise NotImplementedError("Futures cannot be pickled.")
+        # In particular, because pickles create copies.
+        raise TypeError("Futures cannot be pickled.")
 
     def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> None:
         """
@@ -219,7 +221,7 @@ class Future(Generic[T]):
         Registered callback functions can accept a Future as an argument.
         May raise CallbackRaised from at most this new callback.
         """
-        return self._when_done(
+        self._when_done(
             fn=functools.partial(_callback_wrapper, fn),
             args=args,
             kwargs=kwargs,
@@ -237,7 +239,13 @@ class Future(Generic[T]):
         with self._rlock:
             heapq.heappush(
                 self._callbacks,
-                (priority, self._callback_seqno, fn, args, kwargs or {}),
+                (
+                    priority,
+                    self._callback_seqno,
+                    fn,
+                    args,
+                    {} if kwargs is None else kwargs,
+                ),
             )
             self._callback_seqno += 1
             if self._connection is None:
@@ -433,17 +441,20 @@ class Jobserver:
         The env, preexec_fn, and sleep_fn parameters set instance-level
         defaults for submit(...).  See submit() for preexec_fn semantics.
         """
-        # Obtain some multiprocessing Context and the slot-tracking queue
-        self._context = resolve_context(context)
-        self._slots: MinimalQueue[int] = MinimalQueue(self._context)
-
-        # Issue one token for each requested slot
+        # Validate arguments before allocating OS resources so that
+        # invalid inputs cannot leave pipes or semaphores behind.
         if slots is None:
             slots = sched_getaffinity0()
         if not isinstance(slots, int):
             raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
+
+        # Obtain some multiprocessing Context and the slot-tracking queue
+        self._context = resolve_context(context)
+        self._slots: MinimalQueue[int] = MinimalQueue(self._context)
+
+        # Issue one token for each requested slot
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures via their process sentinels.
@@ -462,10 +473,14 @@ class Jobserver:
         self._sleep_fn = sleep_fn
 
     def _tracked(self) -> int:
-        """Futures in the selector, excluding any slots entry."""
-        if self._selector_map:
+        """Futures in the selector, excluding any slots entry.
+
+        Safe to call on a partially-constructed instance: returns 0 when
+        __init__ raised before _selector_map was assigned.
+        """
+        if sm := getattr(self, "_selector_map", None):
             # Omit ever-present self._slots.waitable()
-            return len(self._selector_map) - 1
+            return len(sm) - 1
         return 0
 
     def __repr__(self) -> str:
@@ -479,16 +494,21 @@ class Jobserver:
         A Jobserver with no undone Futures is implicitly closed upon
         finalization; one with running Futures emits a ResourceWarning.
         """
-        tracked = self._tracked()
-        if tracked > 0:
+        # _tracked() tolerates partial construction; hasattr guards
+        # the remaining resource accesses.
+        if (tracked := self._tracked()) > 0:
             warnings.warn(
                 f"Finalizing {self!r} with {tracked} running Futures",
                 ResourceWarning,
                 stacklevel=2,
                 source=self,
             )
-        self._slots.close_put()
-        self._slots.close_get()
+        if hasattr(self, "_slots"):
+            self._slots.close_put()
+            self._slots.close_get()
+        # Matches the cleanup in __exit__.
+        if hasattr(self, "_selector"):
+            self._selector.close()
 
     def __enter__(self) -> "Jobserver":
         return self
