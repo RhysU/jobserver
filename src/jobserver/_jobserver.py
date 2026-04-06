@@ -885,9 +885,6 @@ def _obtain_tokens(
     # Defensively check arguments
     if consume != 0 and consume != 1:
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
-    if deadline <= 0.0:
-        raise ValueError(f"deadline must be positive, got {deadline!r}")
-
     # Acquire the requested retval or raise Blocked when impossible
     retval: list[int] = []
     while True:
