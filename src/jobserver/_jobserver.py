@@ -668,8 +668,12 @@ class Jobserver:
         preexec_fn = self._preexec_fn if preexec_fn is None else preexec_fn
         sleep_fn = self._sleep_fn if sleep_fn is None else sleep_fn
 
-        assert isinstance(env, Iterable), type(env)
         assert preexec_fn is not None
+
+        # Eagerly convert env and args before acquiring tokens so that
+        # malformed inputs fail fast without consuming resources.
+        env = dict(env.items() if isinstance(env, Mapping) else env)
+        args = tuple(args)
 
         # Next, either obtain requested tokens or else raise Blocked
         #
@@ -710,7 +714,7 @@ class Jobserver:
             recv, send = self._context.Pipe(duplex=False)
             process = self._context.Process(  # type: ignore
                 target=_worker_entrypoint,
-                args=((send, dict(env), preexec_fn, fn) + tuple(args)),
+                args=((send, env, preexec_fn, fn) + args),
                 kwargs=kwargs,
                 daemon=False,
                 name="Jobserver-worker",
