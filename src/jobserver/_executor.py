@@ -210,6 +210,7 @@ class JobserverExecutor(concurrent.futures.Executor):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
                 if future is not None and not future.cancelled():
+                    # Type erased to Any; see Completed docstring.
                     future.set_result(msg.value)
             elif isinstance(msg, _response.Failed):
                 with self._lock:

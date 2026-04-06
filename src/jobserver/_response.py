@@ -22,7 +22,10 @@ class Started(typing.NamedTuple):
 
 
 class Completed(typing.NamedTuple):
-    """Work finished successfully with a value."""
+    """Work finished successfully with a value.
+
+    Generic T cannot flow through NamedTuple; callers should cast.
+    """
 
     work_id: int
     value: Any
