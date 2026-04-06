@@ -30,7 +30,7 @@ T = TypeVar("T")
 # Cannot use float('inf'), sys.float_info.max, sys.maxsize/1000, nor the
 # _PyTime_t max; all overflow somewhere in the call chain.
 # See https://stackoverflow.com/q/45704243
-_MAX_TIMEOUT_SECS = float((2**31 - 1) / 1000)  # INT_MAX ms ≈ 24.85 days
+_MAX_TIMEOUT_SECS = (2**31 - 1) / 1000  # INT_MAX ms ≈ 24.85 days
 
 
 def absolute_deadline(relative_timeout: Optional[float]) -> float:
