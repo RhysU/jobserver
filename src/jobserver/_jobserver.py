@@ -283,7 +283,9 @@ class Future(Generic[T]):
         Never raises Blocked but instead returns False on unavailable result.
 
         Allows, e.g., a SIGTERM followed by waiting 1 second for termination.
-        A signal need not force termination, e.g. SIGUSR1 / SIGSTOP / SIGCONT.
+        A signal need not force termination, e.g. SIGUSR1 or SIGCONT.
+        Caution: SIGSTOP suspends the child indefinitely; the Future
+        cannot complete until a subsequent wait(signal=SIGCONT).
 
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
