@@ -473,10 +473,14 @@ class Jobserver:
         self._sleep_fn = sleep_fn
 
     def _tracked(self) -> int:
-        """Futures in the selector, excluding any slots entry."""
-        if self._selector_map:
+        """Futures in the selector, excluding any slots entry.
+
+        Safe to call on a partially-constructed instance: returns 0 when
+        __init__ raised before _selector_map was assigned.
+        """
+        if sm := getattr(self, "_selector_map", None):
             # Omit ever-present self._slots.waitable()
-            return len(self._selector_map) - 1
+            return len(sm) - 1
         return 0
 
     def __repr__(self) -> str:
@@ -490,16 +494,21 @@ class Jobserver:
         A Jobserver with no undone Futures is implicitly closed upon
         finalization; one with running Futures emits a ResourceWarning.
         """
-        tracked = self._tracked()
-        if tracked > 0:
+        # _tracked() tolerates partial construction; hasattr guards
+        # the remaining resource accesses.
+        if (tracked := self._tracked()) > 0:
             warnings.warn(
                 f"Finalizing {self!r} with {tracked} running Futures",
                 ResourceWarning,
                 stacklevel=2,
                 source=self,
             )
-        self._slots.close_put()
-        self._slots.close_get()
+        if hasattr(self, "_slots"):
+            self._slots.close_put()
+            self._slots.close_get()
+        # Matches the cleanup in __exit__.
+        if hasattr(self, "_selector"):
+            self._selector.close()
 
     def __enter__(self) -> "Jobserver":
         return self
