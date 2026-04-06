@@ -218,7 +218,8 @@ class Future(Generic[T]):
         Register fn(*args, **kwargs) for execution after Future.done(...).
 
         When already done(...) the requested function is immediately invoked.
-        Registered callback functions can accept a Future as an argument.
+        The Future is not automatically passed; to receive it, bind it
+        explicitly via args, e.g. future.when_done(cb, future).
         May raise CallbackRaised from at most this new callback.
         """
         self._when_done(
