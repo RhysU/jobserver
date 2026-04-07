@@ -675,6 +675,16 @@ class Jobserver:
         # Eagerly convert env and args before acquiring tokens so that
         # malformed inputs fail fast without consuming resources.
         env = dict(env.items() if isinstance(env, Mapping) else env)
+        for key, value in env.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"env key must be str," f" got {type(key).__name__}"
+                )
+            if value is not None and not isinstance(value, str):
+                raise TypeError(
+                    f"env value must be str or None,"
+                    f" got {type(value).__name__}"
+                )
         args = tuple(args)
 
         # Next, either obtain requested tokens or else raise Blocked
