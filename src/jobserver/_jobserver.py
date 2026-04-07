@@ -117,7 +117,7 @@ class ResultWrapper(Wrapper[T]):
         return self._result
 
 
-class ExceptionWrapper(Wrapper[T]):
+class ExceptionWrapper(Wrapper[Any]):
     """Specialization of Wrapper for when an Exception has been raised."""
 
     __slots__ = ("_raised",)
