@@ -31,9 +31,9 @@ from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
 from ._compat import ignore_sigpipe, sched_getaffinity0
 from ._queue import (
     MinimalQueue,
-    absolute_deadline,
-    relative_timeout,
+    deadline_to_timeout,
     resolve_context,
+    timeout_to_deadline,
 )
 
 __all__ = (
@@ -292,10 +292,10 @@ class Future(Generic[T]):
         See CallbackRaised documentation for callback error semantics.
         """
         # Deadline computed before lock so acquisition time is deducted
-        deadline = absolute_deadline(timeout)
+        deadline = timeout_to_deadline(timeout)
 
         # Acquire the lock, respecting the caller's timeout budget
-        if not self._rlock.acquire(timeout=relative_timeout(deadline)):
+        if not self._rlock.acquire(timeout=deadline_to_timeout(deadline)):
             return False
 
         try:
@@ -317,7 +317,7 @@ class Future(Generic[T]):
             assert self._process is not None
             ready = wait(
                 [self._connection, self._process.sentinel],
-                timeout=relative_timeout(deadline),
+                timeout=deadline_to_timeout(deadline),
             )
             # Sentinel ready implies process exited; trust it over is_alive()
             # because Linux closes fds before marking the process as a zombie
@@ -700,7 +700,7 @@ class Jobserver:
         # callback priority mechanism does permit issuing callback subsets.
         tokens = _obtain_tokens(
             consume=consume,
-            deadline=absolute_deadline(timeout),
+            deadline=timeout_to_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources,
             selector=self._selector,
             sleep_fn=sleep_fn,
@@ -806,7 +806,7 @@ class Jobserver:
         if buffersize is not None and buffersize < 1:
             raise ValueError("buffersize must be >= 1")
 
-        deadline = absolute_deadline(timeout)
+        deadline = timeout_to_deadline(timeout)
 
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]

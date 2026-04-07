@@ -7,7 +7,7 @@
 
 MinimalQueue receives heavy indirect coverage through the Jobserver and
 JobserverExecutor suites, so this file only covers its own API surface
-and the resolve_context / absolute_deadline helpers.
+and the resolve_context / timeout_to_deadline helpers.
 """
 
 import copy
@@ -16,7 +16,7 @@ import unittest
 from multiprocessing import get_all_start_methods, get_context
 from multiprocessing.context import BaseContext
 
-from jobserver import MinimalQueue, absolute_deadline, resolve_context
+from jobserver import MinimalQueue, resolve_context, timeout_to_deadline
 
 
 class MinimalQueueTest(unittest.TestCase):
@@ -82,19 +82,19 @@ class ResolveContextTest(unittest.TestCase):
                 self.assertIs(resolve_context(original), original)
 
 
-class AbsoluteDeadlineTest(unittest.TestCase):
-    """Unit tests for absolute_deadline."""
+class TimeoutToDeadlineTest(unittest.TestCase):
+    """Unit tests for timeout_to_deadline."""
 
     def test_none_yields_large_deadline(self) -> None:
         """None timeout produces a deadline far in the future."""
         before = time.monotonic()
-        deadline = absolute_deadline(None)
+        deadline = timeout_to_deadline(None)
         self.assertGreater(deadline, before + 86400)
 
     def test_zero_yields_near_now(self) -> None:
         """Zero timeout produces a deadline near the current time."""
         before = time.monotonic()
-        deadline = absolute_deadline(0)
+        deadline = timeout_to_deadline(0)
         after = time.monotonic()
         self.assertGreaterEqual(deadline, before)
         self.assertLessEqual(deadline, after + 0.01)
@@ -102,7 +102,7 @@ class AbsoluteDeadlineTest(unittest.TestCase):
     def test_positive_offset(self) -> None:
         """A positive timeout offsets from the current monotonic time."""
         before = time.monotonic()
-        deadline = absolute_deadline(5.0)
+        deadline = timeout_to_deadline(5.0)
         after = time.monotonic()
         self.assertGreaterEqual(deadline, before + 5.0)
         self.assertLessEqual(deadline, after + 5.0 + 0.01)
