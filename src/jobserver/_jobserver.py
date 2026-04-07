@@ -877,6 +877,9 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
             pass
 
 
+_RESOLUTION = 1.0e-2
+
+
 def _obtain_tokens(
     consume: int,
     deadline: float,
@@ -884,8 +887,6 @@ def _obtain_tokens(
     selector: DefaultSelector,
     sleep_fn: SleepFn,
     slots: MinimalQueue[int],
-    *,
-    resolution: float = 1.0e-2,
 ) -> list[int]:
     """
     Either retrieve requested tokens or raise Blocked while trying.
@@ -910,7 +911,7 @@ def _obtain_tokens(
         monotonic = time.monotonic()
         if sleep is not None:
             assert sleep >= 0.0
-            time.sleep(max(resolution, min(sleep, deadline - monotonic)))
+            time.sleep(max(_RESOLUTION, min(sleep, deadline - monotonic)))
             if time.monotonic() >= deadline:
                 raise Blocked()
             continue
