@@ -372,10 +372,11 @@ def noop(*args, **kwargs) -> None:
     return None
 
 
-def _restore_tokens(slots: MinimalQueue, tokens: list) -> None:
-    """Restore tokens to slots, tolerating a closed queue."""
+def _restore_token(slots: MinimalQueue, token: Optional[int]) -> None:
+    """Restore token to slots, tolerating a closed queue."""
     try:
-        slots.put(*tokens)
+        if token is not None:
+            slots.put(token)
     except ValueError:
         pass  # Queue closed; Jobserver is shutting down
 
@@ -698,7 +699,7 @@ class Jobserver:
         # ASIDE: If another design is desired, instead of reclaim_resources
         # any other method could be injected below.  Notice that the
         # callback priority mechanism does permit issuing callback subsets.
-        tokens = _obtain_tokens(
+        token = _obtain_tokens(
             consume=consume,
             deadline=timeout_to_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources,
@@ -736,14 +737,15 @@ class Jobserver:
                 send.close()
             if recv is not None:
                 recv.close()
-            # Unwind any consumed slots on unexpected errors
-            self._slots.put(*tokens)
+            # Unwind any consumed slot on unexpected errors
+            if token is not None:
+                self._slots.put(token)
             raise
 
-        # As above process.start() succeeded, now Future must restore tokens
+        # As above process.start() succeeded, now Future must restore token
         future._when_done(
-            fn=_restore_tokens,
-            args=(self._slots, tokens),
+            fn=_restore_token,
+            args=(self._slots, token),
             priority=_PRIORITY_TOKEN,
         )
 
@@ -887,26 +889,24 @@ def _obtain_tokens(
     selector: DefaultSelector,
     sleep_fn: SleepFn,
     slots: MinimalQueue[int],
-) -> list[int]:
+) -> Optional[int]:
     """
-    Either retrieve requested tokens or raise Blocked while trying.
+    Either retrieve a requested token or raise Blocked while trying.
 
+    Returns the token when consume == 1, or None when consume == 0.
     May raise CallbackRaised via reclaim_tokens_fn so raising.
     """
     # Defensively check arguments
     if consume != 0 and consume != 1:
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
-    # Acquire the requested retval or raise Blocked when impossible
-    retval: list[int] = []
+    if consume == 0:
+        return None
+    # Acquire the requested token or raise Blocked when impossible
     while True:
         # (1) Eagerly clean up any completed work to avoid deadlocks
         reclaim_tokens_fn()
 
-        # (2) Exit loop if all requested resources have been acquired
-        if len(retval) >= consume:
-            break
-
-        # (3) When sleep_fn() vetoes new work proceed to sleep
+        # (2) When sleep_fn() vetoes new work proceed to sleep
         sleep = sleep_fn()
         monotonic = time.monotonic()
         if sleep is not None:
@@ -917,23 +917,20 @@ def _obtain_tokens(
             continue
 
         try:
-            # (4) Grab any immediately available token
-            retval.append(slots.get(timeout=0))
+            # (3) Grab any immediately available token
+            return slots.get(timeout=0)
         except queue.Empty:
-            # (5) Otherwise, possibly throw in the towel...
+            # (4) Otherwise, possibly throw in the towel...
             monotonic = time.monotonic()
             if monotonic >= deadline:
                 raise Blocked() from None
 
-            # (6) ...then block until some interesting event.
+            # (5) ...then block until some interesting event.
             # O(k) via the persistent selector:
             # _initialize_selector() places slots.waitable() once
             # so only one epoll_wait
             # is needed here.  No rebuilding of the interest set.
             selector.select(timeout=deadline - monotonic)
-
-    assert len(retval) == consume, "Postcondition"
-    return retval
 
 
 # Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
