@@ -17,8 +17,8 @@ from typing import Any, Generic, Optional, TypeVar, Union
 
 __all__ = (
     "MinimalQueue",
-    "absolute_deadline",
-    "relative_timeout",
+    "timeout_to_deadline",
+    "deadline_to_timeout",
     "resolve_context",
 )
 
@@ -33,22 +33,22 @@ T = TypeVar("T")
 _MAX_TIMEOUT_SECS = (2**31 - 1) / 1000  # INT_MAX ms ≈ 24.85 days
 
 
-def absolute_deadline(relative_timeout: Optional[float]) -> float:
+def timeout_to_deadline(timeout: Optional[float]) -> float:
     """
-    Convert relative_timeout in seconds into a monotonic, absolute deadline.
+    Convert timeout in seconds into a monotonic, absolute deadline.
 
-    When relative_timeout is None a large, finite deadline is returned per
+    When timeout is None a large, finite deadline is returned per
     poll()/select() restrictions.
     """
     return (
-        _MAX_TIMEOUT_SECS if relative_timeout is None else relative_timeout
+        _MAX_TIMEOUT_SECS if timeout is None else timeout
     ) + time.monotonic()
 
 
-def relative_timeout(deadline: float) -> float:
+def deadline_to_timeout(deadline: float) -> float:
     """Return seconds remaining until deadline, non-negative and finite.
 
-    Intended to be paired with absolute_deadline().  The result is safe to
+    Intended to be paired with timeout_to_deadline().  The result is safe to
     pass directly to poll()/select() on any platform.
     """
     return min(_MAX_TIMEOUT_SECS, max(0.0, deadline - time.monotonic()))
@@ -167,13 +167,13 @@ class MinimalQueue(Generic[T]):
         # Accounting for lock acquisition time is easiest with a deadline
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
-        deadline = absolute_deadline(timeout)
+        deadline = timeout_to_deadline(timeout)
         if not self._read_lock.acquire(
-            block=True, timeout=relative_timeout(deadline)
+            block=True, timeout=deadline_to_timeout(deadline)
         ):
             raise queue.Empty
         try:
-            if not self._reader.poll(relative_timeout(deadline)):
+            if not self._reader.poll(deadline_to_timeout(deadline)):
                 raise queue.Empty
             recv = self._reader.recv_bytes()
         finally:

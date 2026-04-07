@@ -47,7 +47,7 @@ from ._jobserver import (
     MinimalQueue,
     SubmissionDied,
 )
-from ._queue import absolute_deadline, relative_timeout, resolve_context
+from ._queue import deadline_to_timeout, resolve_context, timeout_to_deadline
 
 __all__ = (
     "Blocked",
@@ -57,7 +57,7 @@ __all__ = (
     "JobserverExecutor",
     "MinimalQueue",
     "SubmissionDied",
-    "absolute_deadline",
-    "relative_timeout",
+    "deadline_to_timeout",
+    "timeout_to_deadline",
     "resolve_context",
 )
