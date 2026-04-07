@@ -374,11 +374,11 @@ def noop(*args, **kwargs) -> None:
 
 def _restore_token(slots: MinimalQueue, token: Optional[int]) -> None:
     """Restore token to slots, tolerating a closed queue."""
-    try:
-        if token is not None:
+    if token is not None:
+        try:
             slots.put(token)
-    except ValueError:
-        pass  # Queue closed; Jobserver is shutting down
+        except ValueError:
+            pass  # Queue closed; Jobserver is shutting down
 
 
 def _unregister_sentinel(
@@ -674,17 +674,7 @@ class Jobserver:
 
         # Eagerly convert env and args before acquiring tokens so that
         # malformed inputs fail fast without consuming resources.
-        env = dict(env.items() if isinstance(env, Mapping) else env)
-        for key, value in env.items():
-            if not isinstance(key, str):
-                raise TypeError(
-                    f"env key must be str," f" got {type(key).__name__}"
-                )
-            if value is not None and not isinstance(value, str):
-                raise TypeError(
-                    f"env value must be str or None,"
-                    f" got {type(value).__name__}"
-                )
+        env = _env_coerce(env)
         args = tuple(args)
 
         # Next, either obtain requested tokens or else raise Blocked
@@ -889,6 +879,27 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
             pass
 
 
+def _env_coerce(
+    env: Union[
+        Mapping[str, Optional[str]],
+        Iterable[tuple[str, Optional[str]]],
+    ],
+) -> dict[str, Optional[str]]:
+    """Convert env to a dict, validating key/value types."""
+    result = dict(env.items() if isinstance(env, Mapping) else env)
+    for key, value in result.items():
+        if not isinstance(key, str):
+            raise TypeError(
+                f"env key must be str," f" got {type(key).__name__}"
+            )
+        if value is not None and not isinstance(value, str):
+            raise TypeError(
+                f"env value must be str or None,"
+                f" got {type(value).__name__}"
+            )
+    return result
+
+
 _RESOLUTION = 1.0e-2
 
 
@@ -909,14 +920,17 @@ def _obtain_tokens(
     # Defensively check arguments
     if consume != 0 and consume != 1:
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
-    if consume == 0:
-        return None
     # Acquire the requested token or raise Blocked when impossible
+    token: Optional[int] = None
     while True:
         # (1) Eagerly clean up any completed work to avoid deadlocks
         reclaim_tokens_fn()
 
-        # (2) When sleep_fn() vetoes new work proceed to sleep
+        # (2) Exit loop if all requested resources have been acquired
+        if consume == 0 or token is not None:
+            break
+
+        # (3) When sleep_fn() vetoes new work proceed to sleep
         sleep = sleep_fn()
         monotonic = time.monotonic()
         if sleep is not None:
@@ -927,20 +941,23 @@ def _obtain_tokens(
             continue
 
         try:
-            # (3) Grab any immediately available token
-            return slots.get(timeout=0)
+            # (4) Grab any immediately available token
+            token = slots.get(timeout=0)
         except queue.Empty:
-            # (4) Otherwise, possibly throw in the towel...
+            # (5) Otherwise, possibly throw in the towel...
             monotonic = time.monotonic()
             if monotonic >= deadline:
                 raise Blocked() from None
 
-            # (5) ...then block until some interesting event.
+            # (6) ...then block until some interesting event.
             # O(k) via the persistent selector:
             # _initialize_selector() places slots.waitable() once
             # so only one epoll_wait
             # is needed here.  No rebuilding of the interest set.
             selector.select(timeout=deadline - monotonic)
+
+    assert token is None or consume == 1, "Postcondition"
+    return token
 
 
 # Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
