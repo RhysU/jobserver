@@ -6,6 +6,7 @@
 """MinimalQueue and related utility functions."""
 
 import queue
+import threading
 import time
 
 # Implementation depends upon an explicit subset of multiprocessing
@@ -90,14 +91,22 @@ class MinimalQueue(Generic[T]):
         reader, writer = context.Pipe(duplex=False)
         self._reader: Optional[Connection] = reader
         self._writer: Optional[Connection] = writer
-        self._read_lock = context.Lock()
-        self._write_lock = context.Lock()
+        self._read_lock = threading.Lock()
+        self._write_lock = threading.Lock()
 
     def __repr__(self) -> str:
         return (
             f"MinimalQueue(reader={_conn_repr(self._reader)},"
             f" writer={_conn_repr(self._writer)})"
         )
+
+    def __getstate__(self) -> tuple:
+        return (self._reader, self._writer)
+
+    def __setstate__(self, state: tuple) -> None:
+        self._reader, self._writer = state
+        self._read_lock = threading.Lock()
+        self._write_lock = threading.Lock()
 
     def __enter__(self) -> "MinimalQueue":
         return self
@@ -139,11 +148,6 @@ class MinimalQueue(Generic[T]):
         if self._reader is not None:
             self._reader.close()
             self._reader = None
-            # _read_lock must NOT be set to None here.  In spawn/forkserver
-            # mode, setting it to None would drop the last parent-side
-            # reference, causing CPython to call sem_unlink() on the named
-            # semaphore before the child process has had a chance to open it,
-            # producing FileNotFoundError during the child's unpickling.
 
     def close_put(self) -> None:
         """Close the sending end; put() may no longer be called.
@@ -153,8 +157,6 @@ class MinimalQueue(Generic[T]):
         if self._writer is not None:
             self._writer.close()
             self._writer = None
-            # _write_lock must NOT be set to None here; same race condition
-            # as described in close_get().
 
     def get(self, timeout: Optional[float] = None) -> T:
         """
@@ -169,7 +171,7 @@ class MinimalQueue(Generic[T]):
         # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = timeout_to_deadline(timeout)
         if not self._read_lock.acquire(
-            block=True, timeout=deadline_to_timeout(deadline)
+            blocking=True, timeout=deadline_to_timeout(deadline)
         ):
             raise queue.Empty
         try:
