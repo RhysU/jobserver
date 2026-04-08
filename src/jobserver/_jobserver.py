@@ -830,6 +830,13 @@ class Jobserver:
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]
         if argses is not None and kwargses is not None:
+            # Eagerly check lengths when both support len() so that
+            # mismatches surface at call time, not mid-iteration.
+            if hasattr(argses, "__len__") and hasattr(kwargses, "__len__"):
+                if len(argses) != len(kwargses):  # type: ignore[arg-type]
+                    raise ValueError(
+                        "argses and kwargses must have equal length"
+                    )
             pairs = _strict_zip(argses, kwargses)
         elif kwargses is not None:
             pairs = (((), kw) for kw in kwargses)
