@@ -216,6 +216,16 @@ class Future(Generic[T]):
         # In particular, because pickles create copies.
         raise TypeError("Futures cannot be pickled.")
 
+    def __del__(self) -> None:
+        """Emit ResourceWarning if this Future still holds OS resources."""
+        if getattr(self, "_connection", None) is not None:
+            warnings.warn(
+                f"Finalizing {self!r} with open connection",
+                ResourceWarning,
+                stacklevel=2,
+                source=self,
+            )
+
     def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> None:
         """
         Register fn(*args, **kwargs) for execution after Future.done(...).
