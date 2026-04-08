@@ -10,7 +10,6 @@ import concurrent.futures
 import functools
 import heapq
 import os
-import pickle
 import queue
 import signal
 import threading
@@ -26,7 +25,6 @@ from itertools import islice
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
-from multiprocessing.reduction import ForkingPickler
 from selectors import EVENT_READ, DefaultSelector, SelectorKey
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
@@ -743,20 +741,7 @@ class Jobserver:
                 name="Jobserver-worker",
             )
             future: Future[T] = Future(process, recv)
-            if self._context.get_start_method() != "fork":
-                try:
-                    ForkingPickler.dumps(preexec_fn)
-                except (
-                    pickle.PicklingError,
-                    AttributeError,
-                    TypeError,
-                ) as exc:
-                    method = self._context.get_start_method()
-                    raise pickle.PicklingError(
-                        f"preexec_fn={preexec_fn!r} is not "
-                        f"picklable, which is required by "
-                        f"the {method!r} start method"
-                    ) from exc
+            # TODO: better report pickling problems (e.g. preexec_fn)
             process.start()
             send.close()
 
@@ -848,19 +833,20 @@ class Jobserver:
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]
         if argses is not None and kwargses is not None:
-            pairs = (
-                (_check_args(args), kw)
-                for args, kw in _strict_zip(argses, kwargses)
-            )
+            pairs = _strict_zip(argses, kwargses)
         elif kwargses is not None:
             pairs = (((), kw) for kw in kwargses)
         else:
-            pairs = (
-                (_check_args(args), {})
-                for args in (argses or ())
-            )
+            pairs = ((args, {}) for args in (argses or ()))
 
-        collected = list(pairs) if buffersize is None else None
+        # Eagerly validate argses elements when collecting
+        if buffersize is None:
+            collected = [
+                _validate_args_kwargs(n, args, kwargs)
+                for n, (args, kwargs) in enumerate(pairs)
+            ]
+        else:
+            collected = None
         return _map_generate(
             submit=self.submit,
             fn=fn,
@@ -1029,15 +1015,25 @@ def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
         raise ValueError("argses and kwargses must have equal length")
 
 
-def _check_args(args: Any) -> Any:
-    """Validate that an argses element is iterable for fn(*args)."""
-    if not isinstance(args, Iterable):
+def _validate_args_kwargs(n: int, args: Any, kwargs: Any) -> tuple:
+    """Return (tuple(args), dict(kwargs)), raising TypeError with n."""
+    try:
+        args = tuple(args)
+    except TypeError:
         raise TypeError(
-            f"each element of argses must be an iterable of "
-            f"positional arguments (e.g. a tuple), got "
-            f"{type(args).__name__}: {args!r}"
-        )
-    return args
+            f"argses[{n}]: expected iterable of positional"
+            f" arguments (e.g. a tuple), got"
+            f" {type(args).__name__}: {args!r}"
+        ) from None
+    # Some Mapping subclasses are not picklable so coerce if needed.
+    try:
+        kwargs = kwargs if isinstance(kwargs, dict) else dict(kwargs)
+    except (TypeError, ValueError):
+        raise TypeError(
+            f"kwargses[{n}]: expected a mapping, got"
+            f" {type(kwargs).__name__}: {kwargs!r}"
+        ) from None
+    return (args, kwargs)
 
 
 def _map_chunk(fn: Callable, chunk: tuple) -> list:

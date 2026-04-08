@@ -100,10 +100,16 @@ class MinimalQueue(Generic[T]):
             f" writer={_conn_repr(self._writer)})"
         )
 
-    def __getstate__(self) -> tuple:
+    def __getstate__(
+        self,
+    ) -> tuple[Optional[Connection], Optional[Connection]]:
+        # Locks are omitted; each process creates its own after unpickling.
         return (self._reader, self._writer)
 
-    def __setstate__(self, state: tuple) -> None:
+    def __setstate__(
+        self,
+        state: tuple[Optional[Connection], Optional[Connection]],
+    ) -> None:
         self._reader, self._writer = state
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()

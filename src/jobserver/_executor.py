@@ -358,7 +358,7 @@ def _dispatch_pending(
             # Transition PENDING -> RUNNING -> FINISHED(exc).
             pending.popleft()
             responses.put(_response.Started(work_id=item.work_id))
-            _put_failed(responses, item.work_id, exc)
+            _responses_put_failed(responses, item.work_id, exc)
             continue
 
         # Dispatch succeeded -- inform receiver and track
@@ -386,23 +386,24 @@ def _poll_running(
         _bridge_result(f, work_id, responses)
 
 
-def _put_failed(
+def _responses_put_failed(
     responses: MinimalQueue,
     work_id: int,
     exc: Exception,
 ) -> None:
     """Put a Failed response, falling back if exc is not picklable."""
+    failed = _response.Failed(work_id=work_id, exc=exc)
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     try:
-        responses.put(_response.Failed(work_id=work_id, exc=exc))
-    except (pickle.PicklingError, AttributeError, TypeError):
-        tb = "".join(traceback.format_exception(exc))
-        fallback = RuntimeError(
-            f"{type(exc).__qualname__}: {exc}\n"
-            f"(original exception was not picklable)\n"
-            f"{tb}"
-        )
+        responses.put(failed)
+    except pickle.PicklingError:
         responses.put(
-            _response.Failed(work_id=work_id, exc=fallback)
+            _response.Failed(
+                work_id=work_id,
+                exc=RuntimeError(
+                    f"(original exception was not picklable)\n{tb}"
+                ),
+            )
         )
 
 
@@ -416,7 +417,7 @@ def _bridge_result(
         value = f.result(timeout=0)
         responses.put(_response.Completed(work_id=work_id, value=value))
     except Exception as exc:
-        _put_failed(responses, work_id, exc)
+        _responses_put_failed(responses, work_id, exc)
 
 
 def _handle_shutdown(
