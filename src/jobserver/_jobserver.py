@@ -964,12 +964,14 @@ def _maybe_obtain_token(
         if consume == 0 or token is not None:
             break
 
-        # (3) When sleep_fn() vetoes new work proceed to sleep
+        # (3) When sleep_fn() vetoes new work proceed to sleep.
+        # Bound the sleep by the remaining deadline so that
+        # sleep_fn() duration is properly accounted for.
         sleep = sleep_fn()
-        monotonic = time.monotonic()
         if sleep is not None:
             assert sleep >= 0.0
-            time.sleep(max(_RESOLUTION, min(sleep, deadline - monotonic)))
+            remaining = deadline_to_timeout(deadline)
+            time.sleep(max(_RESOLUTION, min(sleep, remaining)))
             if time.monotonic() >= deadline:
                 raise Blocked()
             continue
