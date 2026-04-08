@@ -112,25 +112,26 @@ class JobserverExecutor(concurrent.futures.Executor):
             work_id = next(self._work_ids)
             self._futures[work_id] = future
         # Lock is released before put() to avoid holding it across
-        # potentially-slow pickling and IPC.
+        # potentially-slow pickling and IPC.  The finally block removes
+        # the orphan on any failure including BaseException.
+        success = False
         try:
             self._requests.put(
                 _request.Submit(
                     work_id=work_id, fn=fn, args=args, kwargs=kwargs
                 )
             )
+            success = True
         except BrokenPipeError:
             # Dispatcher exited due to a concurrent shutdown(); clean up and
             # raise the same error a caller would see from a post-shutdown
             # submit() that observed the flag in time.
-            with self._lock:
-                self._futures.pop(work_id, None)
             msg = "Cannot submit: executor is shut down"
             raise RuntimeError(msg) from None
-        except Exception:
-            with self._lock:
-                self._futures.pop(work_id, None)
-            raise
+        finally:
+            if not success:
+                with self._lock:
+                    self._futures.pop(work_id, None)
         return future
 
     # TODO: Add @typing.override when Python 3.12+ is the minimum.
