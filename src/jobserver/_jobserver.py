@@ -139,6 +139,25 @@ _PRIORITY_USER = 1
 _PRIORITY_CLEANUP = 2
 
 
+class _CallbackEntry:
+    """Heap-safe callback entry that compares on (priority, seqno) only."""
+
+    __slots__ = ("priority", "seqno", "fn", "args", "kwargs")
+
+    def __init__(self, priority, seqno, fn, args, kwargs):
+        self.priority = priority
+        self.seqno = seqno
+        self.fn = fn
+        self.args = args
+        self.kwargs = kwargs
+
+    def __lt__(self, other: "_CallbackEntry") -> bool:
+        return (self.priority, self.seqno) < (
+            other.priority,
+            other.seqno,
+        )
+
+
 def _callback_wrapper(fn, *args, **kwargs) -> None:
     """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised."""
     try:
@@ -190,7 +209,7 @@ class Future(Generic[T]):
         # Populated by calls to when_done(...).  A heapq ordered by
         # (priority, callback_seqno, ...) so token restoration fires before
         # user callbacks, which fire before sentinel cleanup.
-        self._callbacks: list[tuple] = []
+        self._callbacks: list[_CallbackEntry] = []
         self._callback_seqno = 0  # Monotonic needed due to reentrancy
 
     def __repr__(self) -> str:
@@ -243,7 +262,7 @@ class Future(Generic[T]):
         with self._rlock:
             heapq.heappush(
                 self._callbacks,
-                (
+                _CallbackEntry(
                     priority,
                     self._callback_seqno,
                     fn,
@@ -351,8 +370,8 @@ class Future(Generic[T]):
     def _issue_callbacks(self):
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
-            _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
-            fn(*args, **kwargs)
+            entry = heapq.heappop(self._callbacks)
+            entry.fn(*entry.args, **entry.kwargs)
 
     def result(self, timeout: Optional[float] = None) -> T:
         """
