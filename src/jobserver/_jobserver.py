@@ -194,10 +194,13 @@ class Future(Generic[T]):
         self._callback_seqno = 0  # Monotonic needed due to reentrancy
 
     def __repr__(self) -> str:
-        p = self._process
+        with self._rlock:
+            done = self._connection is None
+            callbacks = len(self._callbacks)
+            p = self._process
         return (
-            f"Future({'done' if self._connection is None else 'running'}"
-            f", callbacks={len(self._callbacks)}"
+            f"Future({'done' if done else 'running'}"
+            f", callbacks={callbacks}"
             f", pid={None if p is None else p.pid})"
         )
 
