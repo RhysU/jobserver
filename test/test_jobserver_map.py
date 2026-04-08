@@ -327,6 +327,20 @@ class TestJobserverMap(unittest.TestCase):
             with self.assertRaises(ValueError):
                 next(it)
 
+    # ---- Length mismatch ----
+
+    def test_mismatched_lengths_raises(self) -> None:
+        """map() raises ValueError eagerly for mismatched-length inputs."""
+        with Jobserver(context=FAST, slots=1) as js:
+            with self.assertRaises(ValueError) as cm:
+                js.map(
+                    fn=_kw_sum,
+                    argses=[(1,), (2,), (3,)],
+                    kwargses=[{"b": 10}],
+                )
+            self.assertIn("3", str(cm.exception))
+            self.assertIn("1", str(cm.exception))
+
     # ---- Saturation ----
 
     def test_many_items_few_slots(self) -> None:

@@ -111,26 +111,26 @@ class JobserverExecutor(concurrent.futures.Executor):
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
-        # Lock is released before put() to avoid holding it across
-        # potentially-slow pickling and IPC.
+        success = False
         try:
             self._requests.put(
                 _request.Submit(
                     work_id=work_id, fn=fn, args=args, kwargs=kwargs
                 )
             )
+            success = True
         except BrokenPipeError:
-            # Dispatcher exited due to a concurrent shutdown(); clean up and
-            # raise the same error a caller would see from a post-shutdown
-            # submit() that observed the flag in time.
-            with self._lock:
-                self._futures.pop(work_id, None)
-            msg = "Cannot submit: executor is shut down"
-            raise RuntimeError(msg) from None
-        except Exception:
-            with self._lock:
-                self._futures.pop(work_id, None)
-            raise
+            # Issue RuntimeError to match post-shutdown submit() behavior.
+            raise RuntimeError(
+                "Cannot submit: executor is shut down"
+            ) from None
+        finally:
+            # Lock was released before put() to avoid blocking on IPC.
+            # On any failure, remove the orphaned future so the
+            # dispatcher never sees a work_id without a request.
+            if not success:
+                with self._lock:
+                    self._futures.pop(work_id, None)
         return future
 
     # TODO: Add @typing.override when Python 3.12+ is the minimum.
@@ -206,7 +206,10 @@ class JobserverExecutor(concurrent.futures.Executor):
                     # in the dispatcher; the eventual Completed or Failed
                     # will be silently discarded by the cancelled() check
                     # below, so no further action is needed here.
-                    future.set_running_or_notify_cancel()
+                    try:
+                        future.set_running_or_notify_cancel()
+                    except concurrent.futures.InvalidStateError:
+                        pass
             elif isinstance(msg, _response.Completed):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)

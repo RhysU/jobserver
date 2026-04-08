@@ -26,7 +26,7 @@ from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from selectors import EVENT_READ, DefaultSelector, SelectorKey
-from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
+from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
 from ._queue import (
@@ -215,6 +215,16 @@ class Future(Generic[T]):
         """Disallow pickling as duplicates cannot sensibly share resources."""
         # In particular, because pickles create copies.
         raise TypeError("Futures cannot be pickled.")
+
+    def __del__(self) -> None:
+        """Emit ResourceWarning if this Future still holds OS resources."""
+        if getattr(self, "_connection", None) is not None:
+            warnings.warn(
+                f"Finalizing {self!r} with open connection",
+                ResourceWarning,
+                stacklevel=2,
+                source=self,
+            )
 
     def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> None:
         """
@@ -435,8 +445,8 @@ class Jobserver:
             Mapping[str, Optional[str]],
             Iterable[tuple[str, Optional[str]]],
         ] = (),
-        preexec_fn: PreexecFn = noop,
-        sleep_fn: SleepFn = noop,
+        preexec_fn: Optional[PreexecFn] = None,
+        sleep_fn: Optional[SleepFn] = None,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -673,12 +683,18 @@ class Jobserver:
         preexec_fn = self._preexec_fn if preexec_fn is None else preexec_fn
         sleep_fn = self._sleep_fn if sleep_fn is None else sleep_fn
 
-        assert preexec_fn is not None
+        # Fall back to noop when neither caller nor __init__ supplied one.
+        if preexec_fn is None:
+            preexec_fn = cast(PreexecFn, noop)
+        if sleep_fn is None:
+            sleep_fn = cast(SleepFn, noop)
 
         # Eagerly convert env and args before acquiring tokens so that
         # malformed inputs fail fast without consuming resources.
         env = _env_coerce(env)
         args = tuple(args)
+        # Some Mapping subclasses are not picklable so coerce if needed.
+        kwargs = kwargs if isinstance(kwargs, dict) else dict(kwargs)
 
         # Next, either obtain requested tokens or else raise Blocked
         #
@@ -829,9 +845,9 @@ class Jobserver:
             pairs=pairs if collected is None else iter(collected),
             chunksize=chunksize,
             buffersize=(
-                buffersize
-                if buffersize is not None
-                else len(collected)  # type: ignore[arg-type]
+                len(collected)  # type: ignore[arg-type]
+                if buffersize is None
+                else buffersize
             ),
             deadline=deadline,
             env=env,
@@ -933,12 +949,14 @@ def _maybe_obtain_token(
         if consume == 0 or token is not None:
             break
 
-        # (3) When sleep_fn() vetoes new work proceed to sleep
+        # (3) When sleep_fn() vetoes new work proceed to sleep.
+        # Bound the sleep by the remaining deadline so that
+        # sleep_fn() duration is properly accounted for.
         sleep = sleep_fn()
-        monotonic = time.monotonic()
         if sleep is not None:
             assert sleep >= 0.0
-            time.sleep(max(_RESOLUTION, min(sleep, deadline - monotonic)))
+            remaining = deadline_to_timeout(deadline)
+            time.sleep(max(_RESOLUTION, min(sleep, remaining)))
             if time.monotonic() >= deadline:
                 raise Blocked()
             continue
@@ -966,6 +984,18 @@ def _maybe_obtain_token(
 # Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
 def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
     """Zip raising ValueError when the two iterables differ in length."""
+    # Eagerly check lengths when both support len() so that
+    # mismatches surface at call time, not mid-iteration.
+    try:
+        m = len(a)  # type: ignore[arg-type]
+        n = len(b)  # type: ignore[arg-type]
+        if m != n:
+            raise ValueError(
+                f"Length of argses ({m}) must match"
+                f" length of kwargses ({n})"
+            )
+    except TypeError:
+        pass
     a_it, b_it = iter(a), iter(b)
     sentinel = object()
     for a_val in a_it:
@@ -1009,7 +1039,7 @@ def _map_generate(
                 env=env,
                 preexec_fn=preexec_fn,
                 sleep_fn=sleep_fn,
-                timeout=deadline - time.monotonic(),
+                timeout=deadline_to_timeout(deadline),
             )
         )
 
@@ -1025,7 +1055,7 @@ def _map_generate(
             if chunk := tuple(islice(pairs, chunksize)):
                 _futures_append_submit(chunk)
             yield from futures.popleft().result(
-                timeout=deadline - time.monotonic()
+                timeout=deadline_to_timeout(deadline)
             )
     except Blocked:
         # concurrent.futures.TimeoutError (not builtin TimeoutError) so that

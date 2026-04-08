@@ -20,6 +20,7 @@ import tempfile
 import time
 import typing
 import unittest
+from collections import ChainMap
 from multiprocessing import get_all_start_methods, get_context
 
 from jobserver import (
@@ -35,6 +36,13 @@ from .helpers import (
     helper_recurse,
     helper_return,
 )
+
+
+class UnpickleableMapping(ChainMap):  # type: ignore[type-arg]
+    """A Mapping subclass that cannot be pickled."""
+
+    def __reduce__(self) -> typing.NoReturn:
+        raise pickle.PicklingError("deliberately unpickleable")
 
 
 class TestJobserverBasic(unittest.TestCase):
@@ -179,6 +187,18 @@ class TestJobserverBasic(unittest.TestCase):
                         timeout=None,
                     )
                     self.assertIsNone(f.result())
+
+    def test_non_dict_mapping_kwargs(self) -> None:
+        """Non-dict Mapping kwargs are coerced to dict for pickling."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                m = UnpickleableMapping({"object": 42})
+                self.assertNotIsInstance(m, dict)
+                with self.assertRaises(pickle.PicklingError):
+                    pickle.dumps(m)
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.submit(fn=str, kwargs=m, timeout=None)
+                    self.assertEqual("42", f.result())
 
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
