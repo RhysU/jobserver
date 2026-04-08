@@ -814,7 +814,7 @@ class Jobserver:
         concurrent.futures.TimeoutError.  Function calls are sent to
         workers in groups of chunksize.  Consistent with
         concurrent.futures, all chunksize results are materialized
-        in memory at once within the worker process.
+        in memory at once.
 
         When env provided, child updates os.environ unsetting None-valued keys.
         See submit() for preexec_fn semantics.
