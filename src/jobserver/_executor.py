@@ -89,8 +89,9 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
 
     def __repr__(self) -> str:
-        state = "shutdown" if self._shutdown else "active"
-        pending = len(self._futures)
+        with self._lock:
+            state = "shutdown" if self._shutdown else "active"
+            pending = len(self._futures)
         return (
             f"JobserverExecutor({state}, pending={pending}"
             f", jobserver={self._jobserver!r})"
