@@ -23,9 +23,9 @@ from multiprocessing import get_all_start_methods, get_context
 from jobserver import (
     Blocked,
     Jobserver,
-    MinimalQueue,
     SubmissionDied,
 )
+from jobserver._queue import MinimalQueue
 
 from .helpers import (
     helper_callback,

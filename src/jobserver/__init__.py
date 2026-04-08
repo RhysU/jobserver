@@ -44,10 +44,8 @@ from ._jobserver import (
     CallbackRaised,
     Future,
     Jobserver,
-    MinimalQueue,
     SubmissionDied,
 )
-from ._queue import deadline_to_timeout, resolve_context, timeout_to_deadline
 
 __all__ = (
     "Blocked",
@@ -55,9 +53,5 @@ __all__ = (
     "Future",
     "Jobserver",
     "JobserverExecutor",
-    "MinimalQueue",
     "SubmissionDied",
-    "deadline_to_timeout",
-    "timeout_to_deadline",
-    "resolve_context",
 )

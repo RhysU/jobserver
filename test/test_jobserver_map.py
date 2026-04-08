@@ -327,6 +327,28 @@ class TestJobserverMap(unittest.TestCase):
             with self.assertRaises(ValueError):
                 next(it)
 
+    # ---- Argument validation ----
+
+    def test_non_iterable_argses_element_raises(self) -> None:
+        """map() raises TypeError for non-iterable argses elements."""
+        with Jobserver(context=FAST, slots=2) as js:
+            with self.assertRaises(TypeError) as cm:
+                list(js.map(fn=len, argses=[(1,), 42, (3,)]))
+            self.assertIn("argses[1]", str(cm.exception))
+
+    def test_non_mapping_kwargses_element_raises(self) -> None:
+        """map() raises TypeError for non-mapping kwargses elements."""
+        with Jobserver(context=FAST, slots=2) as js:
+            with self.assertRaises(TypeError) as cm:
+                list(
+                    js.map(
+                        fn=_kw_sum,
+                        argses=[(1,), (2,)],
+                        kwargses=[{"b": 2}, "bad"],
+                    )
+                )
+            self.assertIn("kwargses[1]", str(cm.exception))
+
     # ---- Length mismatch ----
 
     def test_mismatched_lengths_raises(self) -> None:

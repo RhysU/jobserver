@@ -741,6 +741,7 @@ class Jobserver:
                 name="Jobserver-worker",
             )
             future: Future[T] = Future(process, recv)
+            # TODO: better report pickling problems (e.g. preexec_fn)
             process.start()
             send.close()
 
@@ -784,8 +785,8 @@ class Jobserver:
     def map(
         self,
         fn: Callable[..., T],
-        argses: Optional[Iterable] = None,
-        kwargses: Optional[Iterable] = None,
+        argses: Optional[Iterable[Iterable]] = None,
+        kwargses: Optional[Iterable[Mapping[str, Any]]] = None,
         *,
         env: Union[
             None,
@@ -838,7 +839,14 @@ class Jobserver:
         else:
             pairs = ((args, {}) for args in (argses or ()))
 
-        collected = list(pairs) if buffersize is None else None
+        # Eagerly validate argses elements when collecting
+        if buffersize is None:
+            collected = [
+                _validate_args_kwargs(n, args, kwargs)
+                for n, (args, kwargs) in enumerate(pairs)
+            ]
+        else:
+            collected = None
         return _map_generate(
             submit=self.submit,
             fn=fn,
@@ -1005,6 +1013,27 @@ def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
         yield (a_val, b_val)
     if next(b_it, sentinel) is not sentinel:
         raise ValueError("argses and kwargses must have equal length")
+
+
+def _validate_args_kwargs(n: int, args: Any, kwargs: Any) -> tuple:
+    """Return (tuple(args), dict(kwargs)), raising TypeError with n."""
+    try:
+        args = tuple(args)
+    except TypeError:
+        raise TypeError(
+            f"argses[{n}]: expected iterable of positional"
+            f" arguments (e.g. a tuple), got"
+            f" {type(args).__name__}: {args!r}"
+        ) from None
+    # Some Mapping subclasses are not picklable so coerce if needed.
+    try:
+        kwargs = kwargs if isinstance(kwargs, dict) else dict(kwargs)
+    except (TypeError, ValueError):
+        raise TypeError(
+            f"kwargses[{n}]: expected a mapping, got"
+            f" {type(kwargs).__name__}: {kwargs!r}"
+        ) from None
+    return (args, kwargs)
 
 
 def _map_chunk(fn: Callable, chunk: tuple) -> list:

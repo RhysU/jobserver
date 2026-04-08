@@ -26,8 +26,8 @@ from multiprocessing import get_all_start_methods, get_context
 from jobserver import (
     Blocked,
     Jobserver,
-    MinimalQueue,
 )
+from jobserver._queue import MinimalQueue
 
 from .helpers import (
     barrier_wait,
