@@ -206,7 +206,10 @@ class JobserverExecutor(concurrent.futures.Executor):
                     # in the dispatcher; the eventual Completed or Failed
                     # will be silently discarded by the cancelled() check
                     # below, so no further action is needed here.
-                    future.set_running_or_notify_cancel()
+                    try:
+                        future.set_running_or_notify_cancel()
+                    except concurrent.futures.InvalidStateError:
+                        pass
             elif isinstance(msg, _response.Completed):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
