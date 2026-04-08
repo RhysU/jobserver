@@ -641,7 +641,6 @@ class Jobserver:
         preexec_fn: Optional[PreexecFn] = None,  # None: use default
         sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
-        _deadline: Optional[float] = None,
     ) -> Future[T]:
         """Submit running fn(*args, **kwargs) to this Jobserver.
 
@@ -724,11 +723,7 @@ class Jobserver:
         # callback priority mechanism does permit issuing callback subsets.
         token = _maybe_obtain_token(
             consume=consume,
-            deadline=(
-                _deadline
-                if _deadline is not None
-                else timeout_to_deadline(timeout)
-            ),
+            deadline=timeout_to_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources,
             selector=self._selector,
             sleep_fn=sleep_fn,
@@ -1042,7 +1037,7 @@ def _map_generate(
                 env=env,
                 preexec_fn=preexec_fn,
                 sleep_fn=sleep_fn,
-                _deadline=deadline,
+                timeout=deadline - time.monotonic(),
             )
         )
 
@@ -1058,7 +1053,7 @@ def _map_generate(
             if chunk := tuple(islice(pairs, chunksize)):
                 _futures_append_submit(chunk)
             yield from futures.popleft().result(
-                timeout=deadline_to_timeout(deadline)
+                timeout=deadline - time.monotonic()
             )
     except Blocked:
         # concurrent.futures.TimeoutError (not builtin TimeoutError) so that
