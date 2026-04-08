@@ -26,7 +26,7 @@ from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from selectors import EVENT_READ, DefaultSelector, SelectorKey
-from typing import Any, Generic, NoReturn, Optional, TypeVar, Union
+from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
 from ._queue import (
@@ -445,8 +445,8 @@ class Jobserver:
             Mapping[str, Optional[str]],
             Iterable[tuple[str, Optional[str]]],
         ] = (),
-        preexec_fn: PreexecFn = noop,
-        sleep_fn: SleepFn = noop,
+        preexec_fn: Optional[PreexecFn] = None,
+        sleep_fn: Optional[SleepFn] = None,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -683,7 +683,12 @@ class Jobserver:
         preexec_fn = self._preexec_fn if preexec_fn is None else preexec_fn
         sleep_fn = self._sleep_fn if sleep_fn is None else sleep_fn
 
-        assert preexec_fn is not None
+        # Fall back to noop when neither caller nor __init__ supplied a
+        # value.  cast() silences mypy about noop's permissive signature.
+        if preexec_fn is None:
+            preexec_fn = cast(PreexecFn, noop)
+        if sleep_fn is None:
+            sleep_fn = cast(SleepFn, noop)
 
         # Eagerly convert env and args before acquiring tokens so that
         # malformed inputs fail fast without consuming resources.
