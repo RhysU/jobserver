@@ -10,6 +10,7 @@ import concurrent.futures
 import functools
 import heapq
 import os
+import pickle
 import queue
 import signal
 import threading
@@ -25,6 +26,7 @@ from itertools import islice
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
+from multiprocessing.reduction import ForkingPickler
 from selectors import EVENT_READ, DefaultSelector, SelectorKey
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
@@ -741,6 +743,20 @@ class Jobserver:
                 name="Jobserver-worker",
             )
             future: Future[T] = Future(process, recv)
+            if self._context.get_start_method() != "fork":
+                try:
+                    ForkingPickler.dumps(preexec_fn)
+                except (
+                    pickle.PicklingError,
+                    AttributeError,
+                    TypeError,
+                ) as exc:
+                    method = self._context.get_start_method()
+                    raise pickle.PicklingError(
+                        f"preexec_fn={preexec_fn!r} is not "
+                        f"picklable, which is required by "
+                        f"the {method!r} start method"
+                    ) from exc
             process.start()
             send.close()
 
