@@ -812,7 +812,9 @@ class Jobserver:
         Timeout is given in seconds from this call; if a result is
         not available by the deadline, the iterator raises
         concurrent.futures.TimeoutError.  Function calls are sent to
-        workers in groups of chunksize.
+        workers in groups of chunksize.  Consistent with
+        concurrent.futures, all chunksize results are materialized
+        in memory at once within the worker process.
 
         When env provided, child updates os.environ unsetting None-valued keys.
         See submit() for preexec_fn semantics.
