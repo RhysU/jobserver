@@ -890,12 +890,12 @@ def _env_coerce(
     for key, value in result.items():
         if not isinstance(key, str):
             raise TypeError(
-                f"env key must be str," f" got {type(key).__name__}"
+                f"env key {key!r}: must be str," f" got {type(key).__name__}"
             )
         if value is not None and not isinstance(value, str):
             raise TypeError(
-                f"env value must be str or None,"
-                f" got {type(value).__name__}"
+                f"env key {key!r}: value must be str"
+                f" or None, got {type(value).__name__}"
             )
     return result
 
