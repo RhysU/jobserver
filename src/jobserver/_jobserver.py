@@ -657,7 +657,7 @@ class Jobserver:
         due to a prior Future's completion.  The caller may resubmit.
         See CallbackRaised documentation for callback error semantics.
         """
-        # First, check any arguments not for _obtain_tokens(...)
+        # First, check any arguments not for _maybe_obtain_token(...)
         if not callable(fn):
             raise TypeError(f"fn must be callable, got {type(fn).__name__}")
         if not isinstance(args, Iterable):
@@ -699,7 +699,7 @@ class Jobserver:
         # ASIDE: If another design is desired, instead of reclaim_resources
         # any other method could be injected below.  Notice that the
         # callback priority mechanism does permit issuing callback subsets.
-        token = _obtain_tokens(
+        token = _maybe_obtain_token(
             consume=consume,
             deadline=timeout_to_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources,
@@ -903,7 +903,7 @@ def _env_coerce(
 _RESOLUTION = 1.0e-2
 
 
-def _obtain_tokens(
+def _maybe_obtain_token(
     consume: int,
     deadline: float,
     reclaim_tokens_fn: Callable[[], Any],
