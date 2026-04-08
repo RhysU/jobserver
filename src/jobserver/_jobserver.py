@@ -1037,7 +1037,7 @@ def _map_generate(
                 env=env,
                 preexec_fn=preexec_fn,
                 sleep_fn=sleep_fn,
-                timeout=deadline - time.monotonic(),
+                timeout=deadline_to_timeout(deadline),
             )
         )
 
@@ -1053,7 +1053,7 @@ def _map_generate(
             if chunk := tuple(islice(pairs, chunksize)):
                 _futures_append_submit(chunk)
             yield from futures.popleft().result(
-                timeout=deadline - time.monotonic()
+                timeout=deadline_to_timeout(deadline)
             )
     except Blocked:
         # concurrent.futures.TimeoutError (not builtin TimeoutError) so that
