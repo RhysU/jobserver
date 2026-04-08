@@ -196,12 +196,12 @@ class Future(Generic[T]):
     def __repr__(self) -> str:
         with self._rlock:
             done = self._connection is None
-            callbacks = len(self._callbacks)
-            p = self._process
+            ncallbacks = len(self._callbacks)
+            pid = None if self._process is None else self._process.pid
         return (
             f"Future({'done' if done else 'running'}"
-            f", callbacks={callbacks}"
-            f", pid={None if p is None else p.pid})"
+            f", callbacks={ncallbacks}"
+            f", pid={pid})"
         )
 
     def __copy__(self) -> NoReturn:
