@@ -10,8 +10,8 @@ import unittest
 from jobserver import (
     Jobserver,
     JobserverExecutor,
-    MinimalQueue,
 )
+from jobserver._queue import MinimalQueue
 
 from .helpers import helper_return
 
