@@ -800,8 +800,8 @@ class Jobserver:
     def map(
         self,
         fn: Callable[..., T],
-        argses: Optional[Iterable] = None,
-        kwargses: Optional[Iterable] = None,
+        argses: Optional[Iterable[Iterable]] = None,
+        kwargses: Optional[Iterable[Mapping[str, Any]]] = None,
         *,
         env: Union[
             None,
@@ -848,11 +848,17 @@ class Jobserver:
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]
         if argses is not None and kwargses is not None:
-            pairs = _strict_zip(argses, kwargses)
+            pairs = (
+                (_check_args(args), kw)
+                for args, kw in _strict_zip(argses, kwargses)
+            )
         elif kwargses is not None:
             pairs = (((), kw) for kw in kwargses)
         else:
-            pairs = ((args, {}) for args in (argses or ()))
+            pairs = (
+                (_check_args(args), {})
+                for args in (argses or ())
+            )
 
         collected = list(pairs) if buffersize is None else None
         return _map_generate(
@@ -1021,6 +1027,17 @@ def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
         yield (a_val, b_val)
     if next(b_it, sentinel) is not sentinel:
         raise ValueError("argses and kwargses must have equal length")
+
+
+def _check_args(args: Any) -> Any:
+    """Validate that an argses element is iterable for fn(*args)."""
+    if not isinstance(args, Iterable):
+        raise TypeError(
+            f"each element of argses must be an iterable of "
+            f"positional arguments (e.g. a tuple), got "
+            f"{type(args).__name__}: {args!r}"
+        )
+    return args
 
 
 def _map_chunk(fn: Callable, chunk: tuple) -> list:
