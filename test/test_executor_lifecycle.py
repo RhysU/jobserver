@@ -20,8 +20,17 @@ import signal
 import threading
 import time
 import unittest
+from collections import deque
 
-from jobserver import Jobserver, JobserverExecutor, SubmissionDied
+from jobserver import (
+    Jobserver,
+    JobserverExecutor,
+    SubmissionDied,
+    _request,
+    _response,
+)
+from jobserver._executor import _handle_request
+from jobserver._queue import MinimalQueue
 
 from .helpers import (
     FAST,
@@ -104,6 +113,48 @@ class TestCancellation(unittest.TestCase):
                 self.assertTrue(f.cancelled())
             finally:
                 exe.shutdown(wait=True)
+
+
+# ================================================================
+# Selective Cancellation (_handle_request)
+# ================================================================
+
+
+class TestSelectiveCancel(unittest.TestCase):
+    """Selective cancel via _request.Cancel(work_id=...)."""
+
+    def test_selective_cancel_removes_only_target(self) -> None:
+        """Cancel(work_id=X) removes only X from pending."""
+        with MinimalQueue() as responses:
+            pending = deque(
+                [
+                    _request.Submit(1, len, ((),), {}),
+                    _request.Submit(2, len, ((),), {}),
+                    _request.Submit(3, len, ((),), {}),
+                ]
+            )
+            _handle_request(_request.Cancel(work_id=2), pending, responses)
+            self.assertEqual([1, 3], [s.work_id for s in pending])
+            msg = responses.get(timeout=1)
+            self.assertIsInstance(msg, _response.Cancelled)
+            self.assertEqual(2, msg.work_id)
+
+    def test_bulk_cancel_removes_all(self) -> None:
+        """Cancel(work_id=None) removes everything."""
+        with MinimalQueue() as responses:
+            pending = deque(
+                [
+                    _request.Submit(1, len, ((),), {}),
+                    _request.Submit(2, len, ((),), {}),
+                ]
+            )
+            _handle_request(_request.Cancel(), pending, responses)
+            self.assertEqual(0, len(pending))
+            ids = {
+                responses.get(timeout=1).work_id,
+                responses.get(timeout=1).work_id,
+            }
+            self.assertEqual({1, 2}, ids)
 
 
 # ================================================================
