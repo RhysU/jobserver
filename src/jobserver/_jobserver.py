@@ -689,6 +689,10 @@ class Jobserver:
         # malformed inputs fail fast without consuming resources.
         env = _env_coerce(env)
         args = tuple(args)
+        # spawn/forkserver pickle kwargs via Process.__init__; most
+        # Mapping subclasses (e.g. ChainMap) are not picklable.
+        if not isinstance(kwargs, dict):
+            kwargs = dict(kwargs)
 
         # Next, either obtain requested tokens or else raise Blocked
         #

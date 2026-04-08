@@ -180,6 +180,17 @@ class TestJobserverBasic(unittest.TestCase):
                     )
                     self.assertIsNone(f.result())
 
+    def test_non_dict_mapping_kwargs(self) -> None:
+        """Non-dict Mapping kwargs work under all start methods."""
+        from collections import ChainMap
+
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    m = ChainMap({"object": 42})
+                    f = js.submit(fn=str, kwargs=m, timeout=None)
+                    self.assertEqual("42", f.result())
+
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
         """An Exception can be returned, not raised, from a Future?"""
