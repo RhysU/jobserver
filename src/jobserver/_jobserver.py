@@ -683,8 +683,7 @@ class Jobserver:
         preexec_fn = self._preexec_fn if preexec_fn is None else preexec_fn
         sleep_fn = self._sleep_fn if sleep_fn is None else sleep_fn
 
-        # Fall back to noop when neither caller nor __init__ supplied a
-        # value.  cast() silences mypy about noop's permissive signature.
+        # Fall back to noop when neither caller nor __init__ supplied one.
         if preexec_fn is None:
             preexec_fn = cast(PreexecFn, noop)
         if sleep_fn is None:
@@ -694,10 +693,8 @@ class Jobserver:
         # malformed inputs fail fast without consuming resources.
         env = _env_coerce(env)
         args = tuple(args)
-        # spawn/forkserver pickle kwargs via Process.__init__; most
-        # Mapping subclasses (e.g. ChainMap) are not picklable.
-        if not isinstance(kwargs, dict):
-            kwargs = dict(kwargs)
+        # Some Mapping subclasses are not picklable so coerce if needed.
+        kwargs = kwargs if isinstance(kwargs, dict) else dict(kwargs)
 
         # Next, either obtain requested tokens or else raise Blocked
         #
@@ -835,13 +832,6 @@ class Jobserver:
         # Build a (possibly lazy) iterator of (args, kwargs) pairs
         pairs: Iterable[tuple]
         if argses is not None and kwargses is not None:
-            # Eagerly check lengths when both support len() so that
-            # mismatches surface at call time, not mid-iteration.
-            if hasattr(argses, "__len__") and hasattr(kwargses, "__len__"):
-                if len(argses) != len(kwargses):  # type: ignore[arg-type]
-                    raise ValueError(
-                        "argses and kwargses must have equal length"
-                    )
             pairs = _strict_zip(argses, kwargses)
         elif kwargses is not None:
             pairs = (((), kw) for kw in kwargses)
@@ -855,9 +845,9 @@ class Jobserver:
             pairs=pairs if collected is None else iter(collected),
             chunksize=chunksize,
             buffersize=(
-                buffersize
-                if buffersize is not None
-                else len(collected)  # type: ignore[arg-type]
+                len(collected)  # type: ignore[arg-type]
+                if buffersize is None
+                else buffersize
             ),
             deadline=deadline,
             env=env,
@@ -994,6 +984,18 @@ def _maybe_obtain_token(
 # Removable once Python 3.10 is the oldest tested version (zip(strict=True)).
 def _strict_zip(a: Iterable, b: Iterable) -> Iterator[tuple]:
     """Zip raising ValueError when the two iterables differ in length."""
+    # Eagerly check lengths when both support len() so that
+    # mismatches surface at call time, not mid-iteration.
+    try:
+        m = len(a)  # type: ignore[arg-type]
+        n = len(b)  # type: ignore[arg-type]
+        if m != n:
+            raise ValueError(
+                f"Length of argses ({m}) must match"
+                f" length of kwargses ({n})"
+            )
+    except TypeError:
+        pass
     a_it, b_it = iter(a), iter(b)
     sentinel = object()
     for a_val in a_it:

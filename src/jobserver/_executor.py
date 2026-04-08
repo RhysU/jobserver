@@ -111,9 +111,6 @@ class JobserverExecutor(concurrent.futures.Executor):
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
-        # Lock is released before put() to avoid holding it across
-        # potentially-slow pickling and IPC.  The finally block removes
-        # the orphan on any failure including BaseException.
         success = False
         try:
             self._requests.put(
@@ -123,12 +120,14 @@ class JobserverExecutor(concurrent.futures.Executor):
             )
             success = True
         except BrokenPipeError:
-            # Dispatcher exited due to a concurrent shutdown(); clean up and
-            # raise the same error a caller would see from a post-shutdown
-            # submit() that observed the flag in time.
-            msg = "Cannot submit: executor is shut down"
-            raise RuntimeError(msg) from None
+            # Issue RuntimeError to match post-shutdown submit() behavior.
+            raise RuntimeError(
+                "Cannot submit: executor is shut down"
+            ) from None
         finally:
+            # Lock was released before put() to avoid blocking on IPC.
+            # On any failure, remove the orphaned future so the
+            # dispatcher never sees a work_id without a request.
             if not success:
                 with self._lock:
                     self._futures.pop(work_id, None)
