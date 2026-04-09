@@ -301,7 +301,7 @@ def _handle_request(
     if isinstance(msg, _request.Shutdown):
         return True
     if isinstance(msg, _request.Cancel):
-        keep: deque[_request.Submit] = deque()
+        keep: list[_request.Submit] = []
         for item in pending:
             if msg.work_id is None or item.work_id == msg.work_id:
                 responses.put(_response.Cancelled(work_id=item.work_id))
