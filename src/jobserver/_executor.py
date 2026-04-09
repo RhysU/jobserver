@@ -301,20 +301,14 @@ def _handle_request(
     if isinstance(msg, _request.Shutdown):
         return True
     if isinstance(msg, _request.Cancel):
-        if msg.work_id is None:
-            for item in pending:
+        keep: deque[_request.Submit] = deque()
+        for item in pending:
+            if msg.work_id is None or item.work_id == msg.work_id:
                 responses.put(_response.Cancelled(work_id=item.work_id))
-            pending.clear()
-        else:
-            remaining: deque[_request.Submit] = deque()
-            for item in pending:
-                if item.work_id == msg.work_id:
-                    cancelled = _response.Cancelled(work_id=item.work_id)
-                    responses.put(cancelled)
-                else:
-                    remaining.append(item)
-            pending.clear()
-            pending.extend(remaining)
+            else:
+                keep.append(item)
+        pending.clear()
+        pending.extend(keep)
     elif isinstance(msg, _request.Submit):
         pending.append(msg)
     else:
