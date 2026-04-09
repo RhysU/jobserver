@@ -11,7 +11,7 @@ Using NamedTuple (dataclass slots require 3.10+).
 
 import typing
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Optional
 
 __all__ = ["Submit", "Cancel", "Shutdown"]
 
@@ -26,7 +26,13 @@ class Submit(typing.NamedTuple):
 
 
 class Cancel(typing.NamedTuple):
-    """Cancel all pending (not yet dispatched) work."""
+    """Cancel pending (not yet dispatched) work.
+
+    When work_id is None, cancel all pending work.
+    When work_id is set, cancel only that specific work item.
+    """
+
+    work_id: Optional[int] = None
 
 
 class Shutdown(typing.NamedTuple):

@@ -301,9 +301,14 @@ def _handle_request(
     if isinstance(msg, _request.Shutdown):
         return True
     if isinstance(msg, _request.Cancel):
+        keep: list[_request.Submit] = []
         for item in pending:
-            responses.put(_response.Cancelled(work_id=item.work_id))
+            if msg.work_id is None or item.work_id == msg.work_id:
+                responses.put(_response.Cancelled(work_id=item.work_id))
+            else:
+                keep.append(item)
         pending.clear()
+        pending.extend(keep)
     elif isinstance(msg, _request.Submit):
         pending.append(msg)
     else:
