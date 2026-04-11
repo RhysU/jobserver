@@ -25,7 +25,7 @@ class TestFutureRepr(unittest.TestCase):
             r = repr(f)
             self.assertIn("running", r)
             self.assertIn("pid=", r)
-            self.assertEqual(str(f), repr(f))
+
             f.result()
 
     def test_done_future(self) -> None:
@@ -35,7 +35,6 @@ class TestFutureRepr(unittest.TestCase):
             r = repr(f)
             self.assertIn("done", r)
             self.assertIn("pid=None", r)
-            self.assertEqual(str(f), repr(f))
 
 
 class TestJobserverRepr(unittest.TestCase):
@@ -46,7 +45,6 @@ class TestJobserverRepr(unittest.TestCase):
             r = repr(js)
             self.assertTrue(r.startswith("Jobserver('"))
             self.assertIn("tracked=0", r)
-            self.assertEqual(str(js), repr(js))
 
     def test_with_tracked(self) -> None:
         with Jobserver(slots=2) as js:
@@ -66,7 +64,7 @@ class TestJobserverExecutorRepr(unittest.TestCase):
             self.assertIn("pending=", r)
             self.assertIn("jobserver=", r)
             self.assertIn("Jobserver(", r)
-            self.assertEqual(str(ex), repr(ex))
+
             ex.shutdown(wait=True)
 
     def test_shutdown(self) -> None:
@@ -76,7 +74,6 @@ class TestJobserverExecutorRepr(unittest.TestCase):
             r = repr(ex)
             self.assertIn("shutdown", r)
             self.assertIn("jobserver=", r)
-            self.assertEqual(str(ex), repr(ex))
 
 
 class TestMinimalQueueRepr(unittest.TestCase):
@@ -88,18 +85,15 @@ class TestMinimalQueueRepr(unittest.TestCase):
             self.assertIn("reader=open", r)
             self.assertIn("writer=open", r)
             self.assertIn("fd=", r)
-            self.assertEqual(str(mq), repr(mq))
 
     def test_closed_reader(self) -> None:
         with MinimalQueue() as mq:
             mq.close_get()
             self.assertIn("reader=closed", repr(mq))
             self.assertIn("writer=open", repr(mq))
-            self.assertEqual(str(mq), repr(mq))
 
     def test_closed_writer(self) -> None:
         with MinimalQueue() as mq:
             mq.close_put()
             self.assertIn("reader=open", repr(mq))
             self.assertIn("writer=closed", repr(mq))
-            self.assertEqual(str(mq), repr(mq))

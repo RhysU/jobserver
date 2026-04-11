@@ -57,8 +57,6 @@ SleepFn = Callable[[], Optional[float]]
 class Blocked(Exception):
     """Reports that Jobserver.submit(...) or Future.result(...) is blocked."""
 
-    pass
-
 
 class CallbackRaised(Exception):
     """
@@ -76,8 +74,6 @@ class CallbackRaised(Exception):
     processing to perform after seeing the 1st, 2nd, or Nth error.
     """
 
-    pass
-
 
 class SubmissionDied(Exception):
     """
@@ -86,8 +82,6 @@ class SubmissionDied(Exception):
     Work that is killed, terminated, interrupted, etc. raises this exception.
     Exactly what has transpired is not reported.  Do not attempt to recover.
     """
-
-    pass
 
 
 class Wrapper(abc.ABC, Generic[T]):
@@ -184,7 +178,6 @@ class Future(Generic[T]):
         assert connection is not None  # Becomes None after Connection.close()
         self._connection: Optional[Connection] = connection
 
-        # Becomes non-None after result is obtained
         self._wrapper: Optional[Wrapper[T]] = None
 
         # Populated by calls to when_done(...).  A heapq ordered by
@@ -413,8 +406,6 @@ def _initialize_selector(
 ) -> tuple[DefaultSelector, Mapping[Any, SelectorKey]]:
     """Create a selector with slots pre-registered."""
     selector = DefaultSelector()
-    # The SimpleNamespace provides the done() that
-    # reclaim_resources() calls on all selector keys.
     selector.register(
         slots.waitable(),
         EVENT_READ,

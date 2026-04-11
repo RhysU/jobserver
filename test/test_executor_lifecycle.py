@@ -43,11 +43,6 @@ def setUpModule() -> None:
     silence_forkserver()
 
 
-# ================================================================
-# Cancellation
-# ================================================================
-
-
 class TestCancellation(unittest.TestCase):
     """Cancellation."""
 
@@ -115,11 +110,6 @@ class TestCancellation(unittest.TestCase):
                 exe.shutdown(wait=True)
 
 
-# ================================================================
-# Selective Cancellation (_handle_request)
-# ================================================================
-
-
 class TestSelectiveCancel(unittest.TestCase):
     """Selective cancel via _request.Cancel(work_id=...)."""
 
@@ -155,11 +145,6 @@ class TestSelectiveCancel(unittest.TestCase):
                 responses.get(timeout=1).work_id,
             }
             self.assertEqual({1, 2}, ids)
-
-
-# ================================================================
-# Shutdown Semantics
-# ================================================================
 
 
 class TestShutdown(unittest.TestCase):
@@ -306,11 +291,6 @@ class TestShutdown(unittest.TestCase):
             exe.shutdown(wait=True)
 
 
-# ================================================================
-# Resource Leak Detection
-# ================================================================
-
-
 class TestResourceLeaks(unittest.TestCase):
     """Resource Leak Detection."""
 
@@ -445,11 +425,6 @@ class TestResourceLeaks(unittest.TestCase):
             time.sleep(0.2)
             # shutdown() must not raise despite BrokenPipeError
             exe.shutdown(wait=True)
-
-
-# ================================================================
-# Owned Jobserver
-# ================================================================
 
 
 class TestOwnedJobserver(unittest.TestCase):
