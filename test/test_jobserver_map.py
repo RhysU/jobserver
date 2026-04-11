@@ -48,8 +48,6 @@ class TestJobserverMap(unittest.TestCase):
     def setUpClass(cls):
         silence_forkserver()
 
-    # ---- Empty / no-op inputs ----
-
     def test_empty_inputs(self) -> None:
         """map() with empty or None inputs yields nothing."""
         with Jobserver(context=FAST, slots=2) as js:
@@ -69,8 +67,6 @@ class TestJobserverMap(unittest.TestCase):
                         )
                     )
                     self.assertEqual(results, [])
-
-    # ---- Basic functionality ----
 
     def test_argses_only(self) -> None:
         """map() with argses only works like builtin map."""
@@ -153,8 +149,6 @@ class TestJobserverMap(unittest.TestCase):
             self.assertTrue(hasattr(result, "__next__"))
             self.assertEqual(next(result), 1)
 
-    # ---- Chunksize ----
-
     def test_chunksize(self) -> None:
         """Various chunksize values produce correct ordered results."""
         with Jobserver(context=FAST, slots=2) as js:
@@ -195,8 +189,6 @@ class TestJobserverMap(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         js.map(fn=len, argses=[], chunksize=cs)
 
-    # ---- Buffersize ----
-
     def test_buffersize(self) -> None:
         """Various buffersize values produce correct ordered results."""
         with Jobserver(context=FAST, slots=4) as js:
@@ -236,8 +228,6 @@ class TestJobserverMap(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         js.map(fn=len, argses=[], buffersize=bs)
 
-    # ---- Timeout semantics ----
-
     def test_timeout_sufficient(self) -> None:
         """timeout=None and generous timeout both work."""
         with Jobserver(context=FAST, slots=2) as js:
@@ -276,8 +266,6 @@ class TestJobserverMap(unittest.TestCase):
             it = js.map(fn=_slow_identity, argses=argses, timeout=0.5)
             with self.assertRaises(concurrent.futures.TimeoutError):
                 list(it)
-
-    # ---- Error propagation ----
 
     def test_exception_propagates(self) -> None:
         """Exception raised by fn surfaces from __next__, all start methods."""
@@ -327,8 +315,6 @@ class TestJobserverMap(unittest.TestCase):
             with self.assertRaises(ValueError):
                 next(it)
 
-    # ---- Argument validation ----
-
     def test_non_iterable_argses_element_raises(self) -> None:
         """map() raises TypeError for non-iterable argses elements."""
         with Jobserver(context=FAST, slots=2) as js:
@@ -349,8 +335,6 @@ class TestJobserverMap(unittest.TestCase):
                 )
             self.assertIn("kwargses[1]", str(cm.exception))
 
-    # ---- Length mismatch ----
-
     def test_mismatched_lengths_raises(self) -> None:
         """map() raises ValueError eagerly for mismatched-length inputs."""
         with Jobserver(context=FAST, slots=1) as js:
@@ -362,8 +346,6 @@ class TestJobserverMap(unittest.TestCase):
                 )
             self.assertIn("3", str(cm.exception))
             self.assertIn("1", str(cm.exception))
-
-    # ---- Saturation ----
 
     def test_many_items_few_slots(self) -> None:
         """Many work items with few slots completes without deadlock."""

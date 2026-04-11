@@ -41,11 +41,6 @@ def setUpModule() -> None:
     silence_forkserver()
 
 
-# ================================================================
-# Concurrency Stress
-# ================================================================
-
-
 class TestConcurrencyStress(unittest.TestCase):
     """Concurrency Stress."""
 
@@ -122,11 +117,6 @@ class TestConcurrencyStress(unittest.TestCase):
                     self._threaded_submit_stress(exe)
         finally:
             sys.setswitchinterval(old)
-
-
-# ================================================================
-# wait() and as_completed() Integration
-# ================================================================
 
 
 class TestWaitAndAsCompleted(unittest.TestCase):
@@ -233,11 +223,6 @@ class TestWaitAndAsCompleted(unittest.TestCase):
                 # Just verify no crash
 
 
-# ================================================================
-# Multiprocessing Start Method Coverage
-# ================================================================
-
-
 class TestStartMethods(unittest.TestCase):
     """Start method coverage."""
 
@@ -287,11 +272,6 @@ class TestStartMethods(unittest.TestCase):
                     f = exe.submit(len, (1,))
                     exe.shutdown(wait=True)
                     self.assertTrue(f.done())
-
-
-# ================================================================
-# Edge Cases (CPython Bug Reports)
-# ================================================================
 
 
 class TestEdgeCases(unittest.TestCase):
@@ -351,11 +331,6 @@ class TestEdgeCases(unittest.TestCase):
             elapsed = time.monotonic() - t0
             # Should return promptly, not block for ages
             self.assertLess(elapsed, 10)
-
-
-# ================================================================
-# Internal Invariants
-# ================================================================
 
 
 class TestInternalInvariants(unittest.TestCase):

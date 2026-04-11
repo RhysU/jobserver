@@ -39,11 +39,6 @@ def setUpModule() -> None:
     silence_forkserver()
 
 
-# ================================================================
-# Submit and Result
-# ================================================================
-
-
 class TestSubmitAndResult(unittest.TestCase):
     """Submit and Result."""
 
@@ -83,11 +78,6 @@ class TestSubmitAndResult(unittest.TestCase):
                 f = exe.submit(len, (1,))
                 self.assertIsInstance(f, concurrent.futures.Future)
                 f.result(timeout=TIMEOUT)
-
-
-# ================================================================
-# Exception Propagation
-# ================================================================
 
 
 class TestExceptionPropagation(unittest.TestCase):
@@ -181,11 +171,6 @@ class TestExceptionPropagation(unittest.TestCase):
                 self.assertEqual(b"x" * 10, result[:10])
 
 
-# ================================================================
-# Future State Queries
-# ================================================================
-
-
 class TestFutureStateQueries(unittest.TestCase):
     """Future State Queries."""
 
@@ -239,11 +224,6 @@ class TestFutureStateQueries(unittest.TestCase):
                 self.assertTrue(f.done())
                 self.assertFalse(f.running())
                 self.assertFalse(f.cancelled())
-
-
-# ================================================================
-# Callbacks
-# ================================================================
 
 
 class TestCallbacks(unittest.TestCase):
@@ -402,11 +382,6 @@ class TestCallbacks(unittest.TestCase):
                 event.wait(timeout=TIMEOUT)
             for f in futures:
                 self.assertIs(f, mapping[id(f)])
-
-
-# ================================================================
-# map()
-# ================================================================
 
 
 class TestMap(unittest.TestCase):

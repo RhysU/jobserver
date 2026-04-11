@@ -103,7 +103,6 @@ class MinimalQueue(Generic[T]):
     def __getstate__(
         self,
     ) -> tuple[Optional[Connection], Optional[Connection]]:
-        # Locks are omitted; each process creates its own after unpickling.
         return (self._reader, self._writer)
 
     def __setstate__(
