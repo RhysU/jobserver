@@ -352,7 +352,7 @@ class Future(Generic[T]):
             self._rlock.release()
 
     def _issue_callbacks(self):
-        assert self._rlock._is_owned(), "caller must hold _rlock"
+        assert getattr(self._rlock, "_is_owned", object)(), "caller must hold _rlock"
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
             _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
