@@ -15,6 +15,7 @@ import time
 import unittest
 
 from jobserver import (
+    Blocked,
     CallbackRaised,
     Future,
     Jobserver,
@@ -258,3 +259,100 @@ class TestJobserverConcurrency(unittest.TestCase):
             # Now the future can complete normally
             f.wait(timeout=10)
             self.assertIsNone(f.result())
+
+    def test_submit_no_spin_on_contested_sentinel(self) -> None:
+        """submit() must not busy-spin on a ready-but-unclaimable sentinel.
+
+        With every slot consumed by a finished-but-unreclaimed Future whose
+        lock is held elsewhere, the obtain-token loop wakes immediately on
+        the ever-ready sentinel.  It must back off rather than re-select()
+        on the same fd, which would peg a CPU until the lock releases.  We
+        bound the number of select() calls made while blocked for ~timeout.
+        """
+        with Jobserver(slots=1) as js:
+            # Finish a Future and let its child exit so the sentinel is
+            # readable, but do not reclaim it: the lone slot stays consumed.
+            f = js.submit(fn=lambda: 42, timeout=5)
+            deadline = time.monotonic() + 5
+            while f._process is not None and f._process.is_alive():
+                if time.monotonic() >= deadline:
+                    self.fail("child did not exit")
+                time.sleep(0.01)
+
+            # Count select() calls the obtain-token loop performs.
+            selector = js._selector
+            original_select = selector.select
+            calls = 0
+
+            def counting_select(timeout=None):
+                nonlocal calls
+                calls += 1
+                return original_select(timeout)
+
+            selector.select = counting_select  # type: ignore[assignment]
+
+            # Hold the finished Future's lock so reclaim's done(timeout=0)
+            # cannot complete it nor unregister its still-ready sentinel.
+            acquired = threading.Event()
+            release = threading.Event()
+
+            def hold_lock() -> None:
+                with f._rlock:
+                    acquired.set()
+                    release.wait(timeout=10)
+
+            t = threading.Thread(target=hold_lock)
+            t.start()
+            acquired.wait(timeout=5)
+
+            # No slot can be obtained while the lock is held, so this blocks
+            # for the full timeout and then raises Blocked.
+            window = 0.5
+            start = time.monotonic()
+            with self.assertRaises(Blocked):
+                js.submit(fn=lambda: 7, timeout=window)
+            elapsed = time.monotonic() - start
+
+            release.set()
+            t.join(timeout=5)
+            selector.select = original_select  # type: ignore[assignment]
+
+            # A tight spin produced tens of thousands of calls; with a
+            # ~_RESOLUTION (0.01s) backoff the loop wakes only ~elapsed/0.01
+            # times.  Allow generous slack but stay far below a spin.
+            self.assertGreaterEqual(elapsed, window)
+            self.assertLess(calls, 1000)
+
+    def test_submit_no_backoff_without_contention(self) -> None:
+        """submit() must not back off when reclamation is unobstructed.
+
+        Sentinels live in the blocking wait precisely so the loop wakes to
+        reclaim a completed child and reuse its slot promptly.  With no
+        contended lock every reclaim succeeds on the first pass, so the
+        obtain-token loop must never fall into its busy-spin backoff sleep.
+        Doing so would add latency to every slot turnover and defeat the
+        selector -- the regression this guards against.
+        """
+        real_sleep = time.sleep
+        sleeps = 0
+
+        def counting_sleep(seconds: float) -> None:
+            nonlocal sleeps
+            sleeps += 1
+            real_sleep(seconds)
+
+        with Jobserver(slots=1) as js:
+            # Patch the shared time module that _maybe_obtain_token uses.
+            time.sleep = counting_sleep  # type: ignore[assignment]
+            try:
+                # Serial submissions through a single slot: each waits for
+                # the prior child to exit, then reclaims and reuses the
+                # freed slot -- this must happen without a backoff sleep.
+                last: Future = js.submit(fn=lambda: 0, timeout=10)
+                for _ in range(19):
+                    last = js.submit(fn=lambda: 0, timeout=10)
+                last.result(timeout=10)
+            finally:
+                time.sleep = real_sleep  # type: ignore[assignment]
+
+        self.assertEqual(sleeps, 0)

@@ -986,6 +986,9 @@ def _maybe_obtain_token(
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
     # Acquire the requested token or raise Blocked when impossible
     token: Optional[int] = None
+    # Ready fds the previous pass could not reclaim
+    # If they recur, back off to avoid busy spinning
+    stall_fds: set[int] = set()
     while True:
         # (1) Eagerly clean up any completed work to avoid deadlocks
         reclaim_tokens_fn()
@@ -1020,7 +1023,22 @@ def _maybe_obtain_token(
             # _initialize_selector() places slots.waitable() once
             # so only one epoll_wait
             # is needed here.  No rebuilding of the interest set.
-            selector.select(timeout=deadline - monotonic)
+            keys_events = selector.select(timeout=deadline - monotonic)
+
+            # (7) A sentinel wakeup normally means a child exited and the next
+            # reclaim_tokens_fn() pass will restore its slot, so loop at once.
+            # But if that Future's lock is held elsewhere, reclaim cannot
+            # complete it and its sentinel stays ready, so re-select()ing would
+            # peg a CPU.  Back off only when a sentinel-only wakeup repeats
+            # fds the prior pass failed to reclaim, bounded by the deadline.
+            waitable = slots.waitable()
+            ready_fds = {
+                key.fd for key, _ in keys_events if key.fileobj is not waitable
+            }
+            only_sentinels = len(ready_fds) == len(keys_events)
+            if ready_fds and only_sentinels and ready_fds.issubset(stall_fds):
+                time.sleep(min(_RESOLUTION, deadline_to_timeout(deadline)))
+            stall_fds = ready_fds if only_sentinels else set()
 
     assert token is None or consume == 1, "Postcondition"
     return token
