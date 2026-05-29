@@ -573,7 +573,10 @@ class Jobserver:
         self._selector.close()
 
     def __getstate__(self) -> tuple:
-        """Get instance state without exposing in-flight Futures."""
+        """Get instance state without exposing in-flight Futures.
+
+        Only capture configuration and slots to allow nesting.
+        """
         # Required because Futures can be neither copied nor pickled
         # Without custom handling of Futures, submit(...) would fail
         # whenever an instance is part of an argument to a sub-Process
