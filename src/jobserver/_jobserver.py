@@ -437,7 +437,12 @@ def _initialize_selector(slots: MinimalQueue) -> DefaultSelector:
 
 
 class Jobserver:
-    """A Jobserver exposing a Future interface built atop multiprocessing."""
+    """A Jobserver exposing a Future interface built atop multiprocessing.
+
+    Under spawn/forkserver, everything sent to a child is pickled: fn,
+    args/kwargs, env values, preexec_fn, and sleep_fn.  Lambdas and local
+    closures are unpicklable and so work only under fork.
+    """
 
     __slots__ = (
         "_context",
