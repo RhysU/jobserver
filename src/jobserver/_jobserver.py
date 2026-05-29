@@ -353,7 +353,7 @@ class Future(Generic[T]):
 
     def _issue_callbacks(self):
         # _is_owned is expected on RLock but not guaranteed; skip if absent
-        assert getattr(self._rlock, "_is_owned", object)(), "caller must hold _rlock"
+        assert getattr(self._rlock, "_is_owned", object)(), "must hold _rlock"
         assert self._connection is None and self._process is None, "Invariant"
         while self._callbacks:
             _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
