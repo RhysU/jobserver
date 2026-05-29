@@ -184,7 +184,12 @@ class JobserverExecutor(concurrent.futures.Executor):
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
     ) -> None:
-        """Shut down the executor, optionally cancelling pending futures."""
+        """Shut down the executor, optionally cancelling pending futures.
+
+        Like ProcessPoolExecutor, shutdown(wait=False) is not fire-and-forget:
+        the dispatcher keeps the interpreter alive until running work finishes.
+        cancel_futures only prunes pending work; running futures are drained.
+        """
         with self._lock:
             already = self._shutdown
             self._shutdown = True
