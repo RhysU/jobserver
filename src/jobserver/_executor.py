@@ -13,6 +13,7 @@ import pickle
 import queue
 import threading
 import traceback
+import weakref
 from collections import deque
 from collections.abc import Callable, Iterator
 from multiprocessing.connection import Connection, wait
@@ -116,9 +117,11 @@ class JobserverExecutor(concurrent.futures.Executor):
             self._futures[work_id] = future
             # Observe cancellation so a PENDING future calling .cancel() tells
             # the dispatcher to prune it before dispatch, reclaiming the slot
-            # that would otherwise run work whose result is discarded.
+            # that would otherwise run work whose result is discarded.  A weak
+            # reference keeps a retained future from pinning the executor (and
+            # its dispatcher process, threads, and pipes) alive.
             future.add_done_callback(
-                functools.partial(self._notify_cancel, work_id)
+                functools.partial(_cancel_observer, weakref.ref(self), work_id)
             )
         success = False
         try:
@@ -142,18 +145,8 @@ class JobserverExecutor(concurrent.futures.Executor):
                     self._futures.pop(work_id, None)
         return future
 
-    def _notify_cancel(
-        self, work_id: int, future: concurrent.futures.Future
-    ) -> None:
-        """Done-callback emitting Cancel(work_id) on a fresh cancellation.
-
-        Registered on every submitted future.  Fires exactly once, on the
-        state transition, so a future cancelled while PENDING is pruned from
-        the dispatcher's queue before a slot is spent on it.  Non-cancel
-        completions (result, exception) are ignored.
-        """
-        if not future.cancelled():
-            return
+    def _notify_cancel(self, work_id: int) -> None:
+        """Emit Cancel(work_id) so the dispatcher prunes the pending work."""
         with self._lock:
             if self._shutdown:
                 # shutdown(cancel_futures=True) already sent a blanket
@@ -163,8 +156,10 @@ class JobserverExecutor(concurrent.futures.Executor):
                 return
         try:
             self._requests.put(_request.Cancel(work_id=work_id))
-        except BrokenPipeError:
-            # Dispatcher already exited; there is nothing left to prune.
+        except (BrokenPipeError, ValueError, OSError):
+            # Dispatcher already exited, or the request pipe was closed by a
+            # concurrent shutdown between the check above and this put.
+            # Either way, there is nothing left to prune.
             pass
 
     # TODO: Add @typing.override when Python 3.12+ is the minimum.
@@ -289,6 +284,26 @@ class JobserverExecutor(concurrent.futures.Executor):
                 )
             except concurrent.futures.InvalidStateError:
                 pass
+
+
+def _cancel_observer(
+    executor_ref: "weakref.ref[JobserverExecutor]",
+    work_id: int,
+    future: concurrent.futures.Future,
+) -> None:
+    """Done-callback that prunes a cancelled PENDING future's work.
+
+    Registered on every submitted future.  Done-callbacks fire exactly once,
+    on the state transition, so a future cancelled while PENDING triggers a
+    single Cancel(work_id) and the receiver's later re-cancel does not
+    re-emit.  Non-cancel completions (result, exception) are ignored, and a
+    dead weak reference means the executor is already gone -- nothing to do.
+    """
+    if not future.cancelled():
+        return
+    executor = executor_ref()
+    if executor is not None:
+        executor._notify_cancel(work_id)
 
 
 # ---- Dispatcher process (runs in a child process) ----
