@@ -301,6 +301,45 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual(f.result(timeout=None), "handshake")
                     self.assertEqual(f.result(timeout=0), "handshake")
 
+    def test_reclaim_frees_slots_for_large_unread_results(self) -> None:
+        """reclaim_resources() completes children blocked mid-send.
+
+        A child whose pickled result exceeds the pipe buffer (~64KB)
+        blocks in send() and never exits, so its process sentinel never
+        fires.  Observing the result connection lets reclaim_resources()
+        drain the result, unblock the child, restore its slot, and thus
+        admit further work without any explicit result()/wait() read.
+        Regression test for issue #269.
+        """
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                context = get_context(method)
+                # One megabyte far exceeds the pipe buffer so each child
+                # blocks mid-send() on its result and does not exit.
+                payload = b"X" * 1_000_000
+                with Jobserver(context=context, slots=2) as js:
+                    f1 = js.submit(fn=helper_return, args=(payload,))
+                    f2 = js.submit(fn=helper_return, args=(payload,))
+
+                    # Both slots are consumed by children blocked mid-send.
+                    # Polling reclaim_resources() alone must complete them
+                    # purely off connection readiness, restoring both slots.
+                    deadline = time.monotonic() + 30.0
+                    while time.monotonic() < deadline:
+                        js.reclaim_resources()
+                        if "tracked=0" in repr(js):
+                            break
+                        time.sleep(0.01)
+                    self.assertIn("tracked=0", repr(js))
+
+                    # With slots restored a further submission succeeds.
+                    f3 = js.submit(fn=helper_return, args=(1,), timeout=10)
+                    self.assertEqual(f3.result(timeout=10), 1)
+
+                    # Drained results remain available via the Futures.
+                    self.assertEqual(f1.result(timeout=0), payload)
+                    self.assertEqual(f2.result(timeout=0), payload)
+
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
         for method in get_all_start_methods():

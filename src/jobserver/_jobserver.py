@@ -343,9 +343,12 @@ class Future(Generic[T]):
             self._process.join()
             self._process = None
 
-            # Should close() throw notice it can never be retried
-            connection, self._connection = self._connection, None
-            connection.close()
+            # Drop our reference so _issue_callbacks's invariant holds and
+            # __del__ will not warn.  The actual close() is deferred to a
+            # _PRIORITY_CLEANUP callback (see _unregister_connection) so the
+            # connection fd stays registered, and thus unreusable, until
+            # after it is unregistered from the Jobserver's selector.
+            self._connection = None
             self._issue_callbacks()
             return True
         finally:
@@ -401,6 +404,25 @@ def _unregister_sentinel(
         selector.unregister(sentinel)
     except KeyError:
         pass  # Already unregistered or selector closed
+
+
+def _unregister_connection(
+    selector: DefaultSelector,
+    connection: Connection,
+) -> None:
+    """Unregister connection from selector then close it.
+
+    Mirrors the sentinel discipline: the connection fd is kept open (this
+    callback holds the only remaining reference) until after unregister so
+    its integer cannot be reused by a concurrent submit()'s new Pipe, which
+    would otherwise collide as an already-registered fd.  Future.wait()
+    therefore defers the close here rather than closing inline.
+    """
+    try:
+        selector.unregister(connection)
+    except KeyError:
+        pass  # Already unregistered or selector closed
+    connection.close()
 
 
 def _initialize_selector(slots: MinimalQueue) -> DefaultSelector:
@@ -487,8 +509,20 @@ class Jobserver:
         if selector is None:
             return 0
         sm = selector.get_map()  # None once the selector is closed
-        # Omit ever-present self._slots.waitable()
-        return len(sm) - 1 if sm else 0
+        if not sm:
+            return 0
+        # Each running Future registers two fds (its process sentinel and
+        # its result connection) with data set to the Future itself, while
+        # the ever-present self._slots.waitable() carries a non-Future
+        # SimpleNamespace.  Count distinct Futures so the tally is robust to
+        # any transient half-unregistered state during completion.
+        return len(
+            {
+                id(key.data)
+                for key in sm.values()
+                if isinstance(key.data, Future)
+            }
+        )
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
@@ -717,7 +751,7 @@ class Jobserver:
         )
 
         # Then, with required slots consumed, begin consuming resources:
-        recv = send = None
+        recv = send = process = None
         try:
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
@@ -734,13 +768,35 @@ class Jobserver:
             process.start()
             send.close()
 
-            # Register sentinel for O(k) polling in reclaim_resources
+            # Register both the sentinel and the result connection for O(k)
+            # polling in reclaim_resources.  Observing the connection lets
+            # reclamation complete a Future whose result is already available
+            # even though its child is still blocked mid-send() on a result
+            # larger than the pipe buffer and has therefore not yet exited.
             self._selector.register(
                 process.sentinel,
                 EVENT_READ,
                 data=future,
             )
+            self._selector.register(
+                recv,
+                EVENT_READ,
+                data=future,
+            )
         except Exception:
+            # Undo any selector registrations that did succeed before the
+            # failure so a never-returned Future leaves no tracked fds.
+            if recv is not None:
+                try:
+                    self._selector.unregister(recv)
+                except KeyError:
+                    pass  # Never registered
+            if process is not None:
+                # process.sentinel raises ValueError when never started.
+                try:
+                    self._selector.unregister(process.sentinel)
+                except (KeyError, ValueError):
+                    pass  # Never registered or never started
             # Close pipe fds to avoid leaking until garbage collection
             if send is not None:
                 send.close()
@@ -765,6 +821,15 @@ class Jobserver:
         future._when_done(
             fn=_unregister_sentinel,
             args=(self._selector, process.sentinel, process),
+            priority=_PRIORITY_CLEANUP,
+        )
+
+        # Likewise unregister and close the result connection.  Holding recv
+        # here keeps its fd open until unregister so its integer cannot be
+        # reused by a concurrent submit() before removal from the selector.
+        future._when_done(
+            fn=_unregister_connection,
+            args=(self._selector, recv),
             priority=_PRIORITY_CLEANUP,
         )
 
