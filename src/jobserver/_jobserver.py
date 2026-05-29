@@ -477,8 +477,6 @@ class Jobserver:
     def _tracked(self) -> int:
         """Futures in the selector, excluding any slots entry.
 
-        Calls get_map() on demand rather than caching its result so as
-        not to depend on undocumented behavior of the returned view.
         Tolerates partial construction (returns 0 when __init__ raised
         before _selector was assigned) and a closed selector (get_map()
         returns None once close() has run).
