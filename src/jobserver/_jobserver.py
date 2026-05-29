@@ -439,6 +439,9 @@ def _initialize_selector(slots: MinimalQueue) -> DefaultSelector:
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing.
 
+    Concurrent submit() / reclaim_resources() calls on a Jobserver are not
+    thread-safe.  In contrast, returned Futures are thread-safe.
+
     Under spawn/forkserver, everything sent to a child is pickled: fn,
     args/kwargs, env values, preexec_fn, and sleep_fn.  Lambdas and local
     closures are unpicklable and so work only under fork.
