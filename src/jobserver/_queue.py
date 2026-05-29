@@ -169,8 +169,6 @@ class MinimalQueue(Generic[T]):
 
         Raises EOFError on exhausted queue whenever sending half has hung up.
         """
-        if self._reader is None:
-            raise ValueError("MinimalQueue.get() after close_get()")
         # Accounting for lock acquisition time is easiest with a deadline
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
@@ -180,11 +178,16 @@ class MinimalQueue(Generic[T]):
         ):
             raise queue.Empty
         try:
-            if not self._reader.poll(deadline_to_timeout(deadline)):
+            # Check under the lock so a concurrent close_get() cannot null
+            # self._reader between the check and use; bind a local thereafter.
+            reader = self._reader
+            if reader is None:
+                raise ValueError("MinimalQueue.get() after close_get()")
+            if not reader.poll(deadline_to_timeout(deadline)):
                 raise queue.Empty
             # Reading under the lock preserves frame integrity if multiple
             # readers ever shared a large-object queue; harmless single-reader
-            recv = self._reader.recv_bytes()
+            recv = reader.recv_bytes()
         finally:
             self._read_lock.release()
 
