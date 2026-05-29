@@ -21,6 +21,7 @@ import tempfile
 import threading
 import time
 import unittest
+import weakref
 from collections import deque
 
 from jobserver import (
@@ -349,6 +350,26 @@ class TestResourceLeaks(unittest.TestCase):
             return len(os.listdir("/proc/self/fd"))
         except (FileNotFoundError, PermissionError):
             return -1
+
+    def test_retained_future_does_not_pin_executor(self) -> None:
+        """A retained future must not keep the executor object alive.
+
+        The cancellation done-callback holds only a weak reference to the
+        executor, so holding a completed future after shutdown must not
+        prevent the executor from being garbage collected.
+        """
+        with Jobserver(context=FAST, slots=2) as js:
+            exe = JobserverExecutor(js)
+            f = exe.submit(helper_return, 7)
+            self.assertEqual(7, f.result(timeout=TIMEOUT))
+            exe.shutdown(wait=True)
+            ref = weakref.ref(exe)
+            del exe
+            gc.collect()
+            # f is still held, yet the executor must be collectable.
+            self.assertIsNone(ref())
+            # f remains usable independently of the executor.
+            self.assertEqual(7, f.result(timeout=0))
 
     def test_process_count_baseline(self) -> None:
         """Process count returns to baseline."""
