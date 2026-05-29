@@ -21,7 +21,7 @@ from jobserver import (
     Jobserver,
 )
 
-from .helpers import helper_raise
+from .helpers import helper_noop, helper_raise
 
 
 class TestJobserverConcurrency(unittest.TestCase):
@@ -272,7 +272,7 @@ class TestJobserverConcurrency(unittest.TestCase):
         with Jobserver(slots=1) as js:
             # Finish a Future and let its child exit so the sentinel is
             # readable, but do not reclaim it: the lone slot stays consumed.
-            f = js.submit(fn=lambda: 42, timeout=5)
+            f = js.submit(fn=helper_noop, timeout=5)
             deadline = time.monotonic() + 5
             while f._process is not None and f._process.is_alive():
                 if time.monotonic() >= deadline:
@@ -310,7 +310,7 @@ class TestJobserverConcurrency(unittest.TestCase):
             window = 0.5
             start = time.monotonic()
             with self.assertRaises(Blocked):
-                js.submit(fn=lambda: 7, timeout=window)
+                js.submit(fn=helper_noop, timeout=window)
             elapsed = time.monotonic() - start
 
             release.set()
@@ -348,9 +348,9 @@ class TestJobserverConcurrency(unittest.TestCase):
                 # Serial submissions through a single slot: each waits for
                 # the prior child to exit, then reclaims and reuses the
                 # freed slot -- this must happen without a backoff sleep.
-                last: Future = js.submit(fn=lambda: 0, timeout=10)
+                last: Future = js.submit(fn=helper_noop, timeout=10)
                 for _ in range(19):
-                    last = js.submit(fn=lambda: 0, timeout=10)
+                    last = js.submit(fn=helper_noop, timeout=10)
                 last.result(timeout=10)
             finally:
                 time.sleep = real_sleep  # type: ignore[assignment]
