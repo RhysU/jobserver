@@ -182,6 +182,8 @@ class MinimalQueue(Generic[T]):
         try:
             if not self._reader.poll(deadline_to_timeout(deadline)):
                 raise queue.Empty
+            # Reading under the lock preserves frame integrity if multiple
+            # readers ever shared a large-object queue; harmless single-reader
             recv = self._reader.recv_bytes()
         finally:
             self._read_lock.release()
