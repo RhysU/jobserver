@@ -29,11 +29,11 @@ asynchronously issuing `concurrent.futures.Future` callbacks.  `Jobserver`,
 eschewing threads, consequently is both somehow less-than and more-than a
 standard `Executor`.
 
-In contrast, [JobserverExecutor](src/jobserver/_executor.py) combines a `Jobserver`
-with a background thread to provide full `concurrent.futures.Executor`
-compatibility.  `JobserverExecutor` is a drop-in replacement for
-`concurrent.futures.ProcessPoolExecutor` that aims to provide more robustness
-at the expense of slower process launching.
+In contrast, [JobserverExecutor](src/jobserver/_executor.py) combines
+a `Jobserver` with a background thread to provide full
+`concurrent.futures.Executor` compatibility.  `JobserverExecutor` is a drop-in
+replacement for `concurrent.futures.ProcessPoolExecutor` that aims to provide
+more robustness at the expense of slower process launching.
 
 Dependencies
 ------------
@@ -43,20 +43,30 @@ None aside from the Python standard library.
 Examples
 --------
 
- * [ex01_basic](examples/ex01_basic.py) — Submitting jobs and collecting results via shorthand, keyword args, and `submit()`.
- * [ex02_nested](examples/ex02_nested.py) — Nesting submissions so child work shares slot constraints with its parent.
- * [ex03_death](examples/ex03_death.py) — Detecting when a worker process is killed unexpectedly via `SubmissionDied`.
- * [ex04_sleep_fn](examples/ex04_sleep_fn.py) — Gating work acceptance on an external condition using `sleep_fn`.
- * [ex05_callbacks](examples/ex05_callbacks.py) — Registering `when_done` callbacks and draining errors via `CallbackRaised`.
- * [ex06_environment](examples/ex06_environment.py) — Setting and unsetting environment variables in child processes via `env=`.
- * [ex07_preexec_fn](examples/ex07_preexec_fn.py) — Using `preexec_fn` as a plain callable or context manager factory for entry/exit semantics.
- * [ex08_timeouts](examples/ex08_timeouts.py) — Using non-blocking polling, finite deadlines, and `Blocked` from `result()` and `submit()`.
- * [ex09_pdeathsig](examples/ex09_pdeathsig.py) — On Linux, using `preexec_fn` to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
- * [ex10_executor](examples/ex10_executor.py) — Using `JobserverExecutor` as a context manager supporting `map()` and `c.f.Future` cancellation.
+ * [ex01_basic](examples/ex01_basic.py) - Submitting jobs and collecting results
+   via shorthand, keyword args, and `submit()`.
+ * [ex02_nested](examples/ex02_nested.py) - Nesting submissions so child work
+   shares slot constraints with its parent.
+ * [ex03_death](examples/ex03_death.py) - Detecting when a worker process is
+   killed unexpectedly via `SubmissionDied`.
+ * [ex04_sleep_fn](examples/ex04_sleep_fn.py) - Gating work acceptance on an
+   external condition using `sleep_fn`.
+ * [ex05_callbacks](examples/ex05_callbacks.py) - Registering `when_done`
+   callbacks and draining errors via `CallbackRaised`.
+ * [ex06_environment](examples/ex06_environment.py) - Setting and unsetting
+   environment variables in child processes via `env=`.
+ * [ex07_preexec_fn](examples/ex07_preexec_fn.py) - Using `preexec_fn` as
+   a plain callable or context manager factory for entry/exit semantics.
+ * [ex08_timeouts](examples/ex08_timeouts.py) - Using non-blocking polling,
+   finite deadlines, and `Blocked` from `result()` and `submit()`.
+ * [ex09_pdeathsig](examples/ex09_pdeathsig.py) - On Linux, using `preexec_fn`
+   to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
+ * [ex10_executor](examples/ex10_executor.py) - Using `JobserverExecutor` as
+   a context manager supporting `map()` and `c.f.Future` cancellation.
 
 Testing
 -------
 
-All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14 per [ci](ci) script.<br>
+Tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14 per [ci](ci) script.<br>
 Implementation passes both PEP 8 (per `ruff`) and type-hinting (per `mypy`).<br>
 [![Build Status](https://circleci.com/gh/RhysU/jobserver.svg?style=shield)](https://app.circleci.com/pipelines/github/RhysU/jobserver)

@@ -33,7 +33,7 @@ to provide full concurrent.futures.Executor compatibility.  JobserverExecutor
 is a drop-in replacement for concurrent.futures.ProcessPoolExecutor that aims
 to provide more robustness at the expense of slower process launching.
 
-All logic tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.
+Tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14.
 Implementation passes both PEP 8 (per ruff) and type-hinting (per mypy).
 Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
