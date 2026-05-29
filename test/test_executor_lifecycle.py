@@ -17,6 +17,7 @@ import gc
 import multiprocessing
 import os
 import signal
+import tempfile
 import threading
 import time
 import unittest
@@ -35,6 +36,9 @@ from jobserver._queue import MinimalQueue
 from .helpers import (
     FAST,
     TIMEOUT,
+    barrier_wait,
+    create_marker,
+    helper_return,
     silence_forkserver,
 )
 
@@ -91,6 +95,50 @@ class TestCancellation(unittest.TestCase):
                     f = exe.submit(len, (1,))
                     f.cancel()
             # No deadlock, no crash -- shutdown completes
+
+    def test_cancel_pending_prunes_in_dispatcher(self) -> None:
+        """Cancelling a PENDING future prunes it so the work never runs.
+
+        The blocker holds the single slot, so the victim stays PENDING.
+        Cancelling it must emit Cancel(work_id) to the dispatcher and prune
+        it before dispatch; otherwise the work would run once the slot frees
+        (creating the marker) and waste a slot on a discarded result.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            release = os.path.join(tmp, "release")
+            marker = os.path.join(tmp, "marker")
+            with Jobserver(context=FAST, slots=1) as js:
+                exe = JobserverExecutor(js)
+                try:
+                    blocker = exe.submit(barrier_wait, release)
+                    deadline = time.monotonic() + TIMEOUT
+                    while (
+                        not blocker.running() and time.monotonic() < deadline
+                    ):
+                        time.sleep(0.01)
+                    self.assertTrue(blocker.running())
+
+                    # Victim cannot dispatch (slot held), so it stays PENDING.
+                    victim = exe.submit(create_marker, marker)
+                    self.assertTrue(victim.cancel())
+                    self.assertTrue(victim.cancelled())
+
+                    # Sentinel proves the dispatcher cycled past the victim's
+                    # slot once the blocker frees it.
+                    sentinel = exe.submit(helper_return, 42)
+
+                    # Free the slot and let the dispatcher run to completion.
+                    with open(release, "w"):
+                        pass
+                    self.assertEqual(
+                        "released", blocker.result(timeout=TIMEOUT)
+                    )
+                    self.assertEqual(42, sentinel.result(timeout=TIMEOUT))
+
+                    # The pruned victim never executed.
+                    self.assertFalse(os.path.exists(marker))
+                finally:
+                    exe.shutdown(wait=True)
 
     def test_cancel_racing_with_dispatch(self) -> None:
         """Cancel racing with dispatch."""

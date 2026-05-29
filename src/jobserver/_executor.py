@@ -6,6 +6,7 @@
 """A concurrent.futures.Executor backed by a Jobserver."""
 
 import concurrent.futures
+import functools
 import itertools
 import logging
 import pickle
@@ -113,6 +114,12 @@ class JobserverExecutor(concurrent.futures.Executor):
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
+            # Observe cancellation so a PENDING future calling .cancel() tells
+            # the dispatcher to prune it before dispatch, reclaiming the slot
+            # that would otherwise run work whose result is discarded.
+            future.add_done_callback(
+                functools.partial(self._notify_cancel, work_id)
+            )
         success = False
         try:
             self._requests.put(
@@ -134,6 +141,31 @@ class JobserverExecutor(concurrent.futures.Executor):
                 with self._lock:
                     self._futures.pop(work_id, None)
         return future
+
+    def _notify_cancel(
+        self, work_id: int, future: concurrent.futures.Future
+    ) -> None:
+        """Done-callback emitting Cancel(work_id) on a fresh cancellation.
+
+        Registered on every submitted future.  Fires exactly once, on the
+        state transition, so a future cancelled while PENDING is pruned from
+        the dispatcher's queue before a slot is spent on it.  Non-cancel
+        completions (result, exception) are ignored.
+        """
+        if not future.cancelled():
+            return
+        with self._lock:
+            if self._shutdown:
+                # shutdown(cancel_futures=True) already sent a blanket
+                # Cancel(); the dispatcher is winding down, and the receiver
+                # re-cancels each pending future, so a per-future Cancel here
+                # would be redundant.
+                return
+        try:
+            self._requests.put(_request.Cancel(work_id=work_id))
+        except BrokenPipeError:
+            # Dispatcher already exited; there is nothing left to prune.
+            pass
 
     # TODO: Add @typing.override when Python 3.12+ is the minimum.
     def map(
