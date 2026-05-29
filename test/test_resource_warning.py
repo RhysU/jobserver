@@ -42,7 +42,7 @@ class TestResourceWarning(unittest.TestCase):
     def test_warning_emitted_with_running_future(self) -> None:
         """__del__ warns when outstanding Futures remain."""
         js = Jobserver(context=FAST, slots=1)
-        # One submit is enough: _selector_map retains the entry until
+        # One submit is enough: the selector retains the entry until
         # reclaim_resources() or __exit__, so the subprocess finishing
         # before del/gc does not create a race.
         _f = js.submit(fn=helper_return, args=(42,))

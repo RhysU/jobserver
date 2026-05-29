@@ -25,7 +25,7 @@ from itertools import islice
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
-from selectors import EVENT_READ, DefaultSelector, SelectorKey
+from selectors import EVENT_READ, DefaultSelector
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
@@ -401,9 +401,7 @@ def _unregister_sentinel(
         pass  # Already unregistered or selector closed
 
 
-def _initialize_selector(
-    slots: MinimalQueue,
-) -> tuple[DefaultSelector, Mapping[Any, SelectorKey]]:
+def _initialize_selector(slots: MinimalQueue) -> DefaultSelector:
     """Create a selector with slots pre-registered."""
     selector = DefaultSelector()
     selector.register(
@@ -411,7 +409,7 @@ def _initialize_selector(
         EVENT_READ,
         data=types.SimpleNamespace(done=noop),
     )
-    return selector, selector.get_map()
+    return selector
 
 
 class Jobserver:
@@ -421,7 +419,6 @@ class Jobserver:
         "_context",
         "_slots",
         "_selector",
-        "_selector_map",
         "_env",
         "_preexec_fn",
         "_sleep_fn",
@@ -466,10 +463,7 @@ class Jobserver:
         self._slots.put(*range(slots))
 
         # Tracks outstanding Futures via their process sentinels.
-        # _selector_map is the live view from get_map(), captured once
-        # so that post-close() access returns an empty view rather
-        # than the None that get_map() itself returns after close().
-        self._selector, self._selector_map = _initialize_selector(self._slots)
+        self._selector = _initialize_selector(self._slots)
 
         # Instance-level defaults for submit(...)
         # Defensive copy: consume any one-shot iterable and guard against
@@ -483,13 +477,18 @@ class Jobserver:
     def _tracked(self) -> int:
         """Futures in the selector, excluding any slots entry.
 
-        Safe to call on a partially-constructed instance: returns 0 when
-        __init__ raised before _selector_map was assigned.
+        Calls get_map() on demand rather than caching its result so as
+        not to depend on undocumented behavior of the returned view.
+        Tolerates partial construction (returns 0 when __init__ raised
+        before _selector was assigned) and a closed selector (get_map()
+        returns None once close() has run).
         """
-        if sm := getattr(self, "_selector_map", None):
-            # Omit ever-present self._slots.waitable()
-            return len(sm) - 1
-        return 0
+        selector = getattr(self, "_selector", None)
+        if selector is None:
+            return 0
+        sm = selector.get_map()  # None once the selector is closed
+        # Omit ever-present self._slots.waitable()
+        return len(sm) - 1 if sm else 0
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
@@ -545,7 +544,6 @@ class Jobserver:
         self._slots.close_put()
         self._slots.close_get()
         # Release the selector's underlying fd and all registrations.
-        # _selector_map survives close() as an empty live view.
         self._selector.close()
 
     def __getstate__(self) -> tuple:
@@ -571,7 +569,7 @@ class Jobserver:
             self._preexec_fn,
             self._sleep_fn,
         ) = state
-        self._selector, self._selector_map = _initialize_selector(self._slots)
+        self._selector = _initialize_selector(self._slots)
 
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
