@@ -547,7 +547,7 @@ class Jobserver:
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        """Clean up slots and drain all callbacks.
+        """Clean up slots and drain ready callbacks.
 
         Never raises CallbackRaised.  Calls reclaim_resources()
         repeatedly until every ready callback has been attempted.
