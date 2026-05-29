@@ -10,10 +10,12 @@ import concurrent.futures
 import functools
 import heapq
 import os
+import pickle
 import queue
 import signal
 import threading
 import time
+import traceback
 import types
 import warnings
 from collections import deque
@@ -94,6 +96,11 @@ class Wrapper(abc.ABC, Generic[T]):
         """Raise any wrapped Exception otherwise return some result."""
         ...
 
+    @abc.abstractmethod
+    def describe(self) -> str:
+        """Short label naming what is wrapped, for diagnostics."""
+        ...
+
 
 # Down the road, ResultWrapper might be extended with "big object"
 # support that chooses to place data in shared memory or on disk
@@ -110,19 +117,76 @@ class ResultWrapper(Wrapper[T]):
     def unwrap(self) -> T:
         return self._result
 
+    def describe(self) -> str:
+        return f"Result of type {type(self._result).__name__}"
+
+
+# TODO: revisit once Python 3.11 is the minimum version (Exception.add_note).
+# TODO: align _executor.py's _responses_put_failed pickle-fallback so both
+# paths catch the same exception tuple and share traceback re-attach logic.
+class RemoteTraceback(Exception):
+    """Carries a child process's formatted traceback string."""
+
+    def __init__(self, traceback: str) -> None:
+        self._traceback = traceback
+
+    def __str__(self) -> str:
+        return self._traceback
+
 
 class ExceptionWrapper(Wrapper[Any]):
-    """Specialization of Wrapper for when an Exception has been raised."""
+    """Specialization of Wrapper for when an Exception has been raised.
 
-    __slots__ = ("_raised",)
+    Captures the raised exception's traceback as a string at construction
+    so that the child stack survives pickle (which drops __traceback__).
+    On unpickling, the captured string is re-attached as a RemoteTraceback
+    via __cause__ so the parent sees the originating frames on unwrap().
+    Any pre-existing __cause__ chain renders inside that string but is
+    collapsed into the single RemoteTraceback programmatically.
+    """
 
-    def __init__(self, raised: Exception) -> None:
-        """Wrap the provided Exception for use during unwrap()."""
+    __slots__ = ("_raised", "_raised_tb")
+
+    _raised: Exception
+    _raised_tb: str
+
+    def __init__(
+        self,
+        raised: Exception,
+        cause: Optional["Wrapper"] = None,
+    ) -> None:
+        """Wrap raised; inherit cause's captured tb when cause is an
+        ExceptionWrapper, else format from raised.__traceback__."""
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
+        if isinstance(cause, ExceptionWrapper):
+            self._raised_tb = cause._raised_tb
+        elif raised.__traceback__ is None:
+            self._raised_tb = ""
+        else:
+            self._raised_tb = "".join(
+                traceback.format_exception(
+                    type(raised),
+                    raised,
+                    raised.__traceback__,
+                )
+            )
+
+    def __getstate__(self) -> tuple:
+        return (self._raised, self._raised_tb)
+
+    def __setstate__(self, state: tuple) -> None:
+        # Pickle dropped __traceback__ in transit; re-attach the captured
+        # string via __cause__ so the child's stack renders in the parent.
+        self._raised, self._raised_tb = state
+        if self._raised_tb:
+            self._raised.__cause__ = RemoteTraceback(self._raised_tb)
 
     def unwrap(self) -> NoReturn:
         raise self._raised
+
+    def describe(self) -> str:
+        return f"Exception of type {type(self._raised).__name__}"
 
 
 # Callback priorities for the Future heapq-based callback queue.
@@ -946,7 +1010,17 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
             # None means a BaseException (not Exception) escaped fn; let
             # the pipe close so the parent sees EOFError -> SubmissionDied.
             if result is not None:
-                send.send(result)  # ValueError => object too large
+                try:
+                    send.send(result)  # ValueError => object too large
+                except (pickle.PicklingError, AttributeError, TypeError) as pe:
+                    send.send(
+                        ExceptionWrapper(
+                            RuntimeError(
+                                f"{result.describe()} not picklable: {pe!r}"
+                            ),
+                            cause=result,
+                        )
+                    )
         except BrokenPipeError:
             pass
         try:
