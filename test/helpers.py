@@ -74,6 +74,13 @@ def barrier_wait(path: str) -> str:
     return "released"
 
 
+def create_marker(path: str) -> str:
+    """Create a file at path, evidence the call actually executed."""
+    with open(path, "w") as handle:
+        handle.write("ran")
+    return "ran"
+
+
 def raising_at_position(i: int, fail_at: int) -> int:
     if i == fail_at:
         raise ValueError(f"fail at {fail_at}")
