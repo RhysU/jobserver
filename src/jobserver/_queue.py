@@ -200,11 +200,13 @@ class MinimalQueue(Generic[T]):
 
         Raises BrokenPipeError if the receiving half has hung up.
         """
-        if self._writer is None:
-            raise ValueError("MinimalQueue.put() after close_put()")
-        if args:
-            # Serialize outside the critical section
-            send = [ForkingPickler.dumps(arg) for arg in args]
-            with self._write_lock:
-                for item in send:
-                    self._writer.send_bytes(item)
+        # Serialize outside the critical section
+        send = [ForkingPickler.dumps(arg) for arg in args]
+        with self._write_lock:
+            # Check under the lock so a concurrent close_put() cannot null
+            # self._writer between the check and use; bind a local thereafter.
+            writer = self._writer
+            if writer is None:
+                raise ValueError("MinimalQueue.put() after close_put()")
+            for item in send:
+                writer.send_bytes(item)
