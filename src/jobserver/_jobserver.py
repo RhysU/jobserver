@@ -161,9 +161,7 @@ class ExceptionWrapper(Wrapper[Any]):
         self._raised = raised
         if isinstance(cause, ExceptionWrapper):
             self._raised_tb = cause._raised_tb
-        elif raised.__traceback__ is None:
-            self._raised_tb = ""
-        else:
+        elif raised.__traceback__ is not None:
             self._raised_tb = "".join(
                 traceback.format_exception(
                     type(raised),
@@ -171,6 +169,8 @@ class ExceptionWrapper(Wrapper[Any]):
                     raised.__traceback__,
                 )
             )
+        else:
+            self._raised_tb = ""
 
     def __getstate__(self) -> tuple:
         return (self._raised, self._raised_tb)
@@ -1003,12 +1003,25 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
         result = ResultWrapper(raw)
     except Exception as exception:
         result = ExceptionWrapper(exception)
+    except BaseException as base_exception:
+        # When possible, send cause of death back to the parent to aid
+        # users in debugging.  Raising SubmissionDied() from the escaped
+        # BaseException gives it a live traceback whose chained __cause__
+        # names the SystemExit/KeyboardInterrupt for the parent to render.
+        # SubmissionDied() without __cause__ indicates this send failed,
+        # e.g. due to a SIGKILL.
+        try:
+            raise SubmissionDied() from base_exception
+        except SubmissionDied as died:
+            result = ExceptionWrapper(died)
+        raise  # Proceed with any BaseException-specific teardown
     finally:
         # Ignore broken pipes which naturally occur when the destination
         # terminates (or otherwise hangs up) before the result is ready
         try:
-            # None means a BaseException (not Exception) escaped fn; let
-            # the pipe close so the parent sees EOFError -> SubmissionDied.
+            # None means result assignment never ran (e.g. an interpreter
+            # teardown between except and finally); let the pipe close so
+            # the parent sees EOFError -> SubmissionDied.
             if result is not None:
                 try:
                     send.send(result)  # ValueError => object too large
