@@ -27,6 +27,7 @@ from itertools import islice
 from multiprocessing.connection import Connection, wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
+from multiprocessing.reduction import ForkingPickler
 from selectors import EVENT_READ, DefaultSelector
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
@@ -122,8 +123,6 @@ class ResultWrapper(Wrapper[T]):
 
 
 # TODO: revisit once Python 3.11 is the minimum version (Exception.add_note).
-# TODO: align _executor.py's _responses_put_failed pickle-fallback so both
-# paths catch the same exception tuple and share traceback re-attach logic.
 class RemoteTraceback(Exception):
     """Carries a child's formatted traceback string.
 
@@ -1026,10 +1025,21 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
             # teardown between except and finally); let the pipe close so
             # the parent sees EOFError -> SubmissionDied.
             if result is not None:
+                # Pre-flight the pickle so only genuine serialization
+                # failures hit the fallback; errors raised by send_bytes
+                # itself (a misbehaving Connection, an unrelated bug in
+                # this frame) then propagate instead of being misattributed
+                # as "not picklable".  ForkingPickler matches what
+                # Connection.send() uses internally, so send_bytes(payload)
+                # is equivalent to send(result) and pairs with the parent's
+                # recv().  A locally-defined exception class raises
+                # AttributeError and an unpicklable payload TypeError, so
+                # both join PicklingError in the classification tuple; align
+                # with _executor.py's _responses_put_failed.
                 try:
-                    send.send(result)  # ValueError => object too large
+                    payload = ForkingPickler.dumps(result)
                 except (pickle.PicklingError, AttributeError, TypeError) as pe:
-                    send.send(
+                    payload = ForkingPickler.dumps(
                         ExceptionWrapper(
                             RuntimeError(
                                 f"{result.describe()} not picklable: {pe!r}"
@@ -1037,6 +1047,7 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
                             cause=result,
                         )
                     )
+                send.send_bytes(payload)  # ValueError => object too large
         except BrokenPipeError:
             pass
         try:

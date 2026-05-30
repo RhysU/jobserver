@@ -19,11 +19,17 @@ import time
 import typing
 import unittest
 from multiprocessing import get_all_start_methods, get_context
+from multiprocessing.reduction import ForkingPickler
 
 from jobserver import (
     Blocked,
     Jobserver,
     SubmissionDied,
+)
+from jobserver._jobserver import (
+    ExceptionWrapper,
+    ResultWrapper,
+    _worker_entrypoint,
 )
 from jobserver._queue import MinimalQueue
 
@@ -502,3 +508,79 @@ class TestJobserverWorker(unittest.TestCase):
                         timeout=5,
                     )
                     self.assertEqual("SENTINEL", f.result(timeout=5))
+
+
+def _make_unpicklable_result() -> object:
+    """Return a locally-defined class instance that cannot be pickled."""
+
+    class Local:
+        pass
+
+    return Local()
+
+
+class _RecordingSend:
+    """Stand-in for a worker's pipe end recording send_bytes payloads.
+
+    When fail_with is provided, send_bytes raises it to emulate a
+    misbehaving Connection substitute rather than a pickle failure.
+    """
+
+    def __init__(
+        self, fail_with: typing.Optional[BaseException] = None
+    ) -> None:
+        self.payloads: list[bytes] = []
+        self.closed = False
+        self._fail_with = fail_with
+
+    def send_bytes(self, payload: typing.Any) -> None:
+        if self._fail_with is not None:
+            raise self._fail_with
+        # ForkingPickler.dumps returns a reusable buffer view; copy it.
+        self.payloads.append(bytes(payload))
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class TestWorkerEntrypointPickleFallback(unittest.TestCase):
+    """_worker_entrypoint pre-flights the pickle so only genuine
+    serialization failures hit the not-picklable fallback (see #284)."""
+
+    def test_send_error_propagates_not_rewrapped(self) -> None:
+        """An error raised by send_bytes itself surfaces unchanged.
+
+        Before #284 the broad except caught the AttributeError from a
+        misbehaving Connection and misattributed it as "not picklable".
+        The pre-flight now confines the catch to serialization, so the
+        genuine error propagates and no fallback re-send is attempted.
+        """
+        boom = AttributeError("misbehaving connection")
+        send = _RecordingSend(fail_with=boom)
+        with self.assertRaises(AttributeError) as ctx:
+            _worker_entrypoint(send, {}, lambda: None, len, (1, 2, 3))
+        self.assertIs(boom, ctx.exception)
+        # No "not picklable" rewrap was sent in place of the real error.
+        self.assertEqual([], send.payloads)
+
+    def test_picklable_result_sent_unchanged(self) -> None:
+        """A picklable result rides the happy path to a single send."""
+        send = _RecordingSend()
+        _worker_entrypoint(send, {}, lambda: None, len, (1, 2, 3))
+        self.assertEqual(1, len(send.payloads))
+        wrapper = ForkingPickler.loads(send.payloads[0])
+        self.assertIsInstance(wrapper, ResultWrapper)
+        self.assertEqual(3, wrapper.unwrap())
+        self.assertTrue(send.closed)
+
+    def test_unpicklable_result_uses_fallback(self) -> None:
+        """A genuinely unpicklable result still degrades to the fallback."""
+        send = _RecordingSend()
+        _worker_entrypoint(send, {}, lambda: None, _make_unpicklable_result)
+        self.assertEqual(1, len(send.payloads))
+        wrapper = ForkingPickler.loads(send.payloads[0])
+        self.assertIsInstance(wrapper, ExceptionWrapper)
+        with self.assertRaises(RuntimeError) as ctx:
+            wrapper.unwrap()
+        self.assertIn("not picklable", str(ctx.exception))
+        self.assertTrue(send.closed)
