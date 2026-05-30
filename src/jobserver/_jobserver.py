@@ -1025,17 +1025,6 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
             # teardown between except and finally); let the pipe close so
             # the parent sees EOFError -> SubmissionDied.
             if result is not None:
-                # Pre-flight the pickle so only genuine serialization
-                # failures hit the fallback; errors raised by send_bytes
-                # itself (a misbehaving Connection, an unrelated bug in
-                # this frame) then propagate instead of being misattributed
-                # as "not picklable".  ForkingPickler matches what
-                # Connection.send() uses internally, so send_bytes(payload)
-                # is equivalent to send(result) and pairs with the parent's
-                # recv().  A locally-defined exception class raises
-                # AttributeError and an unpicklable payload TypeError, so
-                # both join PicklingError in the classification tuple; align
-                # with _executor.py's _responses_put_failed.
                 try:
                     payload = ForkingPickler.dumps(result)
                 except (pickle.PicklingError, AttributeError, TypeError) as pe:
