@@ -86,34 +86,49 @@ class TestJobserverWorker(unittest.TestCase):
                         f.result()
 
     def test_base_exception_surfaces_as_submission_died(self) -> None:
-        """BaseException subclasses escaping fn must surface as SubmissionDied.
+        """BaseException subclasses escaping fn surface as SubmissionDied.
 
         sys.exit(1) raises SystemExit and helper_raise(KeyboardInterrupt)
         raises KeyboardInterrupt – both are BaseException subclasses that
-        fall outside the ``except Exception:`` guard in _worker_entrypoint(),
-        so the worker closes the result pipe without writing, which the
-        parent sees as SubmissionDied.
+        fall outside the ``except Exception:`` guard in _worker_entrypoint().
+        The worker catches them via ``except BaseException``, sends a
+        SubmissionDied carrying the cause's traceback, then re-raises for
+        normal teardown.  The parent sees SubmissionDied whose __cause__ is a
+        RemoteTraceback naming the originating type (see #167).
         """
+        # fn, args, substring expected in the propagated child traceback.
         base_exceptions: list[tuple] = [
-            (sys.exit, (1,)),
-            (helper_raise, (KeyboardInterrupt,)),
+            (sys.exit, (1,), "SystemExit"),
+            (helper_raise, (KeyboardInterrupt,), "KeyboardInterrupt"),
         ]
         for method in get_all_start_methods():
-            for fn, args in base_exceptions:
+            for fn, args, expected in base_exceptions:
                 with self.subTest(method=method, fn=fn.__name__):
                     with Jobserver(context=method, slots=1) as js:
                         f = js.submit(fn=fn, args=args, timeout=5)
-                        with self.assertRaises(SubmissionDied):
+                        with self.assertRaises(SubmissionDied) as ctx:
                             f.result(timeout=5)
+                    # The enriched path attaches the child's traceback as a
+                    # cause; a silent death would leave __cause__ as None.
+                    cause = ctx.exception.__cause__
+                    self.assertIsNotNone(cause)
+                    self.assertIn(expected, str(cause))
 
     def test_os_exit_becomes_submission_died(self) -> None:
-        """os._exit() in worker produces SubmissionDied."""
+        """os._exit() in worker produces a bare, causeless SubmissionDied.
+
+        Unlike SystemExit/KeyboardInterrupt, os._exit() raises nothing the
+        worker can catch, so no cause is sent and the parent falls back to
+        EOFError -> SubmissionDied with __cause__ None (the silent-death
+        path that distinguishes it from the enriched #167 case).
+        """
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=os._exit, args=(1,), timeout=5)
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(SubmissionDied) as ctx:
                         f.result(timeout=5)
+                self.assertIsNone(ctx.exception.__cause__)
 
     def test_done_signal_terminates(self) -> None:
         """Future.wait(..., signal=...) accepts Signals enum and int forms."""
