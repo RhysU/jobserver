@@ -453,7 +453,10 @@ def _responses_put_failed(
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     try:
         responses.put(failed)
-    except pickle.PicklingError:
+    # A locally-defined exception class raises AttributeError and an
+    # unpicklable payload TypeError, so both join PicklingError here; aligns
+    # with _jobserver.py's _worker_entrypoint pickle-failure classification.
+    except (pickle.PicklingError, AttributeError, TypeError):
         responses.put(
             _response.Failed(
                 work_id=work_id,

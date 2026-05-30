@@ -22,7 +22,14 @@ import time
 import typing
 import unittest
 
-from jobserver import Jobserver, JobserverExecutor, SubmissionDied
+from jobserver import (
+    Jobserver,
+    JobserverExecutor,
+    SubmissionDied,
+    _response,
+)
+from jobserver._executor import _responses_put_failed
+from jobserver._queue import MinimalQueue
 
 from .helpers import (
     FAST,
@@ -449,3 +456,34 @@ class TestMap(unittest.TestCase):
     def test_map_not_inherited(self) -> None:
         """map() is defined on JobserverExecutor, not inherited."""
         self.assertIn("map", vars(JobserverExecutor))
+
+
+class TestResponsesPutFailedFallback(unittest.TestCase):
+    """_responses_put_failed degrades unpicklable exceptions, matching the
+    worker's pickle-failure classification tuple (see #284)."""
+
+    def test_unpicklable_exc_degrades_to_runtime_error(self) -> None:
+        """A locally-defined (hence unpicklable) exception class raises
+        AttributeError during pickling; the fallback must catch it rather
+        than letting it escape the dispatcher."""
+
+        class LocalError(Exception):
+            pass
+
+        with MinimalQueue(context=FAST) as q:
+            _responses_put_failed(q, 7, LocalError("boom"))
+            resp = q.get(timeout=TIMEOUT)
+        self.assertIsInstance(resp, _response.Failed)
+        self.assertEqual(7, resp.work_id)
+        self.assertIsInstance(resp.exc, RuntimeError)
+        self.assertIn("not picklable", str(resp.exc))
+
+    def test_picklable_exc_passes_through(self) -> None:
+        """A picklable exception reaches the consumer unchanged."""
+        with MinimalQueue(context=FAST) as q:
+            _responses_put_failed(q, 3, ValueError("kept"))
+            resp = q.get(timeout=TIMEOUT)
+        self.assertIsInstance(resp, _response.Failed)
+        self.assertEqual(3, resp.work_id)
+        self.assertIsInstance(resp.exc, ValueError)
+        self.assertEqual("kept", str(resp.exc))
