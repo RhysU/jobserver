@@ -125,7 +125,10 @@ class ResultWrapper(Wrapper[T]):
 # TODO: align _executor.py's _responses_put_failed pickle-fallback so both
 # paths catch the same exception tuple and share traceback re-attach logic.
 class RemoteTraceback(Exception):
-    """Carries a child process's formatted traceback string."""
+    """Carries a child's formatted traceback string.
+
+    Surfaced only via __cause__ on exceptions Future.result() re-raises.
+    """
 
     def __init__(self, traceback: str) -> None:
         self._traceback = traceback
