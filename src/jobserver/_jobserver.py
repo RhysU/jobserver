@@ -929,6 +929,9 @@ class Jobserver:
         concurrent.futures, all chunksize results are materialized
         in memory at once.
 
+        Stopping iteration early neither cancels nor waits for running work.
+        Slots are retained until next reclaim_resources() or __exit__.
+
         When env provided, child updates os.environ unsetting None-valued keys.
         See submit() for preexec_fn semantics.
 
@@ -964,6 +967,7 @@ class Jobserver:
             collected = None
         return _map_generate(
             submit=self.submit,
+            reclaim=self.reclaim_resources,
             fn=fn,
             pairs=pairs if collected is None else iter(collected),
             chunksize=chunksize,
@@ -1201,6 +1205,7 @@ def _map_chunk(fn: Callable, chunk: tuple) -> list:
 
 def _map_generate(
     submit: Callable[..., Future[T]],
+    reclaim: Callable[[], None],
     fn: Callable[..., T],
     pairs: Iterator,
     chunksize: int,
@@ -1247,3 +1252,18 @@ def _map_generate(
         # concurrent.futures.TimeoutError (not builtin TimeoutError) so that
         # callers catching either type see it on Python < 3.11.
         raise concurrent.futures.TimeoutError() from None
+    finally:
+        # On teardown explicitly clear still-held Futures, then reclaim
+        # finished workers' slots.  Loop since reclaim aborts on the first
+        # CallbackRaised; a closed Jobserver, causing ValueError or
+        # OSError, ends the loop.
+        futures.clear()
+        chunk = ()
+        while True:
+            try:
+                reclaim()
+                break
+            except CallbackRaised:
+                continue
+            except (ValueError, OSError):
+                break

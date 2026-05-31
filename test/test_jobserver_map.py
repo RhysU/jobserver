@@ -10,6 +10,9 @@ timeout semantics, and error propagation.
 """
 
 import concurrent.futures
+import gc
+import os
+import tempfile
 import time
 import unittest
 from multiprocessing import get_all_start_methods
@@ -19,6 +22,7 @@ from jobserver import Jobserver
 from .helpers import (
     FAST,
     TIMEOUT,
+    helper_marker_return,
     helper_return,
     raising_at_position,
     silence_forkserver,
@@ -362,3 +366,84 @@ class TestJobserverMap(unittest.TestCase):
                         )
                     )
                     self.assertEqual(results, list(range(30)))
+
+
+class TestJobserverMapAbandonment(unittest.TestCase):
+    """map() reclaims slots when its generator is abandoned (issue #176).
+
+    A map() generator that is abandoned mid-iteration -- the caller stops
+    iterating (GeneratorExit via close()/del) or a deadline expires
+    (Blocked) -- must not leave the slots of already-finished workers
+    held until some unrelated reclaim_resources()/__exit__ runs.  The
+    generator's teardown drops its outstanding Future references and runs
+    the existing non-blocking reclaim so finished workers return their
+    slots promptly.  Still-running workers cannot be cancelled mid-flight
+    and are not awaited, so they keep their slot until later reclamation.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        silence_forkserver()
+
+    def _wait_until_finished(self, directory: str, count: int) -> None:
+        """Block until count workers have finished, observed via markers.
+
+        Polls the filesystem rather than the Jobserver so the test never
+        itself reclaims the slots whose reclamation is under test.  Each
+        worker writes its marker as the last thing fn does; a brief settle
+        then covers the tiny window before the worker sends its result and
+        exits, so a single non-blocking reclaim can subsequently reap it.
+        """
+        deadline = time.monotonic() + TIMEOUT
+        while len(os.listdir(directory)) < count:
+            if time.monotonic() > deadline:
+                self.fail("workers never finished")
+            time.sleep(0.01)
+        time.sleep(0.1)
+
+    def test_close_reclaims_finished_slots(self) -> None:
+        """Closing the generator returns finished workers' slots."""
+        slots = 4
+        with tempfile.TemporaryDirectory() as directory:
+            with Jobserver(context=FAST, slots=slots) as js:
+                argses = [(directory, i) for i in range(slots)]
+                # buffersize=None submits all work up front; with one slot
+                # per item no submit() ever blocks, so submit()'s internal
+                # reclaim never runs and the finished-but-undrained Futures
+                # all retain their slots.
+                gen = js.map(
+                    fn=helper_marker_return,
+                    argses=argses,
+                    buffersize=None,
+                    timeout=TIMEOUT,
+                )
+                self.assertEqual(next(gen), 0)
+
+                # All workers finish, yet only the first (drained by the
+                # next() above) has returned its slot: the rest leak.
+                self._wait_until_finished(directory, slots)
+                self.assertGreater(js._tracked(), 0)
+
+                # Abandoning the generator must reclaim those slots.
+                gen.close()
+                self.assertEqual(js._tracked(), 0)
+
+    def test_del_reclaims_finished_slots(self) -> None:
+        """Dropping the only reference (GC) returns finished workers' slots."""
+        slots = 4
+        with tempfile.TemporaryDirectory() as directory:
+            with Jobserver(context=FAST, slots=slots) as js:
+                argses = [(directory, i) for i in range(slots)]
+                gen = js.map(
+                    fn=helper_marker_return,
+                    argses=argses,
+                    buffersize=None,
+                    timeout=TIMEOUT,
+                )
+                self.assertEqual(next(gen), 0)
+                self._wait_until_finished(directory, slots)
+                self.assertGreater(js._tracked(), 0)
+
+                del gen
+                gc.collect()
+                self.assertEqual(js._tracked(), 0)

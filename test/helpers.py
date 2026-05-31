@@ -117,6 +117,17 @@ def helper_return(arg: T) -> T:
     return arg
 
 
+def helper_marker_return(directory: str, arg: T) -> T:
+    """Create a marker file named for arg under directory then return arg.
+
+    Lets a test observe, without itself reclaiming slots, that a worker has
+    actually finished: the marker exists once fn has run to completion.
+    """
+    with open(os.path.join(directory, str(arg)), "w") as handle:
+        handle.write("ran")
+    return arg
+
+
 def helper_raise(klass: type, *args) -> typing.NoReturn:
     """Helper raising the requested Exception class."""
     raise klass(*args)
