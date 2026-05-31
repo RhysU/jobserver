@@ -496,6 +496,87 @@ class TestResourceLeaks(unittest.TestCase):
             exe.shutdown(wait=True)
 
 
+class _RaisingResponses:
+    """A _responses stand-in whose get() crashes the receiver loop."""
+
+    def __init__(self, error: BaseException) -> None:
+        self._error = error
+
+    def get(self, timeout: object = None) -> object:
+        raise self._error
+
+
+class _StubExecutor(JobserverExecutor):
+    """JobserverExecutor sans __init__: just the receiver-guard attributes."""
+
+    def __init__(self, responses: object) -> None:
+        self._lock = threading.Lock()
+        self._shutdown = False
+        self._futures = {}
+        self._broken = None
+        self._responses = responses
+        self._jobserver = None
+
+
+class TestReceiverGuard(unittest.TestCase):
+    """The receiver thread fails loudly instead of dying silently (#193)."""
+
+    def test_crash_breaks_executor_and_fails_futures(self) -> None:
+        """A receiver crash marks the executor broken and fails futures."""
+        sentinel = ValueError("boom in receiver")
+        exe = _StubExecutor(_RaisingResponses(sentinel))
+        future: concurrent.futures.Future = concurrent.futures.Future()
+        exe._futures[0] = future
+
+        # Capture the loud death so the re-raise stays out of test output.
+        captured: list[BaseException] = []
+        old_hook = threading.excepthook
+        threading.excepthook = lambda args: captured.append(args.exc_value)
+        try:
+            t = threading.Thread(target=exe._receive_loop, daemon=True)
+            t.start()
+            t.join(timeout=TIMEOUT)
+        finally:
+            threading.excepthook = old_hook
+
+        self.assertFalse(t.is_alive())  # died loudly, did not hang
+        self.assertIn(sentinel, captured)
+        self.assertIs(exe._broken, sentinel)
+        # The outstanding future fails carrying the real cause.
+        exc = future.exception(timeout=TIMEOUT)
+        self.assertIsInstance(exc, concurrent.futures.BrokenExecutor)
+        self.assertIs(exc.__cause__, sentinel)
+
+    def test_fails_running_future_without_reraising(self) -> None:
+        """A RUNNING outstanding future is failed, not left for a crash."""
+        sentinel = ValueError("receiver died")
+        exe = _StubExecutor(_RaisingResponses(sentinel))
+        future: concurrent.futures.Future = concurrent.futures.Future()
+        future.set_running_or_notify_cancel()  # Started arrived, no Completed
+        exe._futures[0] = future
+
+        exe._fail_all(cause=sentinel)  # must not raise
+
+        exc = future.exception(timeout=TIMEOUT)
+        self.assertIsInstance(exc, concurrent.futures.BrokenExecutor)
+        self.assertIs(exc.__cause__, sentinel)
+
+    def test_submit_after_broken_raises_with_cause(self) -> None:
+        """submit() refuses work once broken, chaining the real cause."""
+        sentinel = RuntimeError("receiver died")
+        exe = _StubExecutor(_RaisingResponses(sentinel))
+        exe._broken = sentinel
+        with self.assertRaises(concurrent.futures.BrokenExecutor) as cm:
+            exe.submit(len, (1,))
+        self.assertIs(cm.exception.__cause__, sentinel)
+
+    def test_repr_reports_broken(self) -> None:
+        """__repr__ surfaces the broken state."""
+        exe = _StubExecutor(_RaisingResponses(RuntimeError()))
+        exe._broken = RuntimeError("x")
+        self.assertIn("broken", repr(exe))
+
+
 class TestOwnedJobserver(unittest.TestCase):
     """Owned Jobserver (constructed with jobserver=None)."""
 
