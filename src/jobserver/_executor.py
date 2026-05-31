@@ -50,11 +50,14 @@ class JobserverExecutor(concurrent.futures.Executor):
         When jobserver is None, a default-constructed Jobserver is
         created and owned by this executor.
         """
-        # One lock guards _shutdown, _work_ids, and _futures together.
+        # One lock guards _shutdown, _work_ids, _futures, and _broken together.
         self._lock = threading.Lock()
         self._shutdown = False
         self._work_ids: Iterator[int] = itertools.count()
         self._futures: dict[int, concurrent.futures.Future] = {}
+        # The receiver thread's fatal exception, once it dies; submit() then
+        # refuses work.
+        self._broken: Optional[BaseException] = None
 
         # Own the jobserver when none is supplied; caller owns it otherwise.
         self._own_jobserver = jobserver is None
@@ -94,7 +97,12 @@ class JobserverExecutor(concurrent.futures.Executor):
 
     def __repr__(self) -> str:
         with self._lock:
-            state = "shutdown" if self._shutdown else "active"
+            if self._broken is not None:
+                state = "broken"
+            elif self._shutdown:
+                state = "shutdown"
+            else:
+                state = "active"
             pending = len(self._futures)
         return (
             f"JobserverExecutor({state}, pending={pending}"
@@ -110,6 +118,10 @@ class JobserverExecutor(concurrent.futures.Executor):
     ) -> concurrent.futures.Future[T]:
         """Submit a callable for execution and return a Future."""
         with self._lock:
+            if self._broken is not None:
+                raise concurrent.futures.BrokenExecutor(
+                    "Cannot submit: executor is broken"
+                ) from self._broken
             if self._shutdown:
                 raise RuntimeError("Cannot submit: executor is shut down")
             future: concurrent.futures.Future[T] = concurrent.futures.Future()
@@ -222,15 +234,31 @@ class JobserverExecutor(concurrent.futures.Executor):
     # ---- Receiver thread (bridges responses to c.f.Futures) ----
 
     def _receive_loop(self) -> None:
+        """Drain responses; never let the receiver die silently.
+
+        An unhandled exception here would otherwise kill this daemon thread
+        and hang every outstanding future.  Fail them with the cause attached,
+        then re-raise so the thread still dies loudly via threading.excepthook.
+        """
+        try:
+            self._receive_messages()
+        except BaseException as exc:
+            self._fail_all(cause=exc)
+            raise
+        else:
+            # Clean exit (Shutdown or EOF): fail any work the dispatcher left.
+            self._fail_all(cause=None)
+
+    def _receive_messages(self) -> None:
         """Drain response queue, completing c.f.Futures as results arrive."""
         while True:
             try:
                 msg = self._responses.get(timeout=None)
             except EOFError:
-                break
+                return
 
             if isinstance(msg, _response.Shutdown):
-                break
+                return
             elif isinstance(msg, _response.Started):
                 with self._lock:
                     future = self._futures.get(msg.work_id)
@@ -264,31 +292,39 @@ class JobserverExecutor(concurrent.futures.Executor):
             else:
                 raise RuntimeError(f"Unexpected response type: {type(msg)!r}")
 
-        # Fail any futures still outstanding because the dispatcher
-        # exited without sending results for them (crash or unexpected exit).
+    def _fail_all(self, cause: Optional[BaseException]) -> None:
+        """Fail every outstanding future; no more results will arrive.
+
+        cause is None when the dispatcher exited; otherwise the receiver died
+        and cause is recorded as _broken and chained onto each failed future.
+        """
         with self._lock:
+            if cause is not None:
+                self._broken = cause
             remaining = list(self._futures.values())
             self._futures.clear()
         _LOG.debug(
-            "Dispatcher exited with %d outstanding futures",
+            "Failing %d outstanding futures (broken=%s)",
             len(remaining),
+            cause is not None,
         )
+        message = (
+            "Receiver thread died before delivering this future's result"
+            if cause is not None
+            else "Dispatcher process exited before"
+            " delivering this future's result"
+        )
+        err = concurrent.futures.BrokenExecutor(message)
+        if cause is not None:
+            err.__cause__ = cause
         for future in remaining:
             if future.done():
                 continue
             try:
-                future.set_running_or_notify_cancel()
+                # set_exception accepts a PENDING or RUNNING future directly.
+                future.set_exception(err)
             except concurrent.futures.InvalidStateError:
-                pass
-            try:
-                future.set_exception(
-                    RuntimeError(
-                        "Dispatcher process exited before"
-                        " delivering this future's result"
-                    )
-                )
-            except concurrent.futures.InvalidStateError:
-                pass
+                pass  # cancelled concurrently after the done() check
 
 
 def _cancel_observer(
