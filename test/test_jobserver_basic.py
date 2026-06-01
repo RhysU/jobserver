@@ -485,8 +485,12 @@ class TestJobserverBasic(unittest.TestCase):
         with Jobserver(slots=2) as js:
             f = js.submit(fn=helper_return, args=(42,))
             self.assertEqual(42, f.result())
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(RuntimeError, "Jobserver is closed"):
             js.submit(fn=helper_return, args=(1,))
+        # Re-entering a closed Jobserver raises the same defined error
+        with self.assertRaisesRegex(RuntimeError, "Jobserver is closed"):
+            with js:
+                pass
 
     def test_context_manager_lingering_future(self) -> None:
         """Lingering Future completes and fires callbacks after exit."""
