@@ -31,7 +31,7 @@ from jobserver._jobserver import (
     ResultWrapper,
     _worker_entrypoint,
 )
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 
 from .helpers import (
     helper_callback,
@@ -155,7 +155,7 @@ class TestJobserverWorker(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 context = get_context(method)
-                with MinimalQueue(context=context) as mq:
+                with SPSCQueue(context=context) as mq:
                     with Jobserver(context=context, slots=1) as js:
                         f = js.submit(fn=helper_nonblocking, args=(mq,))
                         try:

@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""MinimalQueue and related utility functions."""
+"""SPSCQueue and related utility functions."""
 
 import abc
 import queue
@@ -18,7 +18,7 @@ from multiprocessing.reduction import ForkingPickler
 from typing import Any, Generic, Optional, TypeVar, Union
 
 __all__ = (
-    "MinimalQueue",
+    "SPSCQueue",
     "timeout_to_deadline",
     "deadline_to_timeout",
     "resolve_context",
@@ -68,7 +68,7 @@ def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
 
 
 def _conn_repr(conn: Optional[Connection]) -> str:
-    """Describe a pipe end for MinimalQueue.__repr__, tolerating closed fds."""
+    """Describe a pipe end for SPSCQueue.__repr__, tolerating closed fds."""
     if conn is None:
         return "closed"
     # fileno() raises ValueError/OSError on a closed fd.
@@ -97,11 +97,7 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     @abc.abstractmethod
     def _getstate_locks(self) -> Any:
-        """Return a picklable representation of this queue's locks.
-
-        Return None to discard locks across pickling; return the lock
-        objects themselves (if picklable) to preserve them.
-        """
+        """Return a picklable representation of this queue's locks."""
         ...
 
     @abc.abstractmethod
@@ -118,7 +114,7 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     def __repr__(self) -> str:
         return (
-            f"MinimalQueue(reader={_conn_repr(self._reader)},"
+            f"SPSCQueue(reader={_conn_repr(self._reader)},"
             f" writer={_conn_repr(self._writer)})"
         )
 
@@ -152,12 +148,12 @@ class AbstractQueue(Generic[T], abc.ABC):
             pass
 
     def __copy__(self: Self) -> Self:
-        """Shallow copies return the original MinimalQueue unchanged."""
+        """Shallow copies return the original SPSCQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
     def __deepcopy__(self: Self, _: Any) -> Self:
-        """Deep copies return the original MinimalQueue unchanged."""
+        """Deep copies return the original SPSCQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
@@ -203,7 +199,7 @@ class AbstractQueue(Generic[T], abc.ABC):
             # ValueError here rather than a None-dereference at recv time.
             reader = self._reader
             if reader is None:
-                raise ValueError("MinimalQueue.get() after close_get()")
+                raise ValueError("SPSCQueue.get() after close_get()")
             if not reader.poll(deadline_to_timeout(deadline)):
                 raise queue.Empty
             # Reading under the lock preserves frame integrity if multiple
@@ -228,12 +224,18 @@ class AbstractQueue(Generic[T], abc.ABC):
             # ValueError here rather than a None-dereference at send time.
             writer = self._writer
             if writer is None:
-                raise ValueError("MinimalQueue.put() after close_put()")
+                raise ValueError("SPSCQueue.put() after close_put()")
             writer.send_bytes(bytez)
 
 
-class MinimalQueue(AbstractQueue[T]):
-    """A trivial concrete AbstractQueue; see AbstractQueue for behavior."""
+class SPSCQueue(AbstractQueue[T]):
+    """A single-producer, single-consumer AbstractQueue.
+
+    Here "single" means single process: the threading.Lock guards only
+    serialize concurrent producers or consumers within one process and
+    are recreated fresh on unpickle, so they provide no mutual exclusion
+    across processes.  See AbstractQueue for the remaining behavior.
+    """
 
     __slots__ = ()
 

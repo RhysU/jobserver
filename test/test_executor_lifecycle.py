@@ -32,7 +32,7 @@ from jobserver import (
     _response,
 )
 from jobserver._executor import _DispatchState, _handle_request
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 
 from .helpers import (
     FAST,
@@ -164,7 +164,7 @@ class TestSelectiveCancel(unittest.TestCase):
 
     def test_selective_cancel_removes_only_target(self) -> None:
         """Cancel(work_id=X) removes only X from pending."""
-        with MinimalQueue() as responses:
+        with SPSCQueue() as responses:
             state = _DispatchState(
                 pending={
                     n: _request.Submit(n, len, ((),), {}) for n in (1, 2, 3)
@@ -182,7 +182,7 @@ class TestSelectiveCancel(unittest.TestCase):
 
     def test_bulk_cancel_removes_all(self) -> None:
         """Cancel(work_id=None) removes everything."""
-        with MinimalQueue() as responses:
+        with SPSCQueue() as responses:
             state = _DispatchState(
                 pending={n: _request.Submit(n, len, ((),), {}) for n in (1, 2)}
             )
@@ -671,7 +671,7 @@ class TestOwnedJobserver(unittest.TestCase):
         f.result(timeout=TIMEOUT)
         exe.shutdown(wait=True)
         # The owned jobserver's slots queue should be closed; putting
-        # to it should raise (ValueError from MinimalQueue.put on a
+        # to it should raise (ValueError from SPSCQueue.put on a
         # closed queue).
         self.assertFalse(exe._own_jobserver)
 

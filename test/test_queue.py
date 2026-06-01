@@ -3,9 +3,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""MinimalQueue and low-level utility tests.
+"""SPSCQueue and low-level utility tests.
 
-MinimalQueue receives heavy indirect coverage through the Jobserver and
+SPSCQueue receives heavy indirect coverage through the Jobserver and
 JobserverExecutor suites, so this file only covers its own API surface
 and the resolve_context / timeout_to_deadline helpers.
 """
@@ -16,17 +16,17 @@ import unittest
 from multiprocessing import get_all_start_methods, get_context
 from multiprocessing.context import BaseContext
 
-from jobserver._queue import MinimalQueue, resolve_context, timeout_to_deadline
+from jobserver._queue import SPSCQueue, resolve_context, timeout_to_deadline
 
 
-class MinimalQueueTest(unittest.TestCase):
-    """Unit tests for MinimalQueue."""
+class SPSCQueueTest(unittest.TestCase):
+    """Unit tests for SPSCQueue."""
 
     def test_duplication_minimalqueue(self) -> None:
-        """Copying of MinimalQueue is explicitly allowed."""
+        """Copying of SPSCQueue is explicitly allowed."""
         for method in get_all_start_methods():
             with self.subTest(method=method):
-                with MinimalQueue(context=method) as mq1:
+                with SPSCQueue(context=method) as mq1:
                     mq2 = copy.copy(mq1)
                     mq3 = copy.deepcopy(mq1)
                     mq1.put(1)
@@ -42,7 +42,7 @@ class MinimalQueueTest(unittest.TestCase):
 
     def test_close_get_and_close_put_are_idempotent(self) -> None:
         """close_get() and close_put() are safe to call more than once."""
-        with MinimalQueue() as mq:
+        with SPSCQueue() as mq:
             pass
         # Both ends already closed by __exit__; repeat must not raise
         mq.close_get()
@@ -50,7 +50,7 @@ class MinimalQueueTest(unittest.TestCase):
 
     def test_context_manager(self) -> None:
         """Context manager closes both ends; put/get raise after exit."""
-        with MinimalQueue() as mq:
+        with SPSCQueue() as mq:
             mq.put(42)
             self.assertEqual(42, mq.get(timeout=1))
         with self.assertRaises(ValueError):

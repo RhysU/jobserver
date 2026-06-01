@@ -18,7 +18,7 @@ import time
 import typing
 
 from jobserver import Jobserver, JobserverExecutor
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 
 T = typing.TypeVar("T")
 
@@ -101,8 +101,8 @@ def executor_in_child_via_queue(
     q.put(executor_in_child(method))
 
 
-def helper_nonblocking(mq: MinimalQueue[str]) -> str:
-    """Receive and return a handshake from a MinimalQueue."""
+def helper_nonblocking(mq: SPSCQueue[str]) -> str:
+    """Receive and return a handshake from a SPSCQueue."""
     # Timeout allows heavy OS load while also detecting complete breakage
     return mq.get(timeout=60.0)
 

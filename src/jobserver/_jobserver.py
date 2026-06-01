@@ -37,7 +37,7 @@ from ._compat import (
     sched_getaffinity0,
 )
 from ._queue import (
-    MinimalQueue,
+    SPSCQueue,
     deadline_to_timeout,
     resolve_context,
     timeout_to_deadline,
@@ -513,7 +513,7 @@ class SlotsSentinel:
         return None
 
 
-def _restore_token(slots: MinimalQueue, token: Optional[int]) -> None:
+def _restore_token(slots: SPSCQueue, token: Optional[int]) -> None:
     """Restore token to slots, tolerating a closed queue."""
     if token is not None:
         try:
@@ -618,7 +618,7 @@ class Jobserver:
 
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
-        self._slots: MinimalQueue[int] = MinimalQueue(self._context)
+        self._slots: SPSCQueue[int] = SPSCQueue(self._context)
 
         # Issue one token for each requested slot
         for token in range(slots):
@@ -1165,7 +1165,7 @@ def _maybe_obtain_token(
     reclaim_tokens_fn: Callable[[], Any],
     selector: DefaultSelector,
     sleep_fn: SleepFn,
-    slots: MinimalQueue[int],
+    slots: SPSCQueue[int],
 ) -> Optional[int]:
     """
     Either retrieve a requested token or raise Blocked while trying.
