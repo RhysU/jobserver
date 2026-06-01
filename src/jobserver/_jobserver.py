@@ -10,7 +10,6 @@ import concurrent.futures
 import functools
 import heapq
 import os
-import pickle
 import queue
 import signal
 import threading
@@ -33,6 +32,7 @@ from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
 from ._compat import ignore_sigpipe, sched_getaffinity0
 from ._queue import (
+    PICKLE_DUMP_ERRORS,
     MinimalQueue,
     deadline_to_timeout,
     resolve_context,
@@ -1062,7 +1062,7 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
             if result is not None:
                 try:
                     payload = ForkingPickler.dumps(result)
-                except (pickle.PicklingError, AttributeError, TypeError) as pe:
+                except PICKLE_DUMP_ERRORS as pe:
                     payload = ForkingPickler.dumps(
                         ExceptionWrapper(
                             RuntimeError(

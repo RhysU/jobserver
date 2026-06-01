@@ -9,7 +9,6 @@ import concurrent.futures
 import functools
 import itertools
 import logging
-import pickle
 import queue
 import threading
 import traceback
@@ -28,7 +27,7 @@ from ._jobserver import (
     Future,
     Jobserver,
 )
-from ._queue import MinimalQueue
+from ._queue import PICKLE_DUMP_ERRORS, MinimalQueue
 
 __all__ = ("JobserverExecutor",)
 
@@ -527,10 +526,11 @@ def _responses_put_failed(
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     try:
         responses.put(failed)
-    # A locally-defined exception class raises AttributeError and an
-    # unpicklable payload TypeError, so both join PicklingError here; aligns
-    # with _jobserver.py's _worker_entrypoint pickle-failure classification.
-    except (pickle.PicklingError, AttributeError, TypeError):
+    # Shared classification: a locally-defined exception class raises
+    # AttributeError, an unpicklable payload TypeError, and pickle itself
+    # PicklingError; see PICKLE_DUMP_ERRORS.  Keeps this fallback aligned
+    # with _jobserver.py's _worker_entrypoint.
+    except PICKLE_DUMP_ERRORS:
         responses.put(
             _response.Failed(
                 work_id=work_id,
