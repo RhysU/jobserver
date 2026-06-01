@@ -24,7 +24,8 @@ import unittest.mock
 import weakref
 from multiprocessing import get_all_start_methods
 
-from jobserver import Jobserver, JobserverExecutor
+from jobserver import Jobserver, JobserverExecutor, _request, _response
+from jobserver._executor import _DispatchState, _handle_request
 from jobserver._queue import MinimalQueue
 from jobserver._request import Submit
 
@@ -362,6 +363,37 @@ class TestInternalInvariants(unittest.TestCase):
             # it must have been issued with the lock already released.
             self.assertGreater(len(lock_held), 0)
             self.assertFalse(lock_held[0])
+
+    def test_blanket_cancel_latches_cancelling(self) -> None:
+        """A blanket Cancel() makes the dispatcher cancel later Submits.
+
+        After shutdown(cancel_futures=True) sends Cancel(), a Submit racing
+        the impending Shutdown must be cancelled on arrival, never dispatched.
+        """
+        responses: MinimalQueue = MinimalQueue(FAST)
+        state = _DispatchState()
+        try:
+            # Blanket Cancel() latches cancelling True.
+            _handle_request(_request.Cancel(), state, responses)
+            self.assertFalse(state.shutdown)
+            self.assertTrue(state.cancelling)
+
+            # A Submit arriving while cancelling is cancelled, not queued.
+            _handle_request(
+                _request.Submit(work_id=7, fn=len, args=((1,),), kwargs={}),
+                state,
+                responses,
+            )
+            self.assertFalse(state.shutdown)
+            self.assertTrue(state.cancelling)
+            self.assertEqual(0, len(state.pending))
+
+            msg = responses.get(timeout=TIMEOUT)
+            self.assertIsInstance(msg, _response.Cancelled)
+            self.assertEqual(7, msg.work_id)
+        finally:
+            responses.close_put()
+            responses.close_get()
 
     def test_submit_removes_future_on_put_failure(self) -> None:
         """A future registered in _futures is removed if put() fails.
