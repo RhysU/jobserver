@@ -38,9 +38,10 @@ def _child_reclaims(js: Jobserver) -> int:
     Under fork the inherited selector still tracks _sibling's Future;
     by the time this sleep elapses that process has exited, so its
     sentinel fd is ready.  reclaim_resources() must rebuild a clean
-    selector rather than act on the ancestor-owned process.
+    selector rather than act on the ancestor-owned process.  The sleep
+    only needs to outlast the 0.1s sibling with a margin to spare.
     """
-    time.sleep(0.5)
+    time.sleep(0.3)
     js.reclaim_resources()
     return 0
 
