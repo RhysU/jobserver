@@ -16,7 +16,7 @@ import weakref
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection, wait
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar, Union, final
 
 from . import _request, _response
 from ._compat import PICKLE_DUMP_ERRORS, ignore_sigpipe
@@ -35,6 +35,7 @@ _LOG = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+@final
 class JobserverExecutor(concurrent.futures.Executor):
     """A concurrent.futures.Executor that delegates to a Jobserver.
 
