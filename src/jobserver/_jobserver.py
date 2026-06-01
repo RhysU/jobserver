@@ -444,9 +444,17 @@ class Future(Generic[T]):
             # EOFError is an unexpected hang up from the other end
             try:
                 self._wrapper = self._connection.recv()
-                assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
             except EOFError:
                 self._wrapper = ExceptionWrapper(SubmissionDied())
+            except Exception as e:
+                # A value can pickle in the child yet fail to reconstitute
+                # in the parent (e.g. a returned Connection raises
+                # FileNotFoundError deep in recv()).
+                self._wrapper = ExceptionWrapper(
+                    RuntimeError(f"Result not reconstructable: {e!r}")
+                )
+            else:
+                assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
 
             # Now join() and set to None reclaiming OS/Python resources
             assert self._process is not None

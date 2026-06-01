@@ -128,6 +128,12 @@ def helper_marker_return(directory: str, arg: T) -> T:
     return arg
 
 
+def helper_return_connection(context):
+    """Return a live Connection that pickles but cannot rebuild remotely."""
+    recv, _send = context.Pipe(duplex=False)
+    return recv
+
+
 def helper_raise(klass: type, *args) -> typing.NoReturn:
     """Helper raising the requested Exception class."""
     raise klass(*args)
