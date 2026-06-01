@@ -32,15 +32,16 @@ def main() -> None:
         future1.when_done(accumulator.append, "after-completion")
         info("Callbacks after completion: %s", accumulator)
 
-        # When a callback raises, CallbackRaised wraps the original exception.
-        # Each wait() fires the next pending callback; raising ones surface as
-        # CallbackRaised while succeeding ones run silently.  Loop until no
-        # error is raised to ensure all callbacks have been drained.
+        # when_done(...) returns a Future-specific seqno per registration.
         future2 = jobserver.submit(fn=len, args=("world",))
-        future2.when_done(raise_exception, klass=ValueError)
-        future2.when_done(raise_exception, klass=TypeError)
-        future2.when_done(accumulator.append, "survivor")
+        assert 0 == future2.when_done(raise_exception, klass=ValueError)
+        assert 1 == future2.when_done(raise_exception, klass=TypeError)
+        assert 2 == future2.when_done(accumulator.append, "survivor")
 
+        # Each wait() fires pending callbacks; raising ones surface as
+        # CallbackRaised wrapping the original exception, others run silently.
+        # CallbackRaised.seqno reports which registration raised.  Loop until
+        # no error is raised to drain all callbacks.
         for i in range(3):
             try:
                 future2.wait()
@@ -48,9 +49,10 @@ def main() -> None:
                 break
             except CallbackRaised as e:
                 info(
-                    "wait() call %d: caught %s",
+                    "wait() call %d: caught %s from registration seqno=%d",
                     i,
                     type(e.__cause__).__name__,
+                    e.seqno,
                 )
 
         # The result is still available after all callbacks drain
