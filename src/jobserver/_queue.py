@@ -90,29 +90,15 @@ class AbstractQueue(Generic[T], abc.ABC):
     Both get(...) and put(...) detect and report when one end hangs up.
     """
 
-    __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
+    __slots__ = ("_reader", "_writer")
 
-    # Lock attributes are populated by _setstate_locks in concrete
-    # subclasses; their concrete type is left to the subclass.
-    _read_lock: Any
-    _write_lock: Any
-
-    @abc.abstractmethod
-    def _getstate_locks(self) -> Any:
-        """Return a picklable representation of this queue's locks."""
-        ...
-
-    @abc.abstractmethod
-    def _setstate_locks(self, state_locks: Any) -> None:
-        """Restore this queue's locks from _getstate_locks() output."""
-        ...
+    _reader: Optional[Connection]
+    _writer: Optional[Connection]
 
     def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
         """Use given context with default of multiprocessing.get_context()."""
         context = resolve_context(context)
-        reader, writer = context.Pipe(duplex=False)
-        # Delegate reader/writer/lock wiring to the single __setstate__ path.
-        self.__setstate__((reader, writer, None))
+        self._reader, self._writer = context.Pipe(duplex=False)
 
     def __repr__(self) -> str:
         return (
@@ -120,17 +106,11 @@ class AbstractQueue(Generic[T], abc.ABC):
             f" writer={_conn_repr(self._writer)})"
         )
 
-    def __getstate__(
-        self,
-    ) -> tuple[Optional[Connection], Optional[Connection], Any]:
-        return (self._reader, self._writer, self._getstate_locks())
+    def __getstate__(self) -> tuple[Any, ...]:
+        return (self._reader, self._writer)
 
-    def __setstate__(
-        self,
-        state: tuple[Optional[Connection], Optional[Connection], Any],
-    ) -> None:
-        self._reader, self._writer, state_locks = state
-        self._setstate_locks(state_locks)
+    def __setstate__(self, state: tuple[Any, ...]) -> None:
+        self._reader, self._writer = state
 
     def __enter__(self: Self) -> Self:
         return self
@@ -203,10 +183,40 @@ class AbstractPicklingQueue(AbstractQueue[T]):
     """AbstractQueue whose get()/put() pickle generic objects.
 
     Objects are serialized/deserialized with ForkingPickler and moved
-    across the pipe as length-prefixed byte frames.
+    across the pipe as length-prefixed byte frames.  The read/write guards
+    keep those multi-syscall frames intact under concurrent access.
     """
 
-    __slots__ = ()
+    __slots__ = ("_read_lock", "_write_lock")
+
+    # Lock attributes are populated by _setstate_locks in concrete
+    # subclasses; their concrete type is left to the subclass.
+    _read_lock: Any
+    _write_lock: Any
+
+    @abc.abstractmethod
+    def _getstate_locks(self) -> Any:
+        """Return a picklable representation of this queue's locks."""
+        ...
+
+    @abc.abstractmethod
+    def _setstate_locks(self, state_locks: Any) -> None:
+        """Restore this queue's locks from _getstate_locks() output."""
+        ...
+
+    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
+        """Use given context with default of multiprocessing.get_context()."""
+        super().__init__(context)
+        # Mint this queue's locks now that the pipe exists.
+        self._setstate_locks(None)
+
+    def __getstate__(self) -> tuple[Any, ...]:
+        return (*super().__getstate__(), self._getstate_locks())
+
+    def __setstate__(self, state: tuple[Any, ...]) -> None:
+        reader, writer, state_locks = state
+        super().__setstate__((reader, writer))
+        self._setstate_locks(state_locks)
 
     def get(self, timeout: Optional[float] = None) -> T:
         """
