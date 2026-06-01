@@ -182,6 +182,17 @@ class AbstractQueue(Generic[T], abc.ABC):
             self._writer.close()
             self._writer = None
 
+
+class AbstractPicklingQueue(AbstractQueue[T]):
+    """AbstractQueue whose get()/put() pickle generic objects.
+
+    Objects are serialized/deserialized with ForkingPickler and moved
+    across the pipe as length-prefixed byte frames.  Both get(...) and
+    put(...) detect and report when one end hangs up.
+    """
+
+    __slots__ = ()
+
     def get(self, timeout: Optional[float] = None) -> T:
         """
         Get one object from the queue raising queue.Empty if unavailable.
@@ -236,7 +247,7 @@ class AbstractQueue(Generic[T], abc.ABC):
 
 
 @final
-class SPSCQueue(AbstractQueue[T]):
+class SPSCQueue(AbstractPicklingQueue[T]):
     """A single-producer, single-consumer AbstractQueue.
 
     Here "single" means single process: the threading.Lock guards
@@ -255,7 +266,7 @@ class SPSCQueue(AbstractQueue[T]):
 
 
 @final
-class MPMCQueue(AbstractQueue[T]):
+class MPMCQueue(AbstractPicklingQueue[T]):
     """A multiple-producer, multiple-consumer AbstractQueue.
 
     Safe for concurrent producers and consumers across processes: the
