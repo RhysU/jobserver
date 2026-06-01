@@ -34,10 +34,11 @@ from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 from ._compat import (
     PICKLE_DUMP_ERRORS,
     ignore_sigpipe,
+    pipe_buf,
     sched_getaffinity0,
 )
 from ._queue import (
-    SPSCQueue,
+    FixedBytesQueue,
     deadline_to_timeout,
     resolve_context,
     timeout_to_deadline,
@@ -513,7 +514,7 @@ class SlotsSentinel:
         return None
 
 
-def _restore_token(slots: SPSCQueue, token: Optional[int]) -> None:
+def _restore_token(slots: FixedBytesQueue, token: Optional[bytes]) -> None:
     """Restore token to slots, tolerating a closed queue."""
     if token is not None:
         try:
@@ -553,12 +554,6 @@ def _unregister_connection(
     except KeyError:
         pass  # Already unregistered or selector closed
     connection.close()
-
-
-# Upper bound on slots, rejected above.  A pipe's buffer is finite, so
-# put()ing one token per slot blocks forever once it fills.  2048 tokens
-# fill ~36 KiB, fitting comfortably within a 64 KiB pipe.
-_MAX_SLOTS = 2048
 
 
 class Jobserver:
@@ -614,16 +609,18 @@ class Jobserver:
             raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
-        if slots > _MAX_SLOTS:
-            raise ValueError(f"slots must be <= {_MAX_SLOTS}, got {slots!r}")
+        # All tokens are written in one atomic put(), which FixedBytesQueue
+        # bounds at pipe_buf() bytes; one byte per slot caps slots there too.
+        if slots > pipe_buf():
+            raise ValueError(f"slots must be <= {pipe_buf()}, got {slots!r}")
 
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
-        self._slots: SPSCQueue[int] = SPSCQueue(self._context)
+        self._slots = FixedBytesQueue(self._context, fixedlen=1)
 
-        # Issue one token for each requested slot
-        for token in range(slots):
-            self._slots.put(token)
+        # One single-byte token per slot, written in one atomic put().  The
+        # byte value is opaque, so "J" (for Jobserver) is as good as any.
+        self._slots.put(b"J" * slots)
 
         # Tracks outstanding Futures via their process sentinels.  Built
         # lazily by _lazy_selector(); None means "not yet built" and
@@ -1181,8 +1178,8 @@ def _maybe_obtain_token(
     reclaim_tokens_fn: Callable[[], Any],
     selector: DefaultSelector,
     sleep_fn: SleepFn,
-    slots: SPSCQueue[int],
-) -> Optional[int]:
+    slots: FixedBytesQueue,
+) -> Optional[bytes]:
     """
     Either retrieve a requested token or raise Blocked while trying.
 
@@ -1193,7 +1190,7 @@ def _maybe_obtain_token(
     if type(consume) is not int or consume not in (0, 1):
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
     # Acquire the requested token or raise Blocked when impossible
-    token: Optional[int] = None
+    token: Optional[bytes] = None
     # Ready fds the previous pass could not reclaim
     # If they recur, back off to avoid busy spinning
     stall_fds: set[int] = set()
