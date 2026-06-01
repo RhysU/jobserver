@@ -5,10 +5,10 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """slots is bounded so construction cannot hang (issue #302).
 
-Filling a token pipe is O(slots) and, worse, deadlocks once the pipe
-buffer fills: put() blocks forever waiting for space no reader frees.
-Construction therefore rejects slots beyond _MAX_SLOTS with an
-informative ValueError, and the largest allowed value still fits.
+All tokens are written in one atomic FixedBytesQueue.put(), which is
+capped at pipe_buf() bytes; one single-byte token per slot caps slots
+there too.  Construction therefore rejects slots beyond pipe_buf() with
+an informative ValueError, and the largest allowed value still fits.
 """
 
 import threading
@@ -16,20 +16,20 @@ import time
 import unittest
 
 from jobserver import Jobserver
-from jobserver._jobserver import _MAX_SLOTS
+from jobserver._compat import pipe_buf
 
 from .helpers import FAST, TIMEOUT
 
 
 class TestLargeSlots(unittest.TestCase):
-    """slots above _MAX_SLOTS is rejected; the boundary still works."""
+    """slots above pipe_buf() is rejected; the boundary still works."""
 
     def test_slots_above_max_raises_informative_valueerror(self) -> None:
         """Jobserver(slots=10**9) fails fast rather than hanging."""
         with self.assertRaises(ValueError) as cm:
             Jobserver(context=FAST, slots=10**9)
         message = str(cm.exception)
-        self.assertIn(str(_MAX_SLOTS), message)
+        self.assertIn(str(pipe_buf()), message)
         self.assertIn(repr(10**9), message)
 
     def test_max_slots_constructs_quickly_and_runs(self) -> None:
@@ -38,7 +38,7 @@ class TestLargeSlots(unittest.TestCase):
 
         def build() -> None:
             # Construct and immediately tear down; both must be fast.
-            with Jobserver(context=FAST, slots=_MAX_SLOTS):
+            with Jobserver(context=FAST, slots=pipe_buf()):
                 pass
             done.set()
 
@@ -56,7 +56,7 @@ class TestLargeSlots(unittest.TestCase):
 
     def test_max_slots_still_runs_work(self) -> None:
         """A max-slots Jobserver still accepts and completes work."""
-        with Jobserver(context=FAST, slots=_MAX_SLOTS) as js:
+        with Jobserver(context=FAST, slots=pipe_buf()) as js:
             future = js.submit(fn=abs, args=(-7,))
             self.assertEqual(future.result(timeout=TIMEOUT), 7)
 
