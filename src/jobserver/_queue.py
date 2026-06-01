@@ -85,13 +85,11 @@ def _conn_repr(conn: Optional[Connection]) -> str:
 
 
 class AbstractQueue(Generic[T], abc.ABC):
-    """
-    An unbounded SimpleQueue-variant with minimal functionality.
+    """Abstract pipe-backed queue; subclasses implement get()/put().
 
-    Specifically, only functionality needed by Jobserver and JobserverExecutor.
-    Vanilla multiprocessing.SimpleQueue lacks timeout on get(...).
-    Vanilla multiprocessing.Queue has wildly undesired threading machinery.
-    Both get(...) and put(...) detect and report when one end hangs up.
+    Provides the pipe lifecycle -- repr, pickling, waitable(), and
+    close_get()/close_put().  Used instead of multiprocessing.SimpleQueue
+    (no get() timeout) and multiprocessing.Queue (unwanted threading).
     """
 
     __slots__ = ("_reader", "_writer")
@@ -139,12 +137,12 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     def __copy__(self: Self) -> Self:
         """Shallow copies return the original queue unchanged."""
-        # Because any "copy" should and can only mutate same pipe/locks
+        # Because any "copy" should and can only mutate the same pipe
         return self
 
     def __deepcopy__(self: Self, _: Any) -> Self:
         """Deep copies return the original queue unchanged."""
-        # Because any "copy" should and can only mutate same pipe/locks
+        # Because any "copy" should and can only mutate the same pipe
         return self
 
     def waitable(self) -> Connection:
@@ -215,8 +213,7 @@ class AbstractPicklingQueue(AbstractQueue[T]):
     def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
         """Use given context with default of multiprocessing.get_context()."""
         super().__init__(context)
-        # Mint this queue's locks now that the pipe exists.
-        self._setstate_locks(None)
+        self.__setstate__((self._reader, self._writer, None))
 
     def __getstate__(self) -> tuple[Any, ...]:
         return (*super().__getstate__(), self._getstate_locks())
@@ -227,14 +224,11 @@ class AbstractPicklingQueue(AbstractQueue[T]):
         self._setstate_locks(state_locks)
 
     def get(self, timeout: Optional[float] = None) -> T:
-        """
-        Get one object from the queue raising queue.Empty if unavailable.
+        """Get one object, raising queue.Empty when none is available.
 
-        Raises EOFError on exhausted queue whenever sending half has hung up.
+        Raises EOFError on an exhausted queue once the sending half hangs up.
         """
-        # Accounting for lock acquisition time is easiest with a deadline
-        # and conditionals repeatedly checking for negative situations
-        # Otherwise, this turns into an unpleasantly messy stretch of code
+        # A deadline lets lock acquisition and poll() share one time budget.
         deadline = timeout_to_deadline(timeout)
         # Call acquire() positionally: threading locks name the first
         # argument "blocking" while multiprocessing locks name it "block",
@@ -251,8 +245,8 @@ class AbstractPicklingQueue(AbstractQueue[T]):
                 )
             if not reader.poll(deadline_to_timeout(deadline)):
                 raise queue.Empty
-            # Reading under the lock preserves frame integrity if multiple
-            # readers ever shared a large-object queue; harmless single-reader
+            # Hold the lock across recv_bytes() so concurrent consumers
+            # cannot interleave frames (cross-process for MPMCQueue).
             recv = reader.recv_bytes()
         finally:
             self._read_lock.release()
@@ -261,8 +255,7 @@ class AbstractPicklingQueue(AbstractQueue[T]):
         return ForkingPickler.loads(recv)
 
     def put(self, obj: T) -> None:
-        """
-        Put one object into the queue.
+        """Put one object into the queue.
 
         Raises BrokenPipeError if the receiving half has hung up.
         """
@@ -351,9 +344,10 @@ class FixedBytesQueue(AbstractQueue[bytes]):
         """Use fixedlen-byte tokens; requires 1 <= fixedlen < pipe_buf()."""
         if not isinstance(fixedlen, int):
             raise TypeError(f"fixedlen: int, got {type(fixedlen).__name__}")
-        if not 1 <= fixedlen < pipe_buf():
+        pb = pipe_buf()
+        if not 1 <= fixedlen < pb:
             raise ValueError(
-                f"fixedlen must satisfy 1 <= fixedlen < {pipe_buf()}, "
+                f"fixedlen must satisfy 1 <= fixedlen < {pb}, "
                 f"got {fixedlen!r}"
             )
         super().__init__(context)
@@ -411,15 +405,15 @@ class FixedBytesQueue(AbstractQueue[bytes]):
         otherwise, or BrokenPipeError if the receiving half has hung up.
         """
         n = len(obj)
-        # Fast path: a single token is always valid since fixedlen was
-        # checked in __init__.  Only multi-token writes pay for the rest.
-        if n != self._fixedlen and (
-            n == 0 or n % self._fixedlen != 0 or n > pipe_buf()
-        ):
-            raise ValueError(
-                f"put() requires a positive multiple of {self._fixedlen} "
-                f"bytes up to {pipe_buf()}, got {n}"
-            )
+        # Fast path: a single token is always valid (fixedlen checked in
+        # __init__); only multi-token writes run the fuller check.
+        if n != self._fixedlen:
+            pb = pipe_buf()
+            if n == 0 or n % self._fixedlen != 0 or n > pb:
+                raise ValueError(
+                    f"put() requires a positive multiple of {self._fixedlen} "
+                    f"bytes up to {pb}, got {n}"
+                )
         writer = self._writer
         if writer is None:
             raise ValueError(f"{type(self).__name__}.put() after close_put()")
