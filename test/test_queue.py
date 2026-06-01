@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""SPSCQueue, MPMCQueue, and low-level utility tests.
+"""SPSCQueue, MPMCQueue, FixedBytesQueue, and low-level utility tests.
 
 SPSCQueue receives heavy indirect coverage through the Jobserver and
 JobserverExecutor suites, so this file only covers its own API surface
@@ -11,13 +11,16 @@ and the resolve_context / timeout_to_deadline helpers.
 """
 
 import copy
+import queue
 import time
 import unittest
 from multiprocessing import get_all_start_methods, get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.synchronize import Lock as IPCLock
 
+from jobserver._compat import pipe_buf
 from jobserver._queue import (
+    FixedBytesQueue,
     MPMCQueue,
     SPSCQueue,
     resolve_context,
@@ -28,6 +31,11 @@ from jobserver._queue import (
 def _mpmc_echo_double(inq: MPMCQueue, outq: MPMCQueue) -> None:
     """Child: receive one item on inq and send back twice its value."""
     outq.put(inq.get(timeout=30) * 2)
+
+
+def _fbq_echo(inq: FixedBytesQueue, outq: FixedBytesQueue) -> None:
+    """Child: receive one token on inq and send it back unchanged on outq."""
+    outq.put(inq.get(timeout=30))
 
 
 class SPSCQueueTest(unittest.TestCase):
@@ -115,6 +123,119 @@ class MPMCQueueTest(unittest.TestCase):
                     proc.start()
                     inq.put(21)
                     self.assertEqual(42, outq.get(timeout=30))
+                    proc.join(30)
+                    self.assertEqual(0, proc.exitcode)
+
+
+class FixedBytesQueueTest(unittest.TestCase):
+    """Unit tests for FixedBytesQueue.
+
+    The headline property is that, restricted to fixedlen-byte payloads,
+    FixedBytesQueue is observationally indistinguishable from MPMCQueue
+    used on bytes: same FIFO values, same Empty/EOF/closed semantics.
+    """
+
+    @staticmethod
+    def _byte_queues():
+        """Factories for a FixedBytesQueue and an MPMCQueue using 4-byte
+        tokens, the regime in which the two must be indistinguishable."""
+        return (
+            ("FixedBytesQueue", lambda: FixedBytesQueue(fixedlen=4)),
+            ("MPMCQueue", lambda: MPMCQueue()),
+        )
+
+    def test_roundtrip_matches_mpmc(self) -> None:
+        """Both queues return the same bytes in the same FIFO order."""
+        tokens = [b"AAAA", b"BBBB", b"CCCC", b"DDDD"]
+        results = {}
+        for name, factory in self._byte_queues():
+            with factory() as q:
+                for token in tokens:
+                    q.put(token)
+                results[name] = [q.get(timeout=1) for _ in tokens]
+        self.assertEqual(tokens, results["FixedBytesQueue"])
+        self.assertEqual(results["FixedBytesQueue"], results["MPMCQueue"])
+
+    def test_empty_raises_queue_empty_like_mpmc(self) -> None:
+        """get() on an empty queue raises queue.Empty for both."""
+        for name, factory in self._byte_queues():
+            with self.subTest(queue=name), factory() as q:
+                with self.assertRaises(queue.Empty):
+                    q.get(timeout=0)
+
+    def test_eof_after_close_put_like_mpmc(self) -> None:
+        """Draining then reading a hung-up queue raises EOFError for both."""
+        for name, factory in self._byte_queues():
+            with self.subTest(queue=name):
+                q = factory()
+                try:
+                    q.put(b"AAAA")
+                    q.close_put()
+                    self.assertEqual(b"AAAA", q.get(timeout=1))
+                    with self.assertRaises(EOFError):
+                        q.get(timeout=1)
+                finally:
+                    q.close_get()
+
+    def test_after_close_raises_valueerror_like_mpmc(self) -> None:
+        """put()/get() after the context manager exits raise for both."""
+        for name, factory in self._byte_queues():
+            with self.subTest(queue=name):
+                with factory() as q:
+                    q.put(b"AAAA")
+                    self.assertEqual(b"AAAA", q.get(timeout=1))
+                with self.assertRaises(ValueError):
+                    q.put(b"AAAA")
+                with self.assertRaises(ValueError):
+                    q.get(timeout=0)
+
+    def test_init_rejects_out_of_range_fixedlen(self) -> None:
+        """fixedlen must satisfy 1 <= fixedlen < pipe_buf()."""
+        for bad in (0, -1, pipe_buf(), pipe_buf() + 1):
+            with self.subTest(fixedlen=bad), self.assertRaises(ValueError):
+                FixedBytesQueue(fixedlen=bad)
+
+    def test_init_rejects_non_int_fixedlen(self) -> None:
+        """A non-int fixedlen raises TypeError."""
+        with self.assertRaises(TypeError):
+            FixedBytesQueue(fixedlen=4.0)
+
+    def test_put_rejects_non_multiple_length(self) -> None:
+        """put() rejects empty and non-multiple-of-fixedlen payloads."""
+        with FixedBytesQueue(fixedlen=4) as q:
+            for bad in (b"", b"abc", b"abcde"):
+                with self.subTest(payload=bad), self.assertRaises(ValueError):
+                    q.put(bad)
+
+    def test_put_rejects_over_pipe_buf(self) -> None:
+        """put() rejects a whole-token payload exceeding pipe_buf()."""
+        with FixedBytesQueue(fixedlen=4) as q:
+            over = b"a" * (((pipe_buf() // 4) + 1) * 4)
+            with self.assertRaises(ValueError):
+                q.put(over)
+
+    def test_multi_token_put_reads_individually(self) -> None:
+        """A multi-token put() is read back one token at a time."""
+        with FixedBytesQueue(fixedlen=4) as q:
+            q.put(b"AAAABBBBCCCC")
+            self.assertEqual(
+                [b"AAAA", b"BBBB", b"CCCC"],
+                [q.get(timeout=1) for _ in range(3)],
+            )
+
+    def test_cross_process_roundtrip(self) -> None:
+        """Tokens survive being shared with a child across start methods."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                ctx = get_context(method)
+                with (
+                    FixedBytesQueue(ctx, fixedlen=4) as inq,
+                    FixedBytesQueue(ctx, fixedlen=4) as outq,
+                ):
+                    proc = ctx.Process(target=_fbq_echo, args=(inq, outq))
+                    proc.start()
+                    inq.put(b"PING")
+                    self.assertEqual(b"PING", outq.get(timeout=30))
                     proc.join(30)
                     self.assertEqual(0, proc.exitcode)
 

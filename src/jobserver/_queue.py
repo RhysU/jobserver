@@ -3,9 +3,10 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""MPMCQueue, SPSCQueue, and related utility functions."""
+"""FixedBytesQueue, MPMCQueue, SPSCQueue, and related utility functions."""
 
 import abc
+import os
 import queue
 import threading
 import time
@@ -18,7 +19,10 @@ from multiprocessing.reduction import ForkingPickler
 from multiprocessing.synchronize import Lock
 from typing import Any, Generic, Optional, TypeVar, Union, final
 
+from ._compat import pipe_buf
+
 __all__ = (
+    "FixedBytesQueue",
     "MPMCQueue",
     "SPSCQueue",
     "timeout_to_deadline",
@@ -106,10 +110,14 @@ class AbstractQueue(Generic[T], abc.ABC):
             f" writer={_conn_repr(self._writer)})"
         )
 
-    def __getstate__(self) -> tuple[Any, ...]:
+    def __getstate__(
+        self,
+    ) -> tuple[Optional[Connection], Optional[Connection]]:
         return (self._reader, self._writer)
 
-    def __setstate__(self, state: tuple[Any, ...]) -> None:
+    def __setstate__(
+        self, state: tuple[Optional[Connection], Optional[Connection]]
+    ) -> None:
         self._reader, self._writer = state
 
     def __enter__(self: Self) -> Self:
@@ -321,3 +329,99 @@ class MPMCQueue(AbstractPicklingQueue[T]):
         else:
             # Unpickled into another process: reuse the inherited locks.
             self._read_lock, self._write_lock = state_locks
+
+
+@final
+class FixedBytesQueue(AbstractQueue[bytes]):
+    """A lockless queue of fixed-length byte tokens.
+
+    Tokens are fixedlen bytes with 1 <= fixedlen < PIPE_BUF.  Each get() is a
+    single indivisible read() and each put() one atomic <= PIPE_BUF write(),
+    so whole tokens move across processes losslessly without any lock.
+    """
+
+    __slots__ = ("_fixedlen",)
+
+    def __init__(
+        self,
+        context: Union[None, str, BaseContext] = None,
+        *,
+        fixedlen: int,
+    ) -> None:
+        """Use fixedlen-byte tokens; requires 1 <= fixedlen < pipe_buf()."""
+        if not isinstance(fixedlen, int):
+            raise TypeError(f"fixedlen: int, got {type(fixedlen).__name__}")
+        if not 1 <= fixedlen < pipe_buf():
+            raise ValueError(
+                f"fixedlen must satisfy 1 <= fixedlen < {pipe_buf()}, "
+                f"got {fixedlen!r}"
+            )
+        super().__init__(context)
+        self.__setstate__((self._reader, self._writer, fixedlen))
+
+    def __getstate__(self) -> tuple[Any, ...]:
+        return (*super().__getstate__(), self._fixedlen)
+
+    def __setstate__(self, state: tuple[Any, ...]) -> None:
+        reader, writer, fixedlen = state
+        super().__setstate__((reader, writer))
+        self._fixedlen = fixedlen
+        # Non-blocking reads let a consumer that loses the post-poll() race
+        # fall through and retry rather than block on a drained pipe.
+        if self._reader is not None:
+            os.set_blocking(self._reader.fileno(), False)
+
+    def get(self, timeout: Optional[float] = None) -> bytes:
+        """Get one fixedlen-byte token, raising queue.Empty if unavailable.
+
+        Raises EOFError once the sending half has hung up and drained.
+        """
+        deadline = timeout_to_deadline(timeout)
+        while True:
+            reader = self._reader
+            if reader is None:
+                raise ValueError(
+                    f"{type(self).__name__}.get() after close_get()"
+                )
+            if not reader.poll(deadline_to_timeout(deadline)):
+                raise queue.Empty
+            # One indivisible read() of exactly fixedlen bytes, never looped,
+            # so consumers can't split a token.  Losing the post-poll() race
+            # surfaces as EAGAIN on the non-blocking reader, so retry.
+            try:
+                token = os.read(reader.fileno(), self._fixedlen)
+            except BlockingIOError:
+                continue
+            if not token:
+                raise EOFError
+            if len(token) != self._fixedlen:
+                # Cannot happen while every put()/get() honors fixedlen, but
+                # fail loudly rather than hand back a truncated token.
+                raise OSError(
+                    f"read {len(token)} bytes, expected exactly "
+                    f"{self._fixedlen}"
+                )
+            return token
+
+    def put(self, obj: bytes) -> None:
+        """Put one or more fixedlen-byte tokens in a single atomic write.
+
+        len(obj) must be a positive multiple of fixedlen and at most
+        select.PIPE_BUF so the write stays atomic.  Raises ValueError
+        otherwise, or BrokenPipeError if the receiving half has hung up.
+        """
+        n = len(obj)
+        # Fast path: a single token is always valid since fixedlen was
+        # checked in __init__.  Only multi-token writes pay for the rest.
+        if n != self._fixedlen and (
+            n == 0 or n % self._fixedlen != 0 or n > pipe_buf()
+        ):
+            raise ValueError(
+                f"put() requires a positive multiple of {self._fixedlen} "
+                f"bytes up to {pipe_buf()}, got {n}"
+            )
+        writer = self._writer
+        if writer is None:
+            raise ValueError(f"{type(self).__name__}.put() after close_put()")
+        # One atomic write() of <= PIPE_BUF bytes (whole tokens).
+        os.write(writer.fileno(), obj)

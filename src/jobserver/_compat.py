@@ -7,6 +7,7 @@
 
 import os
 import pickle
+import select
 import signal
 
 # Failures from pickling a payload for a queue: PicklingError, an
@@ -25,6 +26,15 @@ def ignore_sigpipe() -> None:
     """
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
+
+def pipe_buf() -> int:
+    """Return the maximum number of bytes guaranteed atomic per pipe write.
+
+    On Unix this is select.PIPE_BUF; when select.PIPE_BUF is unavailable
+    (e.g. on Windows) fall back to the POSIX-minimum value of 512.
+    """
+    return getattr(select, "PIPE_BUF", 512)
 
 
 def sched_getaffinity0() -> int:
