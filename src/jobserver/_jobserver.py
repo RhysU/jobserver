@@ -543,6 +543,12 @@ def _unregister_connection(
     connection.close()
 
 
+# Upper bound on slots, rejected above.  A pipe's buffer is finite, so
+# put()ing one token per slot blocks forever once it fills.  2048 tokens
+# fill ~36 KiB, fitting comfortably within a 64 KiB pipe.
+_MAX_SLOTS = 2048
+
+
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing.
 
@@ -595,6 +601,8 @@ class Jobserver:
             raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
+        if slots > _MAX_SLOTS:
+            raise ValueError(f"slots must be <= {_MAX_SLOTS}, got {slots!r}")
 
         # Obtain some multiprocessing Context and the slot-tracking queue
         self._context = resolve_context(context)
