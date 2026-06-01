@@ -90,13 +90,23 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
 
-    @abc.abstractmethod
-    def _new_lock(self) -> "threading.Lock":
-        """Return a fresh lock guarding one pipe end.
+    # Lock attributes are populated by _setstate_locks in concrete
+    # subclasses; their concrete type is left to the subclass.
+    _read_lock: Any
+    _write_lock: Any
 
-        Called once per end by __setstate__, both at construction and on
-        every unpickle into a new process.
+    @abc.abstractmethod
+    def _getstate_locks(self) -> Any:
+        """Return a picklable representation of this queue's locks.
+
+        Return None to discard locks across pickling; return the lock
+        objects themselves (if picklable) to preserve them.
         """
+        ...
+
+    @abc.abstractmethod
+    def _setstate_locks(self, state: Any) -> None:
+        """Restore this queue's locks from _getstate_locks() output."""
         ...
 
     def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
@@ -104,7 +114,7 @@ class AbstractQueue(Generic[T], abc.ABC):
         context = resolve_context(context)
         reader, writer = context.Pipe(duplex=False)
         # Delegate reader/writer/lock wiring to the single __setstate__ path.
-        self.__setstate__((reader, writer))
+        self.__setstate__((reader, writer, None))
 
     def __repr__(self) -> str:
         return (
@@ -114,16 +124,15 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     def __getstate__(
         self,
-    ) -> tuple[Optional[Connection], Optional[Connection]]:
-        return (self._reader, self._writer)
+    ) -> tuple[Optional[Connection], Optional[Connection], Any]:
+        return (self._reader, self._writer, self._getstate_locks())
 
     def __setstate__(
         self,
-        state: tuple[Optional[Connection], Optional[Connection]],
+        state: tuple[Optional[Connection], Optional[Connection], Any],
     ) -> None:
-        self._reader, self._writer = state
-        self._read_lock = self._new_lock()
-        self._write_lock = self._new_lock()
+        self._reader, self._writer, lockstate = state
+        self._setstate_locks(lockstate)
 
     def __enter__(self: Self) -> Self:
         return self
@@ -228,5 +237,9 @@ class MinimalQueue(AbstractQueue[T]):
 
     __slots__ = ()
 
-    def _new_lock(self) -> "threading.Lock":
-        return threading.Lock()
+    def _getstate_locks(self) -> None:
+        return None  # locks are intra-process; never pickled
+
+    def _setstate_locks(self, _: Any) -> None:
+        self._read_lock = threading.Lock()
+        self._write_lock = threading.Lock()
