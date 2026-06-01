@@ -466,6 +466,20 @@ class TestJobserverBasic(unittest.TestCase):
                         "available slots",
                     )
 
+    def test_consume_rejects_non_int(self) -> None:
+        """consume accepts only the ints 0/1, not bools/floats (#304)."""
+        with Jobserver(slots=2) as js:
+            for good in (0, 1):
+                self.assertEqual(
+                    1,
+                    js.submit(
+                        fn=helper_return, args=(1,), consume=good
+                    ).result(timeout=5),
+                )
+            for bad in (2, -1, 99, True, False, 1.0, 0.0):
+                with self.assertRaises(ValueError):
+                    js.submit(fn=helper_return, args=(1,), consume=bad)
+
     def test_context_manager(self) -> None:
         """Context manager closes slots; submit raises after exit."""
         with Jobserver(slots=2) as js:
