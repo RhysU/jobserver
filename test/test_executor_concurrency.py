@@ -26,7 +26,7 @@ from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver, JobserverExecutor, _request, _response
 from jobserver._executor import _DispatchState, _handle_request
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 from jobserver._request import Submit
 
 from .helpers import (
@@ -342,20 +342,20 @@ class TestInternalInvariants(unittest.TestCase):
 
         Verify the lock is released before each put() by spying on the call.
 
-        MinimalQueue uses __slots__ so instance-level patching is impossible;
+        SPSCQueue uses __slots__ so instance-level patching is impossible;
         patch the class method and filter by queue object identity instead.
         """
         with Jobserver(context=FAST, slots=2) as js:
             exe = JobserverExecutor(js)
             lock_held: list[bool] = []
-            original_put = MinimalQueue.put
+            original_put = SPSCQueue.put
 
-            def spy_put(self_q: MinimalQueue, *args: typing.Any) -> None:
+            def spy_put(self_q: SPSCQueue, *args: typing.Any) -> None:
                 if self_q is exe._requests:
                     lock_held.append(exe._lock.locked())
                 return original_put(self_q, *args)
 
-            with unittest.mock.patch.object(MinimalQueue, "put", spy_put):
+            with unittest.mock.patch.object(SPSCQueue, "put", spy_put):
                 exe.submit(len, (1, 2, 3)).result(timeout=TIMEOUT)
                 exe.shutdown(wait=True)
 
@@ -370,7 +370,7 @@ class TestInternalInvariants(unittest.TestCase):
         After shutdown(cancel_futures=True) sends Cancel(), a Submit racing
         the impending Shutdown must be cancelled on arrival, never dispatched.
         """
-        responses: MinimalQueue = MinimalQueue(FAST)
+        responses: SPSCQueue = SPSCQueue(FAST)
         state = _DispatchState()
         try:
             # Blanket Cancel() latches cancelling True.
@@ -401,15 +401,15 @@ class TestInternalInvariants(unittest.TestCase):
         Without rollback the future would sit in _futures forever,
         preventing clean shutdown and leaking state.
 
-        MinimalQueue uses __slots__ so instance-level patching is impossible;
+        SPSCQueue uses __slots__ so instance-level patching is impossible;
         patch the class method and filter by queue object identity instead.
         """
         with Jobserver(context=FAST, slots=2) as js:
             exe = JobserverExecutor(js)
-            original_put = MinimalQueue.put
+            original_put = SPSCQueue.put
             fail_once = [True]
 
-            def failing_put(self_q: MinimalQueue, *args: typing.Any) -> None:
+            def failing_put(self_q: SPSCQueue, *args: typing.Any) -> None:
                 if (
                     fail_once[0]
                     and self_q is exe._requests
@@ -420,7 +420,7 @@ class TestInternalInvariants(unittest.TestCase):
                     raise OSError("simulated put failure")
                 return original_put(self_q, *args)
 
-            with unittest.mock.patch.object(MinimalQueue, "put", failing_put):
+            with unittest.mock.patch.object(SPSCQueue, "put", failing_put):
                 with self.assertRaises(OSError):
                     exe.submit(len, (1,))
 

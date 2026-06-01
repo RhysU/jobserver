@@ -11,7 +11,7 @@ from jobserver import (
     Jobserver,
     JobserverExecutor,
 )
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 
 from .helpers import helper_return
 
@@ -76,24 +76,24 @@ class TestJobserverExecutorRepr(unittest.TestCase):
             self.assertIn("jobserver=", r)
 
 
-class TestMinimalQueueRepr(unittest.TestCase):
-    """MinimalQueue __repr__ reports pipe state."""
+class TestSPSCQueueRepr(unittest.TestCase):
+    """SPSCQueue __repr__ reports pipe state."""
 
     def test_open(self) -> None:
-        with MinimalQueue() as mq:
+        with SPSCQueue() as mq:
             r = repr(mq)
             self.assertIn("reader=open", r)
             self.assertIn("writer=open", r)
             self.assertIn("fd=", r)
 
     def test_closed_reader(self) -> None:
-        with MinimalQueue() as mq:
+        with SPSCQueue() as mq:
             mq.close_get()
             self.assertIn("reader=closed", repr(mq))
             self.assertIn("writer=open", repr(mq))
 
     def test_closed_writer(self) -> None:
-        with MinimalQueue() as mq:
+        with SPSCQueue() as mq:
             mq.close_put()
             self.assertIn("reader=open", repr(mq))
             self.assertIn("writer=closed", repr(mq))

@@ -26,7 +26,7 @@ from ._jobserver import (
     Future,
     Jobserver,
 )
-from ._queue import MinimalQueue
+from ._queue import SPSCQueue
 
 __all__ = ("JobserverExecutor",)
 
@@ -67,8 +67,8 @@ class JobserverExecutor(concurrent.futures.Executor):
         # dispatcher Process, which drops _args after start() in 3.11+.
         self._jobserver = jobserver
 
-        self._requests: MinimalQueue = MinimalQueue(jobserver.context)
-        self._responses: MinimalQueue = MinimalQueue(jobserver.context)
+        self._requests: SPSCQueue = SPSCQueue(jobserver.context)
+        self._responses: SPSCQueue = SPSCQueue(jobserver.context)
 
         self._dispatcher = jobserver.context.Process(  # type: ignore
             target=_dispatch_loop,
@@ -390,8 +390,8 @@ class _DispatchState:
 
 def _dispatch_loop(
     jobserver: Jobserver,
-    requests: MinimalQueue,
-    responses: MinimalQueue,
+    requests: SPSCQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Main loop for the dispatcher process."""
     _LOG.debug("Dispatcher process started")
@@ -416,7 +416,7 @@ def _dispatch_loop(
 def _handle_request(
     msg: object,
     state: _DispatchState,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Handle a single request message, updating state in place."""
     if isinstance(msg, _request.Shutdown):
@@ -450,9 +450,9 @@ def _handle_request(
 
 
 def _drain_requests(
-    requests: MinimalQueue,
+    requests: SPSCQueue,
     state: _DispatchState,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Drain the request queue, setting state.shutdown on Shutdown or EOF."""
     while True:
@@ -473,7 +473,7 @@ def _drain_requests(
 def _dispatch_pending(
     jobserver: Jobserver,
     state: _DispatchState,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Dispatch pending work in insertion (FIFO) order.
 
@@ -509,7 +509,7 @@ def _dispatch_pending(
 
 def _poll_running(
     state: _DispatchState,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Poll running Futures and bridge completed results."""
     running = state.running
@@ -528,7 +528,7 @@ def _poll_running(
 
 
 def _responses_put_failed(
-    responses: MinimalQueue,
+    responses: SPSCQueue,
     work_id: int,
     exc: Exception,
 ) -> None:
@@ -551,7 +551,7 @@ def _responses_put_failed(
 def _bridge_result(
     f: Future,
     work_id: int,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Transfer a completed jobserver Future's outcome to response queue."""
     try:
@@ -563,7 +563,7 @@ def _bridge_result(
 
 def _handle_shutdown(
     state: _DispatchState,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Cancel pending work, drain running futures, signal completion."""
     for item in state.pending.values():
@@ -580,9 +580,9 @@ def _handle_shutdown(
 
 
 def _poll_requests_briefly(
-    requests: MinimalQueue,
+    requests: SPSCQueue,
     state: _DispatchState,
-    responses: MinimalQueue,
+    responses: SPSCQueue,
 ) -> None:
     """Brief blocking poll to pick up new work without busy-spinning.
 

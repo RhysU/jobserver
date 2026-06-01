@@ -29,7 +29,7 @@ from jobserver import (
     _response,
 )
 from jobserver._executor import _responses_put_failed
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 
 from .helpers import (
     FAST,
@@ -470,7 +470,7 @@ class TestResponsesPutFailedFallback(unittest.TestCase):
         class LocalError(Exception):
             pass
 
-        with MinimalQueue(context=FAST) as q:
+        with SPSCQueue(context=FAST) as q:
             _responses_put_failed(q, 7, LocalError("boom"))
             resp = q.get(timeout=TIMEOUT)
         self.assertIsInstance(resp, _response.Failed)
@@ -480,7 +480,7 @@ class TestResponsesPutFailedFallback(unittest.TestCase):
 
     def test_picklable_exc_passes_through(self) -> None:
         """A picklable exception reaches the consumer unchanged."""
-        with MinimalQueue(context=FAST) as q:
+        with SPSCQueue(context=FAST) as q:
             _responses_put_failed(q, 3, ValueError("kept"))
             resp = q.get(timeout=TIMEOUT)
         self.assertIsInstance(resp, _response.Failed)

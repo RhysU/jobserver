@@ -27,7 +27,7 @@ from jobserver import (
     Blocked,
     Jobserver,
 )
-from jobserver._queue import MinimalQueue
+from jobserver._queue import SPSCQueue
 
 from .helpers import (
     barrier_wait,
@@ -261,7 +261,7 @@ class TestJobserverBasic(unittest.TestCase):
             with self.subTest(method=method, check_done=check_done):
                 context = get_context(method)
                 with (
-                    MinimalQueue(context=context) as mq,
+                    SPSCQueue(context=context) as mq,
                     Jobserver(context=context, slots=1) as js,
                 ):
                     delay = 0.02  # Impacts test runtime on success path
