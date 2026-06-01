@@ -182,6 +182,22 @@ class AbstractQueue(Generic[T], abc.ABC):
             self._writer.close()
             self._writer = None
 
+    @abc.abstractmethod
+    def get(self, timeout: Optional[float] = None) -> T:
+        """Get one object, raising queue.Empty when none is available.
+
+        Raises EOFError on an exhausted queue once the sending half hangs up.
+        """
+        ...
+
+    @abc.abstractmethod
+    def put(self, obj: T) -> None:
+        """Put one object into the queue.
+
+        Raises BrokenPipeError if the receiving half has hung up.
+        """
+        ...
+
 
 class AbstractPicklingQueue(AbstractQueue[T]):
     """AbstractQueue whose get()/put() pickle generic objects.
