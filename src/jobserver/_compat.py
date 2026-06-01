@@ -6,7 +6,14 @@
 """Portability across interpreters and platforms."""
 
 import os
+import pickle
 import signal
+
+# Failures from pickling a payload for a queue: PicklingError, an
+# AttributeError for a locally-defined (unpicklable-by-name) class, or a
+# TypeError for a fundamentally unpicklable object.  Shared so the worker
+# and executor fallbacks classify dump failures identically.
+PICKLE_DUMP_ERRORS = (pickle.PicklingError, AttributeError, TypeError)
 
 
 def ignore_sigpipe() -> None:
