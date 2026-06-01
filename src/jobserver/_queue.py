@@ -203,8 +203,7 @@ class AbstractPicklingQueue(AbstractQueue[T]):
     """AbstractQueue whose get()/put() pickle generic objects.
 
     Objects are serialized/deserialized with ForkingPickler and moved
-    across the pipe as length-prefixed byte frames.  Both get(...) and
-    put(...) detect and report when one end hangs up.
+    across the pipe as length-prefixed byte frames.
     """
 
     __slots__ = ()
