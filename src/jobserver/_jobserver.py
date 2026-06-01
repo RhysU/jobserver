@@ -20,6 +20,7 @@ import warnings
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, ExitStack
+from dataclasses import dataclass
 from itertools import islice
 
 # Implementation depends upon an explicit subset of multiprocessing
@@ -501,6 +502,17 @@ def noop(*args, **kwargs) -> None:
     return None
 
 
+@dataclass(frozen=True)
+class SlotsSentinel:
+    """Selector data for the slots waitable; its no-op done() lets
+    reclaim_resources() treat it like a Future.  Frozen, hence hashable,
+    so reclaim can dedup selector data with a set instead of via id().
+    """
+
+    def done(self) -> None:
+        return None
+
+
 def _restore_token(slots: MinimalQueue, token: Optional[int]) -> None:
     """Restore token to slots, tolerating a closed queue."""
     if token is not None:
@@ -768,7 +780,7 @@ class Jobserver:
             self._selector.register(
                 self._slots.waitable(),
                 EVENT_READ,
-                data=types.SimpleNamespace(done=noop),
+                data=SlotsSentinel(),
             )
             self._selector_pid = os.getpid()
         return self._selector
@@ -789,9 +801,14 @@ class Jobserver:
         # O(N) rebuild occurs on each call.  select(timeout=0) is
         # a non-blocking poll returning only the k ready entries.
         # done() triggers callbacks mutating the selector.
-        for key, _ in self._lazy_selector().select(timeout=0):
-            assert hasattr(key.data, "done"), type(key.data)
-            key.data.done()
+        #
+        # A Future's two fds (connection and sentinel) share one data and
+        # are often ready together; the set collapses them so done() runs
+        # once, and it materializes before any done() mutates the selector.
+        ready = self._lazy_selector().select(timeout=0)
+        for data in {key.data for key, _ in ready}:
+            assert hasattr(data, "done"), type(data)
+            data.done()
 
     def submit(
         self,
