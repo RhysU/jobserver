@@ -90,14 +90,21 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     __slots__ = ("_reader", "_writer", "_read_lock", "_write_lock")
 
+    @abc.abstractmethod
+    def _new_lock(self) -> "threading.Lock":
+        """Return a fresh lock guarding one pipe end.
+
+        Called once per end by __setstate__, both at construction and on
+        every unpickle into a new process.
+        """
+        ...
+
     def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
         """Use given context with default of multiprocessing.get_context()."""
         context = resolve_context(context)
         reader, writer = context.Pipe(duplex=False)
-        self._reader: Optional[Connection] = reader
-        self._writer: Optional[Connection] = writer
-        self._read_lock = threading.Lock()
-        self._write_lock = threading.Lock()
+        # Delegate reader/writer/lock wiring to the single __setstate__ path.
+        self.__setstate__((reader, writer))
 
     def __repr__(self) -> str:
         return (
@@ -115,8 +122,8 @@ class AbstractQueue(Generic[T], abc.ABC):
         state: tuple[Optional[Connection], Optional[Connection]],
     ) -> None:
         self._reader, self._writer = state
-        self._read_lock = threading.Lock()
-        self._write_lock = threading.Lock()
+        self._read_lock = self._new_lock()
+        self._write_lock = self._new_lock()
 
     def __enter__(self: Self) -> Self:
         return self
@@ -220,3 +227,6 @@ class MinimalQueue(AbstractQueue[T]):
     """A trivial concrete AbstractQueue; see AbstractQueue for behavior."""
 
     __slots__ = ()
+
+    def _new_lock(self) -> "threading.Lock":
+        return threading.Lock()
