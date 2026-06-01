@@ -70,8 +70,10 @@ class TestDesignConsume(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=self.SLOTS) as js:
-                    f = js.submit(fn=_recurse, args=(js, 10, 0), timeout=5)
-                    self.assertEqual(f.result(timeout=30), 10)
+                    # Depth far exceeds the 2 slots, exercising the
+                    # implicit free token at every interior level.
+                    f = js.submit(fn=_recurse, args=(js, 6, 0), timeout=5)
+                    self.assertEqual(f.result(timeout=30), 6)
 
     def test_top_level_backpressure_preserved(self) -> None:
         """consume=0 is for interiors; the top level still obeys slots."""

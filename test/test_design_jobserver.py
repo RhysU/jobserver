@@ -72,7 +72,7 @@ class TestDesignShortcoming(unittest.TestCase):
 
                     # Parent -> Child -> Grandchild
                     future = js.submit(
-                        fn=_child_work, args=(js, 0.5), timeout=5
+                        fn=_child_work, args=(js, 0.2), timeout=5
                     )
                     time.sleep(0.5)  # Let Child start and submit Grandchild
 
@@ -81,8 +81,11 @@ class TestDesignShortcoming(unittest.TestCase):
                     with self.assertRaises(SubmissionDied):
                         future.result()
 
-                    # Grandchild finishes but nobody reclaims its token
-                    time.sleep(1.0)
+                    # Grandchild finishes but nobody reclaims its token.
+                    # Its token was consumed before the kill, so the leak
+                    # is independent of when the brief Grandchild returns;
+                    # this wait only need exceed the Grandchild duration.
+                    time.sleep(0.5)
 
                     # One fewer slot is usable now: the last is leaked.
                     # Hold workers alive so their tokens stay consumed.
