@@ -19,6 +19,7 @@ worker would join()/is_alive() a process it never created, raising
 clean selector when it first observes a pid change.
 """
 
+import os
 import time
 import unittest
 from multiprocessing import get_all_start_methods
@@ -65,3 +66,34 @@ class TestDesignForkSelector(unittest.TestCase):
                 with Jobserver(context=method, slots=8) as js:
                     f = js.submit(fn=_parent_fanout, args=(js,), consume=0)
                     self.assertEqual(f.result(timeout=60), 0)
+
+    @unittest.skipUnless(hasattr(os, "fork"), "requires os.fork")
+    def test_fork_of_closed_parent_raises_closed(self) -> None:
+        """A child forked from a closed Jobserver reports it as closed.
+
+        The child inherits the parent's _selector_closed flag, so its
+        _lazy_selector raises a clean RuntimeError before the fork rebuild
+        reaches self._slots.waitable() on the inherited closed slots queue.
+        Selector closure cannot be probed after the fact: a closed selector's
+        get_map() can spuriously report open in a forked child under GC.
+        """
+        js = Jobserver(context="fork", slots=2)
+        with js:
+            js.submit(fn=len, args=("warm",)).result(timeout=30)
+        # js is now closed; fork a child that tries to reuse it.
+        reader, writer = os.pipe()
+        pid = os.fork()
+        if pid == 0:  # pragma: no cover - exercised in the forked child
+            os.close(reader)
+            try:
+                js.submit(fn=len, args=("child",))
+                name = "NoError"
+            except BaseException as exc:  # noqa: BLE001
+                name = type(exc).__name__
+            os.write(writer, name.encode())
+            os.close(writer)
+            os._exit(0)
+        os.close(writer)
+        self.assertEqual(os.waitpid(pid, 0)[1], 0)
+        self.assertEqual(os.read(reader, 64).decode(), "RuntimeError")
+        os.close(reader)

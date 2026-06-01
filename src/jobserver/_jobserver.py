@@ -581,6 +581,7 @@ class Jobserver:
         "_slots",
         "_selector",
         "_selector_pid",
+        "_selector_closed",
         "_env",
         "_preexec_fn",
         "_sleep_fn",
@@ -629,6 +630,7 @@ class Jobserver:
         # _selector_pid stamps the building process so forks rebuild it.
         self._selector: Optional[DefaultSelector] = None
         self._selector_pid: Optional[int] = None
+        self._selector_closed = False
 
         # Instance-level defaults for submit(...)
         # Defensive copy: consume any one-shot iterable and guard against
@@ -680,13 +682,24 @@ class Jobserver:
         if hasattr(self, "_slots"):
             self._slots.close_put()
             self._slots.close_get()
-        # Matches the cleanup in __exit__.  Tolerates a missing slot
-        # (partial construction) and None (never built lazily).
+        # Matches the cleanup in __exit__, tolerating partial construction.
+        self._selector_close()
+
+    def _selector_close(self) -> None:
+        # Record closure on _selector_closed because a closed selector
+        # cannot be detected after the fact: its get_map() can spuriously
+        # report open in a forked child under garbage collection.  Forks
+        # inherit the flag, so _lazy_selector checks it before its fork
+        # rebuild and a closed fork raises a clean RuntimeError rather than
+        # tripping self._slots.waitable().
         selector = getattr(self, "_selector", None)
         if selector is not None:
             selector.close()
+            self._selector_closed = True
 
     def __enter__(self) -> "Jobserver":
+        # Preparing the selector confirms the instance is not closed.
+        self._lazy_selector()
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -712,11 +725,7 @@ class Jobserver:
         # Finally, stop any further manipulation of slots
         self._slots.close_put()
         self._slots.close_get()
-        # Release the selector's underlying fd and all registrations.
-        # reclaim_resources() above built it via _lazy_selector(); guard
-        # None for symmetry with __del__ should that ever not hold.
-        if self._selector is not None:
-            self._selector.close()
+        self._selector_close()
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures.
@@ -748,6 +757,7 @@ class Jobserver:
         # A pickled child thus takes the same lazy path as a forked child.
         self._selector = None
         self._selector_pid = None
+        self._selector_closed = False
 
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
@@ -780,6 +790,12 @@ class Jobserver:
         child reusing an ancestor's selector would join()/is_alive() the
         ancestor's Futures and share its epoll set, so it is discarded.
         """
+        # Closed via __exit__/__del__ here or in an ancestor before this fork.
+        if self._selector_closed:
+            raise RuntimeError("Jobserver is closed")
+        # Build on first use, or rebuild after a fork (pid change) to discard
+        # an ancestor's selector: reusing it would join()/is_alive() the
+        # ancestor's Futures and share its epoll set.
         if self._selector is None or self._selector_pid != os.getpid():
             # Pre-register the slots waitable so the obtain-token loop and
             # reclaim share one persistent interest set (a noop done() keeps
@@ -1340,8 +1356,8 @@ def _map_generate(
     finally:
         # On teardown explicitly clear still-held Futures, then reclaim
         # finished workers' slots.  Loop since reclaim aborts on the first
-        # CallbackRaised; a closed Jobserver, causing ValueError or
-        # OSError, ends the loop.
+        # CallbackRaised; a closed Jobserver (RuntimeError) or a closed
+        # selector/queue (ValueError or OSError) ends the loop.
         futures.clear()
         chunk = ()
         while True:
@@ -1350,5 +1366,5 @@ def _map_generate(
                 break
             except CallbackRaised:
                 continue
-            except (ValueError, OSError):
+            except (RuntimeError, ValueError, OSError):
                 break
