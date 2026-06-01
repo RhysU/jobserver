@@ -178,8 +178,8 @@ class MinimalQueue(Generic[T]):
         ):
             raise queue.Empty
         try:
-            # Check under the lock so a concurrent close_get() cannot null
-            # self._reader between the check and use; bind a local thereafter.
+            # Snapshot self._reader so a concurrent close_get() yields a clean
+            # ValueError here rather than a None-dereference at recv time.
             reader = self._reader
             if reader is None:
                 raise ValueError("MinimalQueue.get() after close_get()")
@@ -194,19 +194,18 @@ class MinimalQueue(Generic[T]):
         # Deserialize outside the critical section
         return ForkingPickler.loads(recv)
 
-    def put(self, *args: T) -> None:
+    def put(self, obj: T) -> None:
         """
-        Put zero or more objects into the queue, contiguously.
+        Put one object into the queue.
 
         Raises BrokenPipeError if the receiving half has hung up.
         """
         # Serialize outside the critical section
-        send = [ForkingPickler.dumps(arg) for arg in args]
+        bytez = ForkingPickler.dumps(obj)
         with self._write_lock:
-            # Check under the lock so a concurrent close_put() cannot null
-            # self._writer between the check and use; bind a local thereafter.
+            # Snapshot self._writer so a concurrent close_put() yields a clean
+            # ValueError here rather than a None-dereference at send time.
             writer = self._writer
             if writer is None:
                 raise ValueError("MinimalQueue.put() after close_put()")
-            for item in send:
-                writer.send_bytes(item)
+            writer.send_bytes(bytez)
