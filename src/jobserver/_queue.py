@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""SPSCQueue and related utility functions."""
+"""MPMCQueue, SPSCQueue, and related utility functions."""
 
 import abc
 import queue
@@ -15,9 +15,11 @@ from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
 from multiprocessing.reduction import ForkingPickler
-from typing import Any, Generic, Optional, TypeVar, Union
+from multiprocessing.synchronize import Lock
+from typing import Any, Generic, Optional, TypeVar, Union, final
 
 __all__ = (
+    "MPMCQueue",
     "SPSCQueue",
     "timeout_to_deadline",
     "deadline_to_timeout",
@@ -68,7 +70,7 @@ def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
 
 
 def _conn_repr(conn: Optional[Connection]) -> str:
-    """Describe a pipe end for SPSCQueue.__repr__, tolerating closed fds."""
+    """Describe a pipe end for __repr__, tolerating closed fds."""
     if conn is None:
         return "closed"
     # fileno() raises ValueError/OSError on a closed fd.
@@ -101,7 +103,7 @@ class AbstractQueue(Generic[T], abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _setstate_locks(self, state: Any) -> None:
+    def _setstate_locks(self, state_locks: Any) -> None:
         """Restore this queue's locks from _getstate_locks() output."""
         ...
 
@@ -114,7 +116,7 @@ class AbstractQueue(Generic[T], abc.ABC):
 
     def __repr__(self) -> str:
         return (
-            f"SPSCQueue(reader={_conn_repr(self._reader)},"
+            f"{type(self).__name__}(reader={_conn_repr(self._reader)},"
             f" writer={_conn_repr(self._writer)})"
         )
 
@@ -127,8 +129,8 @@ class AbstractQueue(Generic[T], abc.ABC):
         self,
         state: tuple[Optional[Connection], Optional[Connection], Any],
     ) -> None:
-        self._reader, self._writer, lockstate = state
-        self._setstate_locks(lockstate)
+        self._reader, self._writer, state_locks = state
+        self._setstate_locks(state_locks)
 
     def __enter__(self: Self) -> Self:
         return self
@@ -148,12 +150,12 @@ class AbstractQueue(Generic[T], abc.ABC):
             pass
 
     def __copy__(self: Self) -> Self:
-        """Shallow copies return the original SPSCQueue unchanged."""
+        """Shallow copies return the original queue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
     def __deepcopy__(self: Self, _: Any) -> Self:
-        """Deep copies return the original SPSCQueue unchanged."""
+        """Deep copies return the original queue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
@@ -190,16 +192,19 @@ class AbstractQueue(Generic[T], abc.ABC):
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = timeout_to_deadline(timeout)
-        if not self._read_lock.acquire(
-            blocking=True, timeout=deadline_to_timeout(deadline)
-        ):
+        # Call acquire() positionally: threading locks name the first
+        # argument "blocking" while multiprocessing locks name it "block",
+        # so a keyword would not work across both lock implementations.
+        if not self._read_lock.acquire(True, deadline_to_timeout(deadline)):
             raise queue.Empty
         try:
             # Snapshot self._reader so a concurrent close_get() yields a clean
             # ValueError here rather than a None-dereference at recv time.
             reader = self._reader
             if reader is None:
-                raise ValueError("SPSCQueue.get() after close_get()")
+                raise ValueError(
+                    f"{type(self).__name__}.get() after close_get()"
+                )
             if not reader.poll(deadline_to_timeout(deadline)):
                 raise queue.Empty
             # Reading under the lock preserves frame integrity if multiple
@@ -224,17 +229,19 @@ class AbstractQueue(Generic[T], abc.ABC):
             # ValueError here rather than a None-dereference at send time.
             writer = self._writer
             if writer is None:
-                raise ValueError("SPSCQueue.put() after close_put()")
+                raise ValueError(
+                    f"{type(self).__name__}.put() after close_put()"
+                )
             writer.send_bytes(bytez)
 
 
+@final
 class SPSCQueue(AbstractQueue[T]):
     """A single-producer, single-consumer AbstractQueue.
 
-    Here "single" means single process: the threading.Lock guards only
-    serialize concurrent producers or consumers within one process and
-    are recreated fresh on unpickle, so they provide no mutual exclusion
-    across processes.  See AbstractQueue for the remaining behavior.
+    Here "single" means single process: the threading.Lock guards
+    serialize producers and consumers within one process only and are
+    recreated fresh on unpickle, giving no cross-process exclusion.
     """
 
     __slots__ = ()
@@ -242,6 +249,39 @@ class SPSCQueue(AbstractQueue[T]):
     def _getstate_locks(self) -> None:
         return None  # locks are intra-process; never pickled
 
-    def _setstate_locks(self, _: Any) -> None:
+    def _setstate_locks(self, state_locks: Any) -> None:
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()
+
+
+@final
+class MPMCQueue(AbstractQueue[T]):
+    """A multiple-producer, multiple-consumer AbstractQueue.
+
+    Safe for concurrent producers and consumers across processes: the
+    read/write guards are multiprocessing IPC locks that are preserved
+    across pickling, providing genuine cross-process mutual exclusion.
+    """
+
+    __slots__ = ("_context",)
+
+    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
+        """Use given context with default of multiprocessing.get_context()."""
+        # Retain the resolved context so _setstate_locks can mint IPC locks
+        # from it at construction, before any locks have been inherited.
+        self._context = resolve_context(context)
+        super().__init__(self._context)
+
+    def _getstate_locks(self) -> tuple[Lock, Lock]:
+        # Preserve the IPC locks so cross-process mutual exclusion survives
+        # pickling into child processes (via multiprocessing inheritance).
+        return (self._read_lock, self._write_lock)
+
+    def _setstate_locks(self, state_locks: Any) -> None:
+        if state_locks is None:
+            # Fresh construction: mint new IPC locks from the context.
+            self._read_lock = self._context.Lock()
+            self._write_lock = self._context.Lock()
+        else:
+            # Unpickled into another process: reuse the inherited locks.
+            self._read_lock, self._write_lock = state_locks

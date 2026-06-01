@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""SPSCQueue and low-level utility tests.
+"""SPSCQueue, MPMCQueue, and low-level utility tests.
 
 SPSCQueue receives heavy indirect coverage through the Jobserver and
 JobserverExecutor suites, so this file only covers its own API surface
@@ -15,8 +15,19 @@ import time
 import unittest
 from multiprocessing import get_all_start_methods, get_context
 from multiprocessing.context import BaseContext
+from multiprocessing.synchronize import Lock as IPCLock
 
-from jobserver._queue import SPSCQueue, resolve_context, timeout_to_deadline
+from jobserver._queue import (
+    MPMCQueue,
+    SPSCQueue,
+    resolve_context,
+    timeout_to_deadline,
+)
+
+
+def _mpmc_echo_double(inq: MPMCQueue, outq: MPMCQueue) -> None:
+    """Child: receive one item on inq and send back twice its value."""
+    outq.put(inq.get(timeout=30) * 2)
 
 
 class SPSCQueueTest(unittest.TestCase):
@@ -57,6 +68,55 @@ class SPSCQueueTest(unittest.TestCase):
             mq.put(99)
         with self.assertRaises(ValueError):
             mq.get(timeout=0)
+
+
+class MPMCQueueTest(unittest.TestCase):
+    """Unit tests for MPMCQueue."""
+
+    def test_context_manager_roundtrip(self) -> None:
+        """Context manager closes both ends; put/get raise after exit."""
+        with MPMCQueue() as mq:
+            mq.put(42)
+            self.assertEqual(42, mq.get(timeout=1))
+        with self.assertRaises(ValueError):
+            mq.put(99)
+        with self.assertRaises(ValueError):
+            mq.get(timeout=0)
+
+    def test_guards_are_interprocess_locks(self) -> None:
+        """The read/write guards are multiprocessing IPC locks."""
+        with MPMCQueue() as mq:
+            self.assertIsInstance(mq._read_lock, IPCLock)
+            self.assertIsInstance(mq._write_lock, IPCLock)
+
+    def test_getstate_preserves_locks(self) -> None:
+        """_getstate_locks preserves the live locks; setstate reuses them."""
+        with MPMCQueue() as mq:
+            read_lock, write_lock = mq._read_lock, mq._write_lock
+            state = mq.__getstate__()
+            # Unlike SPSCQueue (which emits None), the lock blob is present.
+            self.assertEqual((read_lock, write_lock), state[2])
+            mq.__setstate__(state)
+            self.assertIs(read_lock, mq._read_lock)
+            self.assertIs(write_lock, mq._write_lock)
+
+    def test_cross_process_roundtrip(self) -> None:
+        """Locks survive pickling into a child that echoes via the queue."""
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                ctx = get_context(method)
+                with (
+                    MPMCQueue(context=ctx) as inq,
+                    MPMCQueue(context=ctx) as outq,
+                ):
+                    proc = ctx.Process(
+                        target=_mpmc_echo_double, args=(inq, outq)
+                    )
+                    proc.start()
+                    inq.put(21)
+                    self.assertEqual(42, outq.get(timeout=30))
+                    proc.join(30)
+                    self.assertEqual(0, proc.exitcode)
 
 
 class ResolveContextTest(unittest.TestCase):
