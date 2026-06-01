@@ -26,6 +26,10 @@ __all__ = (
 
 T = TypeVar("T")
 
+# Bound TypeVar emulating the Python 3.11+ Self type so that methods
+# returning self report the concrete subclass type under mypy.
+Self = TypeVar("Self", bound="AbstractQueue")
+
 # Maximum seconds safely passable to poll() without overflow.  poll(2) on
 # Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
 # is INT_MAX ms = 2**31-1 ms = 2_147_483_647 ms = 2_147_483.647 s (~24.85 d).
@@ -114,7 +118,7 @@ class AbstractQueue(Generic[T], abc.ABC):
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()
 
-    def __enter__(self) -> "AbstractQueue":
+    def __enter__(self: Self) -> Self:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -131,12 +135,12 @@ class AbstractQueue(Generic[T], abc.ABC):
         except AttributeError:
             pass
 
-    def __copy__(self) -> "AbstractQueue":
+    def __copy__(self: Self) -> Self:
         """Shallow copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
-    def __deepcopy__(self, _: Any) -> "AbstractQueue":
+    def __deepcopy__(self: Self, _: Any) -> Self:
         """Deep copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
