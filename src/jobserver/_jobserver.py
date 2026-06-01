@@ -29,7 +29,16 @@ from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from multiprocessing.reduction import ForkingPickler
 from selectors import EVENT_READ, DefaultSelector
-from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
+from typing import (
+    Any,
+    Generic,
+    NoReturn,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+    final,
+)
 
 from ._compat import (
     PICKLE_DUMP_ERRORS,
@@ -69,10 +78,12 @@ EnvItems = Union[
 ]
 
 
+@final
 class Blocked(Exception):
     """Reports that Jobserver.submit(...) or Future.result(...) is blocked."""
 
 
+@final
 class CallbackRaised(Exception):
     """
     Reports an Exception raised from callbacks registered with a Future.
@@ -106,6 +117,7 @@ class CallbackRaised(Exception):
     __str__ = __repr__
 
 
+@final
 class SubmissionDied(Exception):
     """
     Reports a submission died for unknowable reasons, e.g. being killed.
@@ -246,6 +258,7 @@ def _callback_wrapper(seqno: int, fn, *args, **kwargs) -> None:
         raise CallbackRaised(seqno) from e
 
 
+@final
 class Future(Generic[T]):
     """
     Future instances are obtained by submitting work to a Jobserver.
@@ -556,6 +569,7 @@ def _unregister_connection(
     connection.close()
 
 
+@final
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing.
 
