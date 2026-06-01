@@ -16,6 +16,7 @@ import traceback
 import weakref
 from collections import deque
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
 from multiprocessing.connection import Connection, wait
 from typing import Any, Optional, TypeVar, Union
 
@@ -117,6 +118,9 @@ class JobserverExecutor(concurrent.futures.Executor):
         **kwargs: Any,
     ) -> concurrent.futures.Future[T]:
         """Submit a callable for execution and return a Future."""
+        # Built outside the lock; no external referrer yet, so the critical
+        # section need only cover the gate and work_id registration.
+        future: concurrent.futures.Future[T] = concurrent.futures.Future()
         with self._lock:
             if self._broken is not None:
                 raise concurrent.futures.BrokenExecutor(
@@ -124,17 +128,14 @@ class JobserverExecutor(concurrent.futures.Executor):
                 ) from self._broken
             if self._shutdown:
                 raise RuntimeError("Cannot submit: executor is shut down")
-            future: concurrent.futures.Future[T] = concurrent.futures.Future()
             work_id = next(self._work_ids)
             self._futures[work_id] = future
-            # Observe cancellation so a PENDING future calling .cancel() tells
-            # the dispatcher to prune it before dispatch, reclaiming the slot
-            # that would otherwise run work whose result is discarded.  A weak
-            # reference keeps a retained future from pinning the executor (and
-            # its dispatcher process, threads, and pipes) alive.
-            future.add_done_callback(
-                functools.partial(_cancel_observer, weakref.ref(self), work_id)
-            )
+        # Let a cancelled PENDING future tell the dispatcher to prune it before
+        # dispatch; the weak ref avoids pinning the executor alive.  Registered
+        # before the future escapes to the caller, so no .cancel() can race it.
+        future.add_done_callback(
+            functools.partial(_cancel_observer, weakref.ref(self), work_id)
+        )
         success = False
         try:
             self._requests.put(
@@ -149,9 +150,9 @@ class JobserverExecutor(concurrent.futures.Executor):
                 "Cannot submit: executor is shut down"
             ) from None
         finally:
-            # Lock was released before put() to avoid blocking on IPC.
-            # On any failure, remove the orphaned future so the
-            # dispatcher never sees a work_id without a request.
+            # Lock released before put() to avoid blocking on IPC.  On any
+            # failure, remove the orphaned future so the dispatcher never
+            # sees a work_id without a request.
             if not success:
                 with self._lock:
                     self._futures.pop(work_id, None)
@@ -211,6 +212,8 @@ class JobserverExecutor(concurrent.futures.Executor):
                 wait,
                 cancel_futures,
             )
+            # Puts are lock-free; a Submit racing this Cancel() is caught by
+            # the dispatcher's latch (see _handle_request).
             try:
                 if cancel_futures:
                     self._requests.put(_request.Cancel())
@@ -350,6 +353,22 @@ def _cancel_observer(
 # ---- Dispatcher process (runs in a child process) ----
 
 
+@dataclass
+class _DispatchState:
+    """Mutable state owned by the dispatcher loop and its handlers.
+
+    Passed by reference and updated in place, so handlers need no return
+    values to thread `shutdown` and `cancelling` back to the loop.
+    """
+
+    pending: deque[_request.Submit] = field(default_factory=deque)
+    running: dict[Future, int] = field(default_factory=dict)
+    # Latched by a blanket Cancel(); then racing Submits are cancelled.
+    cancelling: bool = False
+    # Set by a Shutdown() message or parent EOF; ends the loop.
+    shutdown: bool = False
+
+
 def _dispatch_loop(
     jobserver: Jobserver,
     requests: MinimalQueue,
@@ -363,71 +382,70 @@ def _dispatch_loop(
     requests.close_put()
     responses.close_get()
 
-    pending: deque[_request.Submit] = deque()
-    running: dict[Future, int] = {}
+    state = _DispatchState()
+    while not state.shutdown:
+        _drain_requests(requests, state, responses)
+        _dispatch_pending(jobserver, state, responses)
+        _poll_running(state, responses)
+        if not state.shutdown:
+            _poll_requests_briefly(requests, state, responses)
 
-    shutdown = False
-    while not shutdown:
-        shutdown = _drain_requests(requests, pending, running, responses)
-        _dispatch_pending(jobserver, pending, running, responses)
-        _poll_running(running, responses)
-        if not shutdown:
-            shutdown = _poll_requests_briefly(
-                requests, pending, running, responses
-            )
-
-    _handle_shutdown(pending, running, responses)
+    _handle_shutdown(state, responses)
     _LOG.debug("Dispatcher process exiting")
 
 
 def _handle_request(
     msg: object,
-    pending: deque[_request.Submit],
+    state: _DispatchState,
     responses: MinimalQueue,
-) -> bool:
-    """Handle a single request message.  Return True on Shutdown."""
+) -> None:
+    """Handle a single request message, updating state in place."""
     if isinstance(msg, _request.Shutdown):
-        return True
-    if isinstance(msg, _request.Cancel):
+        state.shutdown = True
+    elif isinstance(msg, _request.Cancel):
         keep: list[_request.Submit] = []
-        for item in pending:
+        for item in state.pending:
             if msg.work_id is None or item.work_id == msg.work_id:
                 responses.put(_response.Cancelled(work_id=item.work_id))
             else:
                 keep.append(item)
-        pending.clear()
-        pending.extend(keep)
+        state.pending.clear()
+        state.pending.extend(keep)
+        # A blanket Cancel() precedes Shutdown(); latch to cancel late Submits.
+        state.cancelling = state.cancelling or msg.work_id is None
     elif isinstance(msg, _request.Submit):
-        pending.append(msg)
+        if state.cancelling:
+            responses.put(_response.Cancelled(work_id=msg.work_id))
+        else:
+            state.pending.append(msg)
     else:
         raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
-    return False
 
 
 def _drain_requests(
     requests: MinimalQueue,
-    pending: deque[_request.Submit],
-    running: dict[Future, int],
+    state: _DispatchState,
     responses: MinimalQueue,
-) -> bool:
-    """Drain the request queue.  Return True when shutdown requested."""
+) -> None:
+    """Drain the request queue, setting state.shutdown on Shutdown or EOF."""
     while True:
         # Block only when there is nothing else to do
-        block = (not pending) and (not running)
+        block = (not state.pending) and (not state.running)
         try:
             msg = requests.get(timeout=None if block else 0)
         except queue.Empty:
-            return False
+            return
         except EOFError:
-            return True  # Parent died, treat as shutdown
-        if _handle_request(msg, pending, responses):
-            return True
+            state.shutdown = True  # Parent died, treat as shutdown
+            return
+        _handle_request(msg, state, responses)
+        if state.shutdown:
+            return
 
 
 def _dispatch_pending(
     jobserver: Jobserver,
-    pending: deque[_request.Submit],
-    running: dict[Future, int],
+    state: _DispatchState,
     responses: MinimalQueue,
 ) -> None:
     """Dispatch pending work in place via popleft().
@@ -435,6 +453,7 @@ def _dispatch_pending(
     Keeps c.f.Future in PENDING (cancellable) until a process is
     spawned.  Stops on first Blocked since remaining will be too.
     """
+    pending = state.pending
     while pending:
         item = pending[0]
         try:
@@ -457,14 +476,15 @@ def _dispatch_pending(
         # Dispatch succeeded -- inform receiver and track
         pending.popleft()
         responses.put(_response.Started(work_id=item.work_id))
-        running[f] = item.work_id
+        state.running[f] = item.work_id
 
 
 def _poll_running(
-    running: dict[Future, int],
+    state: _DispatchState,
     responses: MinimalQueue,
 ) -> None:
     """Poll running Futures and bridge completed results."""
+    running = state.running
     completed: list[Future] = []
     for f in running:
         try:
@@ -517,14 +537,13 @@ def _bridge_result(
 
 
 def _handle_shutdown(
-    pending: deque[_request.Submit],
-    running: dict[Future, int],
+    state: _DispatchState,
     responses: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain running futures, signal completion."""
-    for item in pending:
+    for item in state.pending:
         responses.put(_response.Cancelled(work_id=item.work_id))
-    for f, work_id in running.items():
+    for f, work_id in state.running.items():
         while True:
             try:
                 f.wait(timeout=None)
@@ -537,21 +556,20 @@ def _handle_shutdown(
 
 def _poll_requests_briefly(
     requests: MinimalQueue,
-    pending: deque[_request.Submit],
-    running: dict[Future, int],
+    state: _DispatchState,
     responses: MinimalQueue,
-) -> bool:
+) -> None:
     """Brief blocking poll to pick up new work without busy-spinning.
 
-    Returns True when shutdown was requested.
+    Sets state.shutdown when a Shutdown()/EOF is observed.
     """
-    if not running and not pending:
-        return False
+    if not state.running and not state.pending:
+        return
 
     waitable = requests.waitable()
     augmented: list[Union[Connection, int]] = [waitable]
     augmented.extend(
-        f._process.sentinel for f in running if f._process is not None
+        f._process.sentinel for f in state.running if f._process is not None
     )
 
     # 1s timeout is a robustness fallback; normally a sentinel fires first
@@ -559,7 +577,5 @@ def _poll_requests_briefly(
         try:
             msg = requests.get(timeout=0)
         except (queue.Empty, EOFError):
-            return False
-        return _handle_request(msg, pending, responses)
-
-    return False
+            return
+        _handle_request(msg, state, responses)

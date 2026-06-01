@@ -31,7 +31,7 @@ from jobserver import (
     _request,
     _response,
 )
-from jobserver._executor import _handle_request
+from jobserver._executor import _DispatchState, _handle_request
 from jobserver._queue import MinimalQueue
 
 from .helpers import (
@@ -165,15 +165,19 @@ class TestSelectiveCancel(unittest.TestCase):
     def test_selective_cancel_removes_only_target(self) -> None:
         """Cancel(work_id=X) removes only X from pending."""
         with MinimalQueue() as responses:
-            pending = deque(
-                [
-                    _request.Submit(1, len, ((),), {}),
-                    _request.Submit(2, len, ((),), {}),
-                    _request.Submit(3, len, ((),), {}),
-                ]
+            state = _DispatchState(
+                pending=deque(
+                    [
+                        _request.Submit(1, len, ((),), {}),
+                        _request.Submit(2, len, ((),), {}),
+                        _request.Submit(3, len, ((),), {}),
+                    ]
+                )
             )
-            _handle_request(_request.Cancel(work_id=2), pending, responses)
-            self.assertEqual([1, 3], [s.work_id for s in pending])
+            _handle_request(_request.Cancel(work_id=2), state, responses)
+            # A targeted Cancel(work_id=X) does not latch the cancelling state.
+            self.assertFalse(state.cancelling)
+            self.assertEqual([1, 3], [s.work_id for s in state.pending])
             msg = responses.get(timeout=1)
             self.assertIsInstance(msg, _response.Cancelled)
             self.assertEqual(2, msg.work_id)
@@ -181,14 +185,18 @@ class TestSelectiveCancel(unittest.TestCase):
     def test_bulk_cancel_removes_all(self) -> None:
         """Cancel(work_id=None) removes everything."""
         with MinimalQueue() as responses:
-            pending = deque(
-                [
-                    _request.Submit(1, len, ((),), {}),
-                    _request.Submit(2, len, ((),), {}),
-                ]
+            state = _DispatchState(
+                pending=deque(
+                    [
+                        _request.Submit(1, len, ((),), {}),
+                        _request.Submit(2, len, ((),), {}),
+                    ]
+                )
             )
-            _handle_request(_request.Cancel(), pending, responses)
-            self.assertEqual(0, len(pending))
+            _handle_request(_request.Cancel(), state, responses)
+            # A blanket Cancel() latches cancelling for later Submits.
+            self.assertTrue(state.cancelling)
+            self.assertEqual(0, len(state.pending))
             ids = {
                 responses.get(timeout=1).work_id,
                 responses.get(timeout=1).work_id,
