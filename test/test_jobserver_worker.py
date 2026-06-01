@@ -43,6 +43,7 @@ from .helpers import (
     helper_preexec_suppressing_cm,
     helper_raise,
     helper_return,
+    helper_return_connection,
 )
 
 
@@ -587,3 +588,22 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
         self.assertTrue(send.closed)
+
+
+class TestResultNotReconstructable(unittest.TestCase):
+    """A value that pickles in the child but cannot be rebuilt in the
+    parent must surface a clean library error, not a raw OS error (#303)."""
+
+    @unittest.skipUnless(
+        "fork" in get_all_start_methods(), "requires fork start method"
+    )
+    def test_returned_connection_does_not_leak_filenotfounderror(self) -> None:
+        """Returning a live Connection pickles in the child but fails to
+        rebuild in the parent; report it via RuntimeError rather than
+        leaking FileNotFoundError from recv()."""
+        context = get_context("fork")
+        with Jobserver(context=context, slots=2) as js:
+            future = js.submit(fn=helper_return_connection, args=(context,))
+            with self.assertRaises(RuntimeError) as ctx:
+                future.result(timeout=10)
+        self.assertIn("not reconstructable", str(ctx.exception))
