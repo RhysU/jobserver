@@ -1149,7 +1149,7 @@ def _maybe_obtain_token(
     May raise CallbackRaised via reclaim_tokens_fn so raising.
     """
     # Defensively check arguments
-    if consume != 0 and consume != 1:
+    if type(consume) is not int or consume not in (0, 1):
         raise ValueError(f"consume must be 0 or 1, got {consume!r}")
     # Acquire the requested token or raise Blocked when impossible
     token: Optional[int] = None
