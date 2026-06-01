@@ -32,17 +32,13 @@ The six scenarios are:
 import argparse
 import os
 import platform
-import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from multiprocessing import get_context
 from typing import Callable, Optional
 
-# Allow "python draft/bench.py" from a checkout without setting PYTHONPATH.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-from jobserver import Blocked, Jobserver, JobserverExecutor  # noqa: E402,I001
+from jobserver import Blocked, Jobserver, JobserverExecutor
 
 # ---------------------------------------------------------------------------
 # CPU-bound kernels.  Kept trivial, deterministic, and importable so that
