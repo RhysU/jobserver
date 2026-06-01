@@ -596,7 +596,8 @@ class Jobserver:
         self._slots: MinimalQueue[int] = MinimalQueue(self._context)
 
         # Issue one token for each requested slot
-        self._slots.put(*range(slots))
+        for token in range(slots):
+            self._slots.put(token)
 
         # Tracks outstanding Futures via their process sentinels.
         self._selector = _initialize_selector(self._slots)
