@@ -22,7 +22,6 @@ import threading
 import time
 import unittest
 import weakref
-from collections import deque
 from unittest import mock
 
 from jobserver import (
@@ -167,18 +166,16 @@ class TestSelectiveCancel(unittest.TestCase):
         """Cancel(work_id=X) removes only X from pending."""
         with MinimalQueue() as responses:
             state = _DispatchState(
-                pending=deque(
-                    [
-                        _request.Submit(1, len, ((),), {}),
-                        _request.Submit(2, len, ((),), {}),
-                        _request.Submit(3, len, ((),), {}),
-                    ]
-                )
+                pending={
+                    n: _request.Submit(n, len, ((),), {}) for n in (1, 2, 3)
+                }
             )
             _handle_request(_request.Cancel(work_id=2), state, responses)
             # A targeted Cancel(work_id=X) does not latch the cancelling state.
             self.assertFalse(state.cancelling)
-            self.assertEqual([1, 3], [s.work_id for s in state.pending])
+            self.assertEqual(
+                [1, 3], [s.work_id for s in state.pending.values()]
+            )
             msg = responses.get(timeout=1)
             self.assertIsInstance(msg, _response.Cancelled)
             self.assertEqual(2, msg.work_id)
@@ -187,12 +184,7 @@ class TestSelectiveCancel(unittest.TestCase):
         """Cancel(work_id=None) removes everything."""
         with MinimalQueue() as responses:
             state = _DispatchState(
-                pending=deque(
-                    [
-                        _request.Submit(1, len, ((),), {}),
-                        _request.Submit(2, len, ((),), {}),
-                    ]
-                )
+                pending={n: _request.Submit(n, len, ((),), {}) for n in (1, 2)}
             )
             _handle_request(_request.Cancel(), state, responses)
             # A blanket Cancel() latches cancelling for later Submits.

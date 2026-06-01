@@ -13,7 +13,6 @@ import queue
 import threading
 import traceback
 import weakref
-from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection, wait
@@ -378,7 +377,10 @@ class _DispatchState:
     values to thread `shutdown` and `cancelling` back to the loop.
     """
 
-    pending: deque[_request.Submit] = field(default_factory=deque)
+    # Keyed by work_id and insertion-ordered, so dispatch stays FIFO while
+    # a per-work_id Cancel() removes its entry in O(1) rather than rebuilding
+    # the whole collection (which made cancelling N pending items O(N**2)).
+    pending: dict[int, _request.Submit] = field(default_factory=dict)
     running: dict[Future, int] = field(default_factory=dict)
     # Latched by a blanket Cancel(); then racing Submits are cancelled.
     cancelling: bool = False
@@ -420,21 +422,29 @@ def _handle_request(
     if isinstance(msg, _request.Shutdown):
         state.shutdown = True
     elif isinstance(msg, _request.Cancel):
-        keep: list[_request.Submit] = []
-        for item in state.pending:
-            if msg.work_id is None or item.work_id == msg.work_id:
+        if msg.work_id is None:
+            # Blanket cancel: drain every pending item once.
+            for item in state.pending.values():
                 responses.put(_response.Cancelled(work_id=item.work_id))
+            state.pending.clear()
+            # A blanket Cancel() precedes Shutdown(); latch late Submits.
+            state.cancelling = True
+        else:
+            # Targeted cancel: a single O(1) pop by work_id.  A miss
+            # (already dispatched or cancelled) raises KeyError, so emit
+            # nothing.  pop(key, None) would query once too but trips mypy:
+            # the dict's value type is Submit, not Optional[Submit].
+            try:
+                item = state.pending.pop(msg.work_id)
+            except KeyError:
+                pass
             else:
-                keep.append(item)
-        state.pending.clear()
-        state.pending.extend(keep)
-        # A blanket Cancel() precedes Shutdown(); latch to cancel late Submits.
-        state.cancelling = state.cancelling or msg.work_id is None
+                responses.put(_response.Cancelled(work_id=item.work_id))
     elif isinstance(msg, _request.Submit):
         if state.cancelling:
             responses.put(_response.Cancelled(work_id=msg.work_id))
         else:
-            state.pending.append(msg)
+            state.pending[msg.work_id] = msg
     else:
         raise RuntimeError(f"Unexpected request type: {type(msg)!r}")
 
@@ -465,14 +475,15 @@ def _dispatch_pending(
     state: _DispatchState,
     responses: MinimalQueue,
 ) -> None:
-    """Dispatch pending work in place via popleft().
+    """Dispatch pending work in insertion (FIFO) order.
 
     Keeps c.f.Future in PENDING (cancellable) until a process is
     spawned.  Stops on first Blocked since remaining will be too.
     """
     pending = state.pending
     while pending:
-        item = pending[0]
+        # Peek the oldest entry; insertion order makes dispatch FIFO.
+        work_id, item = next(iter(pending.items()))
         try:
             f = jobserver.submit(
                 fn=item.fn,
@@ -485,13 +496,13 @@ def _dispatch_pending(
         except Exception as exc:
             # Dispatch itself failed (e.g. pickling error).
             # Transition PENDING -> RUNNING -> FINISHED(exc).
-            pending.popleft()
+            del pending[work_id]
             responses.put(_response.Started(work_id=item.work_id))
             _responses_put_failed(responses, item.work_id, exc)
             continue
 
         # Dispatch succeeded -- inform receiver and track
-        pending.popleft()
+        del pending[work_id]
         responses.put(_response.Started(work_id=item.work_id))
         state.running[f] = item.work_id
 
@@ -555,7 +566,7 @@ def _handle_shutdown(
     responses: MinimalQueue,
 ) -> None:
     """Cancel pending work, drain running futures, signal completion."""
-    for item in state.pending:
+    for item in state.pending.values():
         responses.put(_response.Cancelled(work_id=item.work_id))
     for f, work_id in state.running.items():
         while True:
