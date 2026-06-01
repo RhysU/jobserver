@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """MinimalQueue and related utility functions."""
 
+import abc
 import queue
 import threading
 import time
@@ -17,6 +18,7 @@ from multiprocessing.reduction import ForkingPickler
 from typing import Any, Generic, Optional, TypeVar, Union
 
 __all__ = (
+    "AbstractQueue",
     "MinimalQueue",
     "timeout_to_deadline",
     "deadline_to_timeout",
@@ -73,7 +75,7 @@ def _conn_repr(conn: Optional[Connection]) -> str:
         return "open(fd=closed)"
 
 
-class MinimalQueue(Generic[T]):
+class AbstractQueue(Generic[T], abc.ABC):
     """
     An unbounded SimpleQueue-variant with minimal functionality.
 
@@ -113,7 +115,7 @@ class MinimalQueue(Generic[T]):
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()
 
-    def __enter__(self) -> "MinimalQueue":
+    def __enter__(self) -> "AbstractQueue":
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -130,12 +132,12 @@ class MinimalQueue(Generic[T]):
         except AttributeError:
             pass
 
-    def __copy__(self) -> "MinimalQueue":
+    def __copy__(self) -> "AbstractQueue":
         """Shallow copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
 
-    def __deepcopy__(self, _: Any) -> "MinimalQueue":
+    def __deepcopy__(self, _: Any) -> "AbstractQueue":
         """Deep copies return the original MinimalQueue unchanged."""
         # Because any "copy" should and can only mutate same pipe/locks
         return self
@@ -209,3 +211,9 @@ class MinimalQueue(Generic[T]):
             if writer is None:
                 raise ValueError("MinimalQueue.put() after close_put()")
             writer.send_bytes(bytez)
+
+
+class MinimalQueue(AbstractQueue[T]):
+    """A trivial concrete AbstractQueue; see AbstractQueue for behavior."""
+
+    __slots__ = ()
