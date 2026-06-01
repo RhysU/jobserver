@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""AbstractQueue and related utility functions."""
+"""MPMCQueue, SPSCQueue, and related utility functions."""
 
 import abc
 import queue
@@ -15,6 +15,7 @@ from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
 from multiprocessing.reduction import ForkingPickler
+from multiprocessing.synchronize import Lock
 from typing import Any, Generic, Optional, TypeVar, Union, final
 
 __all__ = (
@@ -102,7 +103,7 @@ class AbstractQueue(Generic[T], abc.ABC):
         ...
 
     @abc.abstractmethod
-    def _setstate_locks(self, state: Any) -> None:
+    def _setstate_locks(self, state_locks: Any) -> None:
         """Restore this queue's locks from _getstate_locks() output."""
         ...
 
@@ -128,8 +129,8 @@ class AbstractQueue(Generic[T], abc.ABC):
         self,
         state: tuple[Optional[Connection], Optional[Connection], Any],
     ) -> None:
-        self._reader, self._writer, lockstate = state
-        self._setstate_locks(lockstate)
+        self._reader, self._writer, state_locks = state
+        self._setstate_locks(state_locks)
 
     def __enter__(self: Self) -> Self:
         return self
@@ -238,10 +239,9 @@ class AbstractQueue(Generic[T], abc.ABC):
 class SPSCQueue(AbstractQueue[T]):
     """A single-producer, single-consumer AbstractQueue.
 
-    Here "single" means single process: the threading.Lock guards only
-    serialize concurrent producers or consumers within one process and
-    are recreated fresh on unpickle, so they provide no mutual exclusion
-    across processes.  See AbstractQueue for the remaining behavior.
+    Here "single" means single process: the threading.Lock guards
+    serialize producers and consumers within one process only and are
+    recreated fresh on unpickle, giving no cross-process exclusion.
     """
 
     __slots__ = ()
@@ -249,7 +249,7 @@ class SPSCQueue(AbstractQueue[T]):
     def _getstate_locks(self) -> None:
         return None  # locks are intra-process; never pickled
 
-    def _setstate_locks(self, _: Any) -> None:
+    def _setstate_locks(self, state_locks: Any) -> None:
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()
 
@@ -258,12 +258,9 @@ class SPSCQueue(AbstractQueue[T]):
 class MPMCQueue(AbstractQueue[T]):
     """A multiple-producer, multiple-consumer AbstractQueue.
 
-    Safe for concurrent producers and consumers spread across processes:
-    the read/write guards are multiprocessing IPC locks minted from the
-    queue's multiprocessing context, so (unlike SPSCQueue) they are
-    preserved across pickling into other processes and provide genuine
-    cross-process mutual exclusion.  See AbstractQueue for the remaining
-    behavior.
+    Safe for concurrent producers and consumers across processes: the
+    read/write guards are multiprocessing IPC locks that are preserved
+    across pickling, providing genuine cross-process mutual exclusion.
     """
 
     __slots__ = ("_context",)
@@ -275,16 +272,16 @@ class MPMCQueue(AbstractQueue[T]):
         self._context = resolve_context(context)
         super().__init__(self._context)
 
-    def _getstate_locks(self) -> Any:
+    def _getstate_locks(self) -> tuple[Lock, Lock]:
         # Preserve the IPC locks so cross-process mutual exclusion survives
         # pickling into child processes (via multiprocessing inheritance).
         return (self._read_lock, self._write_lock)
 
-    def _setstate_locks(self, state: Any) -> None:
-        if state is None:
+    def _setstate_locks(self, state_locks: Any) -> None:
+        if state_locks is None:
             # Fresh construction: mint new IPC locks from the context.
             self._read_lock = self._context.Lock()
             self._write_lock = self._context.Lock()
         else:
             # Unpickled into another process: reuse the inherited locks.
-            self._read_lock, self._write_lock = state
+            self._read_lock, self._write_lock = state_locks
