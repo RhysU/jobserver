@@ -23,6 +23,7 @@ import time
 import unittest
 import weakref
 from collections import deque
+from unittest import mock
 
 from jobserver import (
     Jobserver,
@@ -583,6 +584,60 @@ class TestReceiverGuard(unittest.TestCase):
         exe = _StubExecutor(_RaisingResponses(RuntimeError()))
         exe._broken = RuntimeError("x")
         self.assertIn("broken", repr(exe))
+
+
+def _fail_receiver_start(boom: BaseException):
+    """Patch threading.Thread.start to raise only for the receiver thread."""
+    original = threading.Thread.start
+
+    def start(self: threading.Thread) -> None:
+        if self.name == "JobserverExecutor-receiver":
+            raise boom
+        original(self)
+
+    return start
+
+
+class TestStartupFailure(unittest.TestCase):
+    """Partial __init__ failure must not orphan the dispatcher (#220)."""
+
+    def _wait_for_baseline(self, baseline: int) -> None:
+        deadline = time.monotonic() + TIMEOUT
+        while (
+            len(multiprocessing.active_children()) > baseline
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.02)
+        self.assertEqual(baseline, len(multiprocessing.active_children()))
+
+    def test_receiver_start_failure_tears_down_owned(self) -> None:
+        """A failed receiver start stops the dispatcher; nothing leaks."""
+        baseline = len(multiprocessing.active_children())
+        boom = RuntimeError("can't start new thread")
+        with mock.patch.object(
+            threading.Thread, "start", _fail_receiver_start(boom)
+        ):
+            with self.assertRaises(RuntimeError) as cm:
+                JobserverExecutor()
+        # The original failure propagates, not a cleanup error.
+        self.assertIs(cm.exception, boom)
+        # The dispatcher that did start must have been reaped.
+        self._wait_for_baseline(baseline)
+
+    def test_receiver_start_failure_keeps_external_jobserver(self) -> None:
+        """Cleanup of a partial init leaves a caller-owned Jobserver open."""
+        boom = RuntimeError("can't start new thread")
+        with Jobserver(context=FAST, slots=2) as js:
+            baseline = len(multiprocessing.active_children())
+            with mock.patch.object(
+                threading.Thread, "start", _fail_receiver_start(boom)
+            ):
+                with self.assertRaises(RuntimeError):
+                    JobserverExecutor(js)
+            self._wait_for_baseline(baseline)
+            # The external Jobserver was not closed by cleanup: still usable.
+            f = js.submit(fn=len, args=((1, 2, 3),))
+            self.assertEqual(3, f.result(timeout=TIMEOUT))
 
 
 class TestOwnedJobserver(unittest.TestCase):

@@ -65,6 +65,10 @@ class JobserverExecutor(concurrent.futures.Executor):
         if jobserver is None:
             jobserver = Jobserver()
 
+        # Bind early so _abort_startup can release it; also outlives the
+        # dispatcher Process, which drops _args after start() in 3.11+.
+        self._jobserver = jobserver
+
         self._requests: MinimalQueue = MinimalQueue(jobserver.context)
         self._responses: MinimalQueue = MinimalQueue(jobserver.context)
 
@@ -74,22 +78,36 @@ class JobserverExecutor(concurrent.futures.Executor):
             daemon=False,
             name="JobserverExecutor-dispatcher",
         )
-        self._dispatcher.start()
-
-        # Close before receiver so EOF propagates if receiver fails to start.
-        self._requests.close_get()
-        self._responses.close_put()
-
         self._receiver = threading.Thread(
             target=self._receive_loop,
             daemon=True,
             name="JobserverExecutor-receiver",
         )
-        self._receiver.start()
 
-        # Keep a reference so the Jobserver (and its slot semaphores) outlives
-        # the dispatcher Process, which drops _args after start() in 3.11+.
-        self._jobserver = jobserver
+        try:
+            self._dispatcher.start()
+
+            # Close before receiver so EOF propagates if receiver fails to
+            # start.
+            self._requests.close_get()
+            self._responses.close_put()
+
+            self._receiver.start()
+        except BaseException:
+            # A failed dispatcher or receiver start tears down whatever
+            # started so __init__ never orphans a dispatcher nor leaks an
+            # owned Jobserver.  No work is in flight and the receiver never
+            # started, so terminate() suffices and each step tolerates the
+            # thing it cleans up not having run.
+            if self._dispatcher.pid is not None:
+                self._dispatcher.terminate()
+                self._dispatcher.join()
+            self._requests.close_put()
+            self._responses.close_get()
+            if self._own_jobserver:
+                self._own_jobserver = False
+                self._jobserver.__exit__(None, None, None)
+            raise
 
         _LOG.debug(
             "Executor started (dispatcher pid=%d)",
