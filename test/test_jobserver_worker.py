@@ -271,9 +271,12 @@ class TestJobserverWorker(unittest.TestCase):
         for method in get_all_start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
-                    # Confirm negative sleep is detectable with fn never called
-                    with self.assertRaises(AssertionError):
+                    # Confirm negative/nan sleep raises ValueError, fn uncalled
+                    with self.assertRaises(ValueError) as c:
                         js.submit(fn=len, sleep_fn=lambda: -1.0)
+                    self.assertIn("-1.0", str(c.exception))
+                    with self.assertRaises(ValueError):
+                        js.submit(fn=len, sleep_fn=lambda: float("nan"))
 
                     # Confirm sleep_fn(...) returning zero can proceed
                     zs = iter(itertools.cycle((0, None)))

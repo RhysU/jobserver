@@ -1161,7 +1161,11 @@ def _maybe_obtain_token(
         # sleep_fn() duration is properly accounted for.
         sleep = sleep_fn()
         if sleep is not None:
-            assert sleep >= 0.0
+            if not sleep >= 0.0:
+                raise ValueError(
+                    "sleep_fn must return None or non-negative "
+                    f"seconds, got {sleep!r}"
+                )
             remaining = deadline_to_timeout(deadline)
             time.sleep(max(_RESOLUTION, min(sleep, remaining)))
             if time.monotonic() >= deadline:
