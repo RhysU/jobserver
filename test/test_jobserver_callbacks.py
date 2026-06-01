@@ -107,6 +107,72 @@ class TestJobserverCallbacks(unittest.TestCase):
             self.assertTrue(f.done())
             self.assertEqual(f.result(), 1)
 
+    def test_when_done_returns_monotonic_seqno(self) -> None:
+        """when_done() returns 0, 1, 2, ... for successive user callbacks."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=len, args=((1,),), timeout=5)
+            seqnos = [
+                f.when_done(helper_callback, [0], 0, 1) for _ in range(5)
+            ]
+            # The first user callback sees 0, then 1, 2, ... regardless of
+            # the internal callbacks submit() registers beforehand.
+            self.assertEqual(seqnos, list(range(5)))
+            f.wait(timeout=5)
+
+    def test_callback_raised_carries_seqno(self) -> None:
+        """CallbackRaised.seqno identifies the offending registration."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=len, args=((1,),), timeout=5)
+            s0 = f.when_done(helper_raise, ArithmeticError, "0")
+            s1 = f.when_done(helper_raise, ZeroDivisionError, "1")
+            self.assertEqual([s0, s1], [0, 1])
+
+            with self.assertRaises(CallbackRaised) as c:
+                f.wait(timeout=5)
+            self.assertIsInstance(c.exception.__cause__, ArithmeticError)
+            self.assertEqual(c.exception.seqno, 0)
+            self.assertEqual(repr(c.exception), "CallbackRaised(seqno=0)")
+            self.assertEqual(str(c.exception), "CallbackRaised(seqno=0)")
+
+            with self.assertRaises(CallbackRaised) as c:
+                f.wait(timeout=5)
+            self.assertIsInstance(c.exception.__cause__, ZeroDivisionError)
+            self.assertEqual(c.exception.seqno, 1)
+            self.assertEqual(repr(c.exception), "CallbackRaised(seqno=1)")
+            self.assertEqual(str(c.exception), "CallbackRaised(seqno=1)")
+
+            self.assertTrue(f.wait(timeout=5))
+
+    def test_callback_raised_repr_str_and_seqno_type(self) -> None:
+        """CallbackRaised repr/str show the seqno; seqno must be an int."""
+        # repr and str are identical and expose the seqno.
+        e = CallbackRaised(7)
+        self.assertEqual(repr(e), "CallbackRaised(seqno=7)")
+        self.assertEqual(str(e), repr(e))
+        # seqno is required and must be an int.
+        with self.assertRaises(TypeError):
+            CallbackRaised()  # type: ignore[call-arg]
+        with self.assertRaises(TypeError):
+            CallbackRaised("7")  # type: ignore[arg-type]
+
+    def test_already_done_callback_raised_carries_seqno(self) -> None:
+        """A raising callback registered post-completion reports its seqno."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=len, args=((1,),), timeout=5)
+            f.wait(timeout=5)
+            # Registering on an already-done Future fires immediately and
+            # raises out of when_done() itself before it can return a seqno;
+            # the CallbackRaised still carries the registration's seqno.
+            # The first user callback always sees seqno 0.
+            with self.assertRaises(CallbackRaised) as c:
+                f.when_done(helper_raise, UnicodeError, "now")
+            self.assertIsInstance(c.exception.__cause__, UnicodeError)
+            self.assertEqual(c.exception.seqno, 0)
+            # The next registration sees seqno 1.
+            with self.assertRaises(CallbackRaised) as c:
+                f.when_done(helper_raise, UnicodeError, "later")
+            self.assertEqual(c.exception.seqno, 1)
+
     def test_reentrant_when_done_nests_issue_callbacks(self) -> None:
         """Callbacks calling when_done() nest _issue_callbacks correctly.
 

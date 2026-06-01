@@ -75,7 +75,23 @@ class CallbackRaised(Exception):
     MUST re-invoke the same method until no CallbackRaised occurs.
     These MAY/MUST semantics allow the caller to decide how much additional
     processing to perform after seeing the 1st, 2nd, or Nth error.
+
+    The seqno member is the value Future.when_done(...) returned for the
+    callback registration, tying this exception back to that call.  The
+    first user-registered callback has seqno 0, the second has 1, etc.
     """
+
+    def __init__(self, seqno: int) -> None:
+        if not isinstance(seqno, int):
+            raise TypeError(f"seqno: int, got {type(seqno).__name__}")
+        super().__init__()
+        self.seqno = seqno
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(seqno={self.seqno})"
+
+    # Exceptions need an explicit __str__; BaseException.__str__ ignores it.
+    __str__ = __repr__
 
 
 class SubmissionDied(Exception):
@@ -199,8 +215,12 @@ _PRIORITY_USER = 1
 _PRIORITY_CLEANUP = 2
 
 
-def _callback_wrapper(fn, *args, **kwargs) -> None:
-    """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised."""
+def _callback_wrapper(seqno: int, fn, *args, **kwargs) -> None:
+    """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised.
+
+    The seqno is the when_done(...) sequence number from registering fn
+    and is stamped on any CallbackRaised raised here.
+    """
     try:
         fn(*args, **kwargs)
     except Exception as e:
@@ -208,9 +228,10 @@ def _callback_wrapper(fn, *args, **kwargs) -> None:
         # triggers a nested _issue_callbacks(); without this
         # guard the caller sees CallbackRaised wrapping another
         # CallbackRaised instead of one layer around the cause.
+        # The inner CallbackRaised already carries its own seqno.
         if isinstance(e, CallbackRaised):
             raise
-        raise CallbackRaised() from e
+        raise CallbackRaised(seqno) from e
 
 
 class Future(Generic[T]):
@@ -250,7 +271,10 @@ class Future(Generic[T]):
         # (priority, callback_seqno, ...) so token restoration fires before
         # user callbacks, which fire before sentinel cleanup.
         self._callbacks: list[tuple] = []
-        self._callback_seqno = 0  # Monotonic needed due to reentrancy
+        # Monotonic seqno needed due to reentrancy.  Starting at -3 lets the
+        # three internal registrations submit() makes (token restoration plus
+        # sentinel and connection cleanup) consume -3, -2, -1 so user 0-based.
+        self._callback_seqno = -3
 
     def __repr__(self) -> str:
         with self._rlock:
@@ -285,7 +309,7 @@ class Future(Generic[T]):
                 source=self,
             )
 
-    def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> None:
+    def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> int:
         """
         Register fn(*args, **kwargs) for execution after Future.done(...).
 
@@ -293,13 +317,21 @@ class Future(Generic[T]):
         The Future is not automatically passed; to receive it, bind it
         explicitly via args, e.g. future.when_done(cb, future).
         May raise CallbackRaised from at most this new callback.
+
+        Returns a seqno identifying this registration.  Should fn raise,
+        the resulting CallbackRaised reports it via CallbackRaised.seqno.
         """
-        self._when_done(
-            fn=functools.partial(_callback_wrapper, fn),
-            args=args,
-            kwargs=kwargs,
-            priority=_PRIORITY_USER,
-        )
+        # _when_done assigns and returns the seqno under the same lock.
+        # self._callback_seqno is an int, so the partial curries a copy.
+        with self._rlock:
+            return self._when_done(
+                fn=functools.partial(
+                    _callback_wrapper, self._callback_seqno, fn
+                ),
+                args=args,
+                kwargs=kwargs,
+                priority=_PRIORITY_USER,
+            )
 
     def _when_done(
         self,
@@ -307,14 +339,15 @@ class Future(Generic[T]):
         priority: int,
         args: tuple[Any, ...] = (),
         kwargs: Optional[Mapping[str, Any]] = None,
-    ) -> None:
-        """Internal method for registering a callback with some priority."""
+    ) -> int:
+        """Register a callback with some priority, returning its seqno."""
         with self._rlock:
+            seqno = self._callback_seqno
             heapq.heappush(
                 self._callbacks,
                 (
                     priority,
-                    self._callback_seqno,
+                    seqno,
                     fn,
                     args,
                     {} if kwargs is None else kwargs,
@@ -323,6 +356,7 @@ class Future(Generic[T]):
             self._callback_seqno += 1
             if self._connection is None:
                 self._issue_callbacks()
+            return seqno
 
     def done(self, timeout: Optional[float] = 0) -> bool:
         """
