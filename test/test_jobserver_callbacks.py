@@ -29,6 +29,20 @@ from .helpers import (
 class TestJobserverCallbacks(unittest.TestCase):
     """Jobserver Future callback machinery."""
 
+    def await_exit(self, *futures: Future) -> None:
+        """Block until each child exits so results are ready to reclaim.
+
+        A fixed sleep is unreliable under forkserver (the Python 3.14
+        default), whose slower startup can leave a child unfinished.
+        Polling is_alive() waits without firing callbacks early.
+        """
+        deadline = time.monotonic() + 5
+        for f in futures:
+            while f._process is not None and f._process.is_alive():
+                if time.monotonic() >= deadline:
+                    self.fail("child did not exit")
+                time.sleep(0.01)
+
     def helper_check_semantics(self, f: Future[None]) -> None:
         """Helper checking Future semantics *inside* a callback as expected."""
         # Prepare how callbacks will be observed
@@ -237,7 +251,7 @@ class TestJobserverCallbacks(unittest.TestCase):
             c.when_done(helper_raise, LookupError, "c")
             order: list[str] = []
             d.when_done(order.append, "ok")
-            time.sleep(0.5)  # ensure all children finish
+            self.await_exit(a, b, c, d)
 
             # Collect all CallbackRaised causes; ordering across
             # futures is kernel-determined and not guaranteed.
@@ -297,6 +311,6 @@ class TestJobserverCallbacks(unittest.TestCase):
             b.when_done(helper_raise, ArithmeticError, "b")
             c.when_done(helper_raise, LookupError, "c")
             d.when_done(order.append, "ok")
-            time.sleep(0.5)  # ensure all children finish
+            self.await_exit(a, b, c, d)
         # __exit__ ran without raising; all callbacks were drained
         self.assertEqual(order, ["ok"])
