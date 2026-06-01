@@ -535,17 +535,6 @@ def _unregister_connection(
     connection.close()
 
 
-def _initialize_selector(slots: MinimalQueue) -> DefaultSelector:
-    """Create a selector with slots pre-registered."""
-    selector = DefaultSelector()
-    selector.register(
-        slots.waitable(),
-        EVENT_READ,
-        data=types.SimpleNamespace(done=noop),
-    )
-    return selector
-
-
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing.
 
@@ -565,6 +554,7 @@ class Jobserver:
         "_context",
         "_slots",
         "_selector",
+        "_selector_pid",
         "_env",
         "_preexec_fn",
         "_sleep_fn",
@@ -606,8 +596,11 @@ class Jobserver:
         for token in range(slots):
             self._slots.put(token)
 
-        # Tracks outstanding Futures via their process sentinels.
-        self._selector = _initialize_selector(self._slots)
+        # Tracks outstanding Futures via their process sentinels.  Built
+        # lazily by _lazy_selector(); None means "not yet built" and
+        # _selector_pid stamps the building process so forks rebuild it.
+        self._selector: Optional[DefaultSelector] = None
+        self._selector_pid: Optional[int] = None
 
         # Instance-level defaults for submit(...)
         # Defensive copy: consume any one-shot iterable and guard against
@@ -659,9 +652,11 @@ class Jobserver:
         if hasattr(self, "_slots"):
             self._slots.close_put()
             self._slots.close_get()
-        # Matches the cleanup in __exit__.
-        if hasattr(self, "_selector"):
-            self._selector.close()
+        # Matches the cleanup in __exit__.  Tolerates a missing slot
+        # (partial construction) and None (never built lazily).
+        selector = getattr(self, "_selector", None)
+        if selector is not None:
+            selector.close()
 
     def __enter__(self) -> "Jobserver":
         return self
@@ -690,7 +685,10 @@ class Jobserver:
         self._slots.close_put()
         self._slots.close_get()
         # Release the selector's underlying fd and all registrations.
-        self._selector.close()
+        # reclaim_resources() above built it via _lazy_selector(); guard
+        # None for symmetry with __del__ should that ever not hold.
+        if self._selector is not None:
+            self._selector.close()
 
     def __getstate__(self) -> tuple:
         """Get instance state without exposing in-flight Futures.
@@ -718,7 +716,10 @@ class Jobserver:
             self._preexec_fn,
             self._sleep_fn,
         ) = state
-        self._selector = _initialize_selector(self._slots)
+        # Defer selector construction to first use, exactly like __init__.
+        # A pickled child thus takes the same lazy path as a forked child.
+        self._selector = None
+        self._selector_pid = None
 
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
@@ -744,6 +745,26 @@ class Jobserver:
         """Return the multiprocessing context used by this Jobserver."""
         return self._context
 
+    def _lazy_selector(self) -> DefaultSelector:
+        """Create-or-return the selector for the current process.
+
+        Built on first use (None), rebuilt after a fork (pid change): a
+        child reusing an ancestor's selector would join()/is_alive() the
+        ancestor's Futures and share its epoll set, so it is discarded.
+        """
+        if self._selector is None or self._selector_pid != os.getpid():
+            # Pre-register the slots waitable so the obtain-token loop and
+            # reclaim share one persistent interest set (a noop done() keeps
+            # it indistinguishable from a Future entry during select()).
+            self._selector = DefaultSelector()
+            self._selector.register(
+                self._slots.waitable(),
+                EVENT_READ,
+                data=types.SimpleNamespace(done=noop),
+            )
+            self._selector_pid = os.getpid()
+        return self._selector
+
     def reclaim_resources(self) -> None:
         """
         Reclaim resources for any completed submissions and issue callbacks.
@@ -760,7 +781,7 @@ class Jobserver:
         # O(N) rebuild occurs on each call.  select(timeout=0) is
         # a non-blocking poll returning only the k ready entries.
         # done() triggers callbacks mutating the selector.
-        for key, _ in self._selector.select(timeout=0):
+        for key, _ in self._lazy_selector().select(timeout=0):
             assert hasattr(key.data, "done"), type(key.data)
             key.data.done()
 
@@ -852,11 +873,12 @@ class Jobserver:
         # ASIDE: If another design is desired, instead of reclaim_resources
         # any other method could be injected below.  Notice that the
         # callback priority mechanism does permit issuing callback subsets.
+        selector = self._lazy_selector()
         token = _maybe_obtain_token(
             consume=consume,
             deadline=timeout_to_deadline(timeout),
             reclaim_tokens_fn=self.reclaim_resources,
-            selector=self._selector,
+            selector=selector,
             sleep_fn=sleep_fn,
             slots=self._slots,
         )
@@ -882,16 +904,16 @@ class Jobserver:
             # Register both the connection and the sentinel for O(k) polling.
             # Observing the connection reclaims a Future whose result is ready
             # while its child stays blocked mid-send() and thus unexited.
-            self._selector.register(recv, EVENT_READ, data=future)
-            self._selector.register(process.sentinel, EVENT_READ, data=future)
+            selector.register(recv, EVENT_READ, data=future)
+            selector.register(process.sentinel, EVENT_READ, data=future)
         except Exception:
             # Undo any registration that succeeded before the failure.
             # The connection registers first, so cleanup it first too.
             try:
                 if recv is not None:
-                    self._selector.unregister(recv)
+                    selector.unregister(recv)
                 if process is not None:
-                    self._selector.unregister(process.sentinel)
+                    selector.unregister(process.sentinel)
             except (KeyError, ValueError):
                 pass  # Never registered or never started
             # Close pipe fds to avoid leaking until garbage collection
@@ -917,7 +939,7 @@ class Jobserver:
         # holding a reference until this last-priority callback fires.
         future._when_done(
             fn=_unregister_sentinel,
-            args=(self._selector, process.sentinel, process),
+            args=(selector, process.sentinel, process),
             priority=_PRIORITY_CLEANUP,
         )
 
@@ -926,7 +948,7 @@ class Jobserver:
         # reused by a concurrent submit() before removal from the selector.
         future._when_done(
             fn=_unregister_connection,
-            args=(self._selector, recv),
+            args=(selector, recv),
             priority=_PRIORITY_CLEANUP,
         )
 
@@ -1156,10 +1178,9 @@ def _maybe_obtain_token(
                 raise Blocked() from None
 
             # (6) ...then block until some interesting event.
-            # O(k) via the persistent selector:
-            # _initialize_selector() places slots.waitable() once
-            # so only one epoll_wait
-            # is needed here.  No rebuilding of the interest set.
+            # O(k) via the persistent selector: _lazy_selector() places
+            # slots.waitable() once so only one epoll_wait is needed here.
+            # No rebuilding of the interest set.
             keys_events = selector.select(timeout=deadline - monotonic)
 
             # (7) A sentinel wakeup normally means a child exited and the next
