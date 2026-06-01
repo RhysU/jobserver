@@ -18,7 +18,6 @@ from multiprocessing.reduction import ForkingPickler
 from typing import Any, Generic, Optional, TypeVar, Union
 
 __all__ = (
-    "AbstractQueue",
     "MinimalQueue",
     "timeout_to_deadline",
     "deadline_to_timeout",
