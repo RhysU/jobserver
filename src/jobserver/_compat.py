@@ -12,7 +12,9 @@ import signal
 def ignore_sigpipe() -> None:
     """Ignore SIGPIPE so broken pipes raise BrokenPipeError.
 
-    CPython does this at startup; PyPy does not.
+    CPython does this at startup; PyPy does not. Called only in child
+    workers and the dispatcher, never the user's main process; a child's
+    preexec_fn may reinstall a different SIGPIPE handler if desired.
     """
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_IGN)
