@@ -18,6 +18,7 @@ from multiprocessing.reduction import ForkingPickler
 from typing import Any, Generic, Optional, TypeVar, Union, final
 
 __all__ = (
+    "MPMCQueue",
     "SPSCQueue",
     "timeout_to_deadline",
     "deadline_to_timeout",
@@ -190,9 +191,10 @@ class AbstractQueue(Generic[T], abc.ABC):
         # and conditionals repeatedly checking for negative situations
         # Otherwise, this turns into an unpleasantly messy stretch of code
         deadline = timeout_to_deadline(timeout)
-        if not self._read_lock.acquire(
-            blocking=True, timeout=deadline_to_timeout(deadline)
-        ):
+        # Call acquire() positionally: threading locks name the first
+        # argument "blocking" while multiprocessing locks name it "block",
+        # so a keyword would not work across both lock implementations.
+        if not self._read_lock.acquire(True, deadline_to_timeout(deadline)):
             raise queue.Empty
         try:
             # Snapshot self._reader so a concurrent close_get() yields a clean
@@ -250,3 +252,39 @@ class SPSCQueue(AbstractQueue[T]):
     def _setstate_locks(self, _: Any) -> None:
         self._read_lock = threading.Lock()
         self._write_lock = threading.Lock()
+
+
+@final
+class MPMCQueue(AbstractQueue[T]):
+    """A multiple-producer, multiple-consumer AbstractQueue.
+
+    Safe for concurrent producers and consumers spread across processes:
+    the read/write guards are multiprocessing IPC locks minted from the
+    queue's multiprocessing context, so (unlike SPSCQueue) they are
+    preserved across pickling into other processes and provide genuine
+    cross-process mutual exclusion.  See AbstractQueue for the remaining
+    behavior.
+    """
+
+    __slots__ = ("_context",)
+
+    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
+        """Use given context with default of multiprocessing.get_context()."""
+        # Retain the resolved context so _setstate_locks can mint IPC locks
+        # from it at construction, before any locks have been inherited.
+        self._context = resolve_context(context)
+        super().__init__(self._context)
+
+    def _getstate_locks(self) -> Any:
+        # Preserve the IPC locks so cross-process mutual exclusion survives
+        # pickling into child processes (via multiprocessing inheritance).
+        return (self._read_lock, self._write_lock)
+
+    def _setstate_locks(self, state: Any) -> None:
+        if state is None:
+            # Fresh construction: mint new IPC locks from the context.
+            self._read_lock = self._context.Lock()
+            self._write_lock = self._context.Lock()
+        else:
+            # Unpickled into another process: reuse the inherited locks.
+            self._read_lock, self._write_lock = state
