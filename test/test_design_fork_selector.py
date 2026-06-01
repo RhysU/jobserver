@@ -64,7 +64,3 @@ class TestDesignForkSelector(unittest.TestCase):
                 with Jobserver(context=method, slots=8) as js:
                     f = js.submit(fn=_parent_fanout, args=(js,), consume=0)
                     self.assertEqual(f.result(timeout=60), 0)
-
-
-if __name__ == "__main__":
-    unittest.main()
