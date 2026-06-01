@@ -55,6 +55,13 @@ PreexecFn = Callable[[], Union[None, AbstractContextManager]]
 # sleep_fn returns None when work is acceptable or a non-negative
 # number of seconds for which the process should sleep before retrying.
 SleepFn = Callable[[], Optional[float]]
+# env may be a Mapping of names to values (None unsets the name) or an
+# iterable of such pairs.  Where a submission overrides an instance default,
+# Optional[EnvItems] additionally permits None to mean "use the default".
+EnvItems = Union[
+    Mapping[str, Optional[str]],
+    Iterable[tuple[str, Optional[str]]],
+]
 
 
 class Blocked(Exception):
@@ -565,10 +572,7 @@ class Jobserver:
         context: Union[None, str, BaseContext] = None,
         slots: Optional[int] = None,
         *,
-        env: Union[
-            Mapping[str, Optional[str]],
-            Iterable[tuple[str, Optional[str]]],
-        ] = (),
+        env: EnvItems = (),
         preexec_fn: Optional[PreexecFn] = None,
         sleep_fn: Optional[SleepFn] = None,
     ) -> None:
@@ -764,11 +768,7 @@ class Jobserver:
         args: Iterable = (),
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         consume: int = 1,
-        env: Union[
-            None,
-            Mapping[str, Optional[str]],
-            Iterable[tuple[str, Optional[str]]],
-        ] = None,
+        env: Optional[EnvItems] = None,
         preexec_fn: Optional[PreexecFn] = None,  # None: use default
         sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
@@ -936,11 +936,7 @@ class Jobserver:
         argses: Optional[Iterable[Iterable]] = None,
         kwargses: Optional[Iterable[Mapping[str, Any]]] = None,
         *,
-        env: Union[
-            None,
-            Mapping[str, Optional[str]],
-            Iterable[tuple[str, Optional[str]]],
-        ] = None,
+        env: Optional[EnvItems] = None,
         preexec_fn: Optional[PreexecFn] = None,  # None: use default
         sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
@@ -1085,10 +1081,7 @@ def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
 
 
 def _env_coerce(
-    env: Union[
-        Mapping[str, Optional[str]],
-        Iterable[tuple[str, Optional[str]]],
-    ],
+    env: EnvItems,
 ) -> dict[str, Optional[str]]:
     """Convert env to a dict, validating key/value types."""
     result = dict(env.items() if isinstance(env, Mapping) else env)
@@ -1246,11 +1239,7 @@ def _map_generate(
     chunksize: int,
     buffersize: int,
     deadline: float,
-    env: Union[
-        None,
-        Mapping[str, Optional[str]],
-        Iterable[tuple[str, Optional[str]]],
-    ] = None,
+    env: Optional[EnvItems] = None,
     preexec_fn: Optional[PreexecFn] = None,
     sleep_fn: Optional[SleepFn] = None,
 ) -> Iterator[T]:
