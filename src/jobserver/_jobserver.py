@@ -30,9 +30,12 @@ from multiprocessing.reduction import ForkingPickler
 from selectors import EVENT_READ, DefaultSelector
 from typing import Any, Generic, NoReturn, Optional, TypeVar, Union, cast
 
-from ._compat import ignore_sigpipe, sched_getaffinity0
-from ._queue import (
+from ._compat import (
     PICKLE_DUMP_ERRORS,
+    ignore_sigpipe,
+    sched_getaffinity0,
+)
+from ._queue import (
     MinimalQueue,
     deadline_to_timeout,
     resolve_context,

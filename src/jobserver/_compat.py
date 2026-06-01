@@ -6,7 +6,16 @@
 """Portability across interpreters and platforms."""
 
 import os
+import pickle
 import signal
+
+# Failures raised when ForkingPickler.dumps() (hence MinimalQueue.put())
+# cannot serialize a payload: pickle's own PicklingError, an AttributeError
+# when the payload names a locally-defined (unpicklable-by-name) class, and a
+# TypeError when an object is fundamentally unpicklable.  Both the worker's
+# _worker_entrypoint and the executor's _responses_put_failed classify dump
+# failures with this same tuple so their fallbacks stay aligned.
+PICKLE_DUMP_ERRORS = (pickle.PicklingError, AttributeError, TypeError)
 
 
 def ignore_sigpipe() -> None:

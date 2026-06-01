@@ -5,7 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """MinimalQueue and related utility functions."""
 
-import pickle
 import queue
 import threading
 import time
@@ -22,18 +21,9 @@ __all__ = (
     "timeout_to_deadline",
     "deadline_to_timeout",
     "resolve_context",
-    "PICKLE_DUMP_ERRORS",
 )
 
 T = TypeVar("T")
-
-# Failures raised when ForkingPickler.dumps() (hence MinimalQueue.put())
-# cannot serialize a payload: pickle's own PicklingError, an AttributeError
-# when the payload names a locally-defined (unpicklable-by-name) class, and a
-# TypeError when an object is fundamentally unpicklable.  Both the worker's
-# _worker_entrypoint and the executor's _responses_put_failed classify dump
-# failures with this same tuple so their fallbacks stay aligned.
-PICKLE_DUMP_ERRORS = (pickle.PicklingError, AttributeError, TypeError)
 
 # Maximum seconds safely passable to poll() without overflow.  poll(2) on
 # Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
