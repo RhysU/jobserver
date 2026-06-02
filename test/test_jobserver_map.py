@@ -138,6 +138,22 @@ class TestJobserverMap(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         js.map(fn=_kw_sum, argses=argses, kwargses=kwargses)
 
+    def test_argses_mapping_raises(self) -> None:
+        """A bare Mapping as argses raises TypeError, not silent keys."""
+        with Jobserver(context=FAST, slots=2) as js:
+            for argses in [{"ab": 1, "cde": 2}, {}]:
+                with self.subTest(argses=argses):
+                    with self.assertRaises(TypeError):
+                        js.map(fn=helper_return, argses=argses)
+
+    def test_kwargses_mapping_raises(self) -> None:
+        """A bare Mapping as kwargses raises TypeError, not silent keys."""
+        with Jobserver(context=FAST, slots=2) as js:
+            for kwargses in [{"x": 1, "y": 2}, {}]:
+                with self.subTest(kwargses=kwargses):
+                    with self.assertRaises(TypeError):
+                        js.map(fn=_kw_only, kwargses=kwargses)
+
     def test_preserves_order(self) -> None:
         """Results are yielded in submission order, not completion."""
         with Jobserver(context=FAST, slots=4) as js:
