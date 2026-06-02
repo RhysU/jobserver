@@ -622,7 +622,7 @@ class Jobserver:
         # invalid inputs cannot leave pipes or semaphores behind.
         if slots is None:
             slots = sched_getaffinity0()
-        if not isinstance(slots, int):
+        if isinstance(slots, bool) or not isinstance(slots, int):
             raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")
@@ -723,6 +723,9 @@ class Jobserver:
         repeatedly until every ready callback has been attempted.
         Each suppressed CallbackRaised emits a RuntimeWarning.
         """
+        # Idempotent: once closed, reclaim_resources() below would raise.
+        if self._selector_closed:
+            return
         # Each call drains at most one CallbackRaised per future
         while True:
             try:
@@ -1237,7 +1240,11 @@ def _maybe_obtain_token(
         # sleep_fn() duration is properly accounted for.
         sleep = sleep_fn()
         if sleep is not None:
-            if not sleep >= 0.0:
+            if (
+                isinstance(sleep, bool)
+                or not isinstance(sleep, (int, float))
+                or not sleep >= 0.0
+            ):
                 raise ValueError(
                     "sleep_fn must return None or non-negative "
                     f"seconds, got {sleep!r}"

@@ -475,6 +475,17 @@ class TestJobserverBasic(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     js.submit(fn=helper_return, args=(1,), consume=bad)
 
+    def test_timeout_non_numeric_raises_typeerror(self) -> None:
+        """submit()/result() reject a non-numeric timeout clearly (#342)."""
+        with Jobserver(slots=2) as js:
+            for bad in ("5", object()):
+                with self.assertRaises(TypeError):
+                    js.submit(fn=helper_return, args=(1,), timeout=bad)
+            f = js.submit(fn=helper_return, args=(7,))
+            with self.assertRaises(TypeError):
+                f.result(timeout="soon")
+            self.assertEqual(7, f.result(timeout=5))
+
     def test_context_manager(self) -> None:
         """Context manager closes slots; submit raises after exit."""
         with Jobserver(slots=2) as js:
@@ -486,6 +497,27 @@ class TestJobserverBasic(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Jobserver is closed"):
             with js:
                 pass
+
+    def test_exit_is_idempotent(self) -> None:
+        """A second __exit__ is a no-op, not RuntimeError (#331)."""
+        js = Jobserver(slots=2)
+        js.__enter__()
+        self.assertEqual(7, js.submit(fn=abs, args=(-7,)).result(timeout=5))
+        js.__exit__(None, None, None)
+        # Second (and third) close must not raise "Jobserver is closed".
+        js.__exit__(None, None, None)
+        js.__exit__(None, None, None)
+
+    def test_nested_with_same_instance(self) -> None:
+        """Nested with on one instance: outer __exit__ must no-op (#346)."""
+        js = Jobserver(slots=2)
+        with js:
+            with js:  # inner __exit__ closes the shared instance
+                self.assertEqual(
+                    1, js.submit(fn=helper_return, args=(1,)).result(timeout=5)
+                )
+            # Outer __exit__ now runs on an already-closed instance and must
+            # be a harmless no-op rather than raising.
 
     def test_context_manager_lingering_future(self) -> None:
         """Lingering Future completes and fires callbacks after exit."""

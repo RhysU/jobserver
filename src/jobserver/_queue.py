@@ -52,9 +52,13 @@ def timeout_to_deadline(timeout: Optional[float]) -> float:
     When timeout is None a large, finite deadline is returned per
     poll()/select() restrictions.
     """
-    return (
-        _MAX_TIMEOUT_SECS if timeout is None else timeout
-    ) + time.monotonic()
+    if timeout is None:
+        return _MAX_TIMEOUT_SECS + time.monotonic()
+    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+        return timeout + time.monotonic()
+    raise TypeError(
+        f"timeout: None or a real number, got {type(timeout).__name__}"
+    )
 
 
 def deadline_to_timeout(deadline: float) -> float:
@@ -156,7 +160,11 @@ class AbstractQueue(Generic[T], abc.ABC):
         Closes the underlying pipe end so EOF propagates on crash.
         """
         if self._reader is not None:
-            self._reader.close()
+            try:
+                self._reader.close()
+            except OSError:
+                # Tolerate EBADF from an already-closed or duplicated fd.
+                pass
             self._reader = None
 
     def close_put(self) -> None:
@@ -165,7 +173,11 @@ class AbstractQueue(Generic[T], abc.ABC):
         Closes the underlying pipe end so EOF propagates on crash.
         """
         if self._writer is not None:
-            self._writer.close()
+            try:
+                self._writer.close()
+            except OSError:
+                # Tolerate EBADF from an already-closed or duplicated fd.
+                pass
             self._writer = None
 
     @abc.abstractmethod
