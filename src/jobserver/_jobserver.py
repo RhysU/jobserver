@@ -573,6 +573,9 @@ def _unregister_connection(
 class Jobserver:
     """A Jobserver exposing a Future interface built atop multiprocessing.
 
+    A slot is one unit of process concurrency, roughly one running worker.
+    Slots default to the number of CPUs available to the current process.
+
     Concurrent submit() / reclaim_resources() calls on a Jobserver are not
     thread-safe.  In contrast, returned Futures are thread-safe.
 
