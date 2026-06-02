@@ -723,6 +723,9 @@ class Jobserver:
         repeatedly until every ready callback has been attempted.
         Each suppressed CallbackRaised emits a RuntimeWarning.
         """
+        # Idempotent: once closed, reclaim_resources() below would raise.
+        if self._selector_closed:
+            return
         # Each call drains at most one CallbackRaised per future
         while True:
             try:
