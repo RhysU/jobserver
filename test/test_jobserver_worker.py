@@ -278,6 +278,14 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertIn("-1.0", str(c.exception))
                     with self.assertRaises(ValueError):
                         js.submit(fn=len, sleep_fn=lambda: float("nan"))
+                    # A non-numeric return is a clean ValueError, not a raw
+                    # TypeError from the `>= 0.0` comparison (#333).
+                    with self.assertRaises(ValueError) as c:
+                        js.submit(fn=len, sleep_fn=lambda: "soon")
+                    self.assertIn("'soon'", str(c.exception))
+                    # bool is ruled out even though it is an int subclass.
+                    with self.assertRaises(ValueError):
+                        js.submit(fn=len, sleep_fn=lambda: True)
 
                     # Confirm sleep_fn(...) returning zero can proceed
                     zs = iter(itertools.cycle((0, None)))
