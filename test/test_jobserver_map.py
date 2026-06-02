@@ -25,6 +25,7 @@ from .helpers import (
     helper_return,
     raising_at_position,
     start_methods,
+    wait_until,
 )
 
 
@@ -385,11 +386,8 @@ class TestJobserverMapAbandonment(unittest.TestCase):
         then covers the tiny window before the worker sends its result and
         exits, so a single non-blocking reclaim can subsequently reap it.
         """
-        deadline = time.monotonic() + TIMEOUT
-        while len(os.listdir(directory)) < count:
-            if time.monotonic() > deadline:
-                self.fail("workers never finished")
-            time.sleep(0.01)
+        if not wait_until(lambda: len(os.listdir(directory)) >= count):
+            self.fail("workers never finished")
         time.sleep(0.1)
 
     def test_close_reclaims_finished_slots(self) -> None:

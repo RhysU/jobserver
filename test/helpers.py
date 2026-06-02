@@ -48,6 +48,28 @@ def start_methods(*, threaded: bool = False) -> list[str]:
     return methods
 
 
+def wait_until(
+    predicate: typing.Callable[[], bool],
+    *,
+    timeout: float = TIMEOUT,
+    interval: float = 0.01,
+) -> bool:
+    """Poll predicate() until it is truthy or timeout elapses.
+
+    The single home for the "spin on a condition with a deadline" pattern
+    that test bodies use to wait on process/thread/filesystem state instead
+    of a fixed, flaky sleep.  Returns True once predicate() is truthy or
+    False on timeout; callers decide what a timeout means (fail, assert,
+    or simply proceed).
+    """
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+    return True
+
+
 def silence_forkserver() -> None:
     """Start the forkserver with stderr silenced.
 

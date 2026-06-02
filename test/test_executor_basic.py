@@ -38,6 +38,7 @@ from .helpers import (
     helper_raise,
     raising_at_position,
     round_trip_bytes,
+    wait_until,
 )
 
 
@@ -204,9 +205,7 @@ class TestFutureStateQueries(unittest.TestCase):
             exe = JobserverExecutor(js)
             try:
                 f = exe.submit(barrier_wait, gate)
-                deadline = time.monotonic() + 5
-                while not f.running() and time.monotonic() < deadline:
-                    time.sleep(0.01)
+                wait_until(f.running, timeout=5)
                 self.assertTrue(f.running())
                 self.assertFalse(f.done())
             finally:
