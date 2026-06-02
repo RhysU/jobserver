@@ -52,9 +52,13 @@ def timeout_to_deadline(timeout: Optional[float]) -> float:
     When timeout is None a large, finite deadline is returned per
     poll()/select() restrictions.
     """
-    return (
-        _MAX_TIMEOUT_SECS if timeout is None else timeout
-    ) + time.monotonic()
+    if timeout is None:
+        return _MAX_TIMEOUT_SECS + time.monotonic()
+    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+        return timeout + time.monotonic()
+    raise TypeError(
+        f"timeout: None or a real number, got {type(timeout).__name__}"
+    )
 
 
 def deadline_to_timeout(deadline: float) -> float:

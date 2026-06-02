@@ -304,3 +304,11 @@ class TimeoutToDeadlineTest(unittest.TestCase):
         after = time.monotonic()
         self.assertGreaterEqual(deadline, before + 5.0)
         self.assertLessEqual(deadline, after + 5.0 + 0.01)
+
+    def test_non_numeric_raises_typeerror(self) -> None:
+        """A non-numeric timeout is a clear TypeError, not raw arithmetic
+        failure (#342); bool is rejected as an int subclass."""
+        for bad in ("5", object(), [], True, False):
+            with self.assertRaises(TypeError) as cm:
+                timeout_to_deadline(bad)
+            self.assertIn("timeout", str(cm.exception))

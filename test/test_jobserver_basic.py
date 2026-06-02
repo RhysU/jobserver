@@ -475,6 +475,17 @@ class TestJobserverBasic(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     js.submit(fn=helper_return, args=(1,), consume=bad)
 
+    def test_timeout_non_numeric_raises_typeerror(self) -> None:
+        """submit()/result() reject a non-numeric timeout clearly (#342)."""
+        with Jobserver(slots=2) as js:
+            for bad in ("5", object()):
+                with self.assertRaises(TypeError):
+                    js.submit(fn=helper_return, args=(1,), timeout=bad)
+            f = js.submit(fn=helper_return, args=(7,))
+            with self.assertRaises(TypeError):
+                f.result(timeout="soon")
+            self.assertEqual(7, f.result(timeout=5))
+
     def test_context_manager(self) -> None:
         """Context manager closes slots; submit raises after exit."""
         with Jobserver(slots=2) as js:
