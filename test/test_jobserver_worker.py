@@ -523,6 +523,15 @@ def _make_unpicklable_result() -> object:
     return Local()
 
 
+def _make_deep_result() -> object:
+    """Return a picklable list nested far deeper than the recursive pickler
+    can serialize, provoking a RecursionError from ForkingPickler.dumps."""
+    x: object = []
+    for _ in range(sys.getrecursionlimit() * 100):
+        x = [x]
+    return x
+
+
 class _RecordingSend:
     """Stand-in for a worker's pipe end recording send_bytes payloads.
 
@@ -583,6 +592,20 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         _worker_entrypoint(
             send, {}, lambda: None, _make_unpicklable_result, (), {}
         )
+        self.assertEqual(1, len(send.payloads))
+        wrapper = ForkingPickler.loads(send.payloads[0])
+        self.assertIsInstance(wrapper, ExceptionWrapper)
+        with self.assertRaises(RuntimeError) as ctx:
+            wrapper.unwrap()
+        self.assertIn("not picklable", str(ctx.exception))
+        self.assertTrue(send.closed)
+
+    def test_deeply_nested_result_uses_fallback(self) -> None:
+        """A picklable-but-too-deep result overflows the pickler with a
+        RecursionError that now degrades to the descriptive fallback rather
+        than crashing the worker into a misleading SubmissionDied (#343)."""
+        send = _RecordingSend()
+        _worker_entrypoint(send, {}, lambda: None, _make_deep_result, (), {})
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ExceptionWrapper)

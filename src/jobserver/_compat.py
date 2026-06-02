@@ -11,10 +11,19 @@ import select
 import signal
 
 # Failures from pickling a payload for a queue: PicklingError, an
-# AttributeError for a locally-defined (unpicklable-by-name) class, or a
-# TypeError for a fundamentally unpicklable object.  Shared so the worker
-# and executor fallbacks classify dump failures identically.
-PICKLE_DUMP_ERRORS = (pickle.PicklingError, AttributeError, TypeError)
+# AttributeError for a locally-defined (unpicklable-by-name) class, a
+# TypeError for a fundamentally unpicklable object, a ValueError raised by
+# some reducers (e.g. ctypes pointers, empty cells), or a RecursionError
+# from a picklable-but-too-deeply-nested object overflowing the recursive
+# pickler.  Shared so the worker and executor fallbacks classify dump
+# failures identically.
+PICKLE_DUMP_ERRORS = (
+    pickle.PicklingError,
+    AttributeError,
+    TypeError,
+    ValueError,
+    RecursionError,
+)
 
 
 def ignore_sigpipe() -> None:
