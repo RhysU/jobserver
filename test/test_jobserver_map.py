@@ -15,7 +15,6 @@ import os
 import tempfile
 import time
 import unittest
-from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver
 
@@ -26,7 +25,13 @@ from .helpers import (
     helper_return,
     raising_at_position,
     silence_forkserver,
+    start_methods,
+    wait_until,
 )
+
+
+def setUpModule() -> None:
+    silence_forkserver()
 
 
 def _kw_sum(a, b=0, c=0):
@@ -47,10 +52,6 @@ def _slow_identity(x, delay=0.0):
 
 class TestJobserverMap(unittest.TestCase):
     """Jobserver.map() functionality."""
-
-    @classmethod
-    def setUpClass(cls):
-        silence_forkserver()
 
     def test_empty_inputs(self) -> None:
         """map() with empty or None inputs yields nothing."""
@@ -74,7 +75,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_argses_only(self) -> None:
         """map() with argses only works like builtin map."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [((1, 2, 3),), ((4, 5),), ((),)]
@@ -94,7 +95,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_argses_and_kwargses(self) -> None:
         """map() with both argses and kwargses passes both."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [(1,), (10,), (100,)]
@@ -273,7 +274,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_exception_propagates(self) -> None:
         """Exception raised by fn surfaces from __next__, all start methods."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]
@@ -353,7 +354,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_many_items_few_slots(self) -> None:
         """Many work items with few slots completes without deadlock."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [(i,) for i in range(30)]
@@ -381,10 +382,6 @@ class TestJobserverMapAbandonment(unittest.TestCase):
     and are not awaited, so they keep their slot until later reclamation.
     """
 
-    @classmethod
-    def setUpClass(cls):
-        silence_forkserver()
-
     def _wait_until_finished(self, directory: str, count: int) -> None:
         """Block until count workers have finished, observed via markers.
 
@@ -394,11 +391,8 @@ class TestJobserverMapAbandonment(unittest.TestCase):
         then covers the tiny window before the worker sends its result and
         exits, so a single non-blocking reclaim can subsequently reap it.
         """
-        deadline = time.monotonic() + TIMEOUT
-        while len(os.listdir(directory)) < count:
-            if time.monotonic() > deadline:
-                self.fail("workers never finished")
-            time.sleep(0.01)
+        if not wait_until(lambda: len(os.listdir(directory)) >= count):
+            self.fail("workers never finished")
         time.sleep(0.1)
 
     def test_close_reclaims_finished_slots(self) -> None:

@@ -41,6 +41,7 @@ from .helpers import (
     create_marker,
     helper_return,
     silence_forkserver,
+    wait_until,
 )
 
 
@@ -73,9 +74,7 @@ class TestCancellation(unittest.TestCase):
         with Jobserver(context=FAST, slots=2) as js:
             with JobserverExecutor(js) as exe:
                 f = exe.submit(time.sleep, 0.3)
-                deadline = time.monotonic() + 5
-                while not f.running() and time.monotonic() < deadline:
-                    time.sleep(0.01)
+                wait_until(f.running, timeout=5)
                 self.assertFalse(f.cancel())
                 self.assertFalse(f.cancelled())
                 f.result(timeout=TIMEOUT)
@@ -112,11 +111,7 @@ class TestCancellation(unittest.TestCase):
                 exe = JobserverExecutor(js)
                 try:
                     blocker = exe.submit(barrier_wait, release)
-                    deadline = time.monotonic() + TIMEOUT
-                    while (
-                        not blocker.running() and time.monotonic() < deadline
-                    ):
-                        time.sleep(0.01)
+                    wait_until(blocker.running)
                     self.assertTrue(blocker.running())
 
                     # Victim cannot dispatch (slot held), so it stays PENDING.
@@ -449,12 +444,7 @@ class TestResourceLeaks(unittest.TestCase):
                 # Submit slow work so a future is outstanding
                 f = exe.submit(time.sleep, 10)
                 # Wait for the dispatcher to be alive
-                deadline = time.monotonic() + 5
-                while (
-                    not exe._dispatcher.is_alive()
-                    and time.monotonic() < deadline
-                ):
-                    time.sleep(0.01)
+                wait_until(exe._dispatcher.is_alive, timeout=5)
                 self.assertTrue(exe._dispatcher.is_alive())
                 # Kill the dispatcher
                 os.kill(exe._dispatcher.pid, signal.SIGKILL)
@@ -594,12 +584,10 @@ class TestStartupFailure(unittest.TestCase):
     """Partial __init__ failure must not orphan the dispatcher (#220)."""
 
     def _wait_for_baseline(self, baseline: int) -> None:
-        deadline = time.monotonic() + TIMEOUT
-        while (
-            len(multiprocessing.active_children()) > baseline
-            and time.monotonic() < deadline
-        ):
-            time.sleep(0.02)
+        wait_until(
+            lambda: len(multiprocessing.active_children()) <= baseline,
+            interval=0.02,
+        )
         self.assertEqual(baseline, len(multiprocessing.active_children()))
 
     def test_receiver_start_failure_tears_down_owned(self) -> None:

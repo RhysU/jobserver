@@ -14,7 +14,7 @@ import copy
 import queue
 import time
 import unittest
-from multiprocessing import get_all_start_methods, get_context
+from multiprocessing import get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.synchronize import Lock as IPCLock
 
@@ -26,6 +26,8 @@ from jobserver._queue import (
     resolve_context,
     timeout_to_deadline,
 )
+
+from .helpers import start_methods
 
 
 def _mpmc_echo_double(inq: MPMCQueue, outq: MPMCQueue) -> None:
@@ -43,7 +45,7 @@ class SPSCQueueTest(unittest.TestCase):
 
     def test_duplication_minimalqueue(self) -> None:
         """Copying of SPSCQueue is explicitly allowed."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with SPSCQueue(context=method) as mq1:
                     mq2 = copy.copy(mq1)
@@ -110,7 +112,7 @@ class MPMCQueueTest(unittest.TestCase):
 
     def test_cross_process_roundtrip(self) -> None:
         """Locks survive pickling into a child that echoes via the queue."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 ctx = get_context(method)
                 with (
@@ -225,7 +227,7 @@ class FixedBytesQueueTest(unittest.TestCase):
 
     def test_cross_process_roundtrip(self) -> None:
         """Tokens survive being shared with a child across start methods."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 ctx = get_context(method)
                 with (
@@ -250,14 +252,14 @@ class ResolveContextTest(unittest.TestCase):
 
     def test_string_returns_named_context(self) -> None:
         """A start-method string resolves to the named context."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 ctx = resolve_context(method)
                 self.assertIsInstance(ctx, BaseContext)
 
     def test_context_passes_through(self) -> None:
         """An existing BaseContext is returned unchanged."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 original = get_context(method)
                 self.assertIs(resolve_context(original), original)

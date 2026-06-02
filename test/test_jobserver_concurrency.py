@@ -21,7 +21,7 @@ from jobserver import (
     Jobserver,
 )
 
-from .helpers import helper_noop, helper_raise
+from .helpers import helper_noop, helper_raise, wait_until
 
 
 class TestJobserverConcurrency(unittest.TestCase):
@@ -273,11 +273,11 @@ class TestJobserverConcurrency(unittest.TestCase):
             # Finish a Future and let its child exit so the sentinel is
             # readable, but do not reclaim it: the lone slot stays consumed.
             f = js.submit(fn=helper_noop, timeout=5)
-            deadline = time.monotonic() + 5
-            while f._process is not None and f._process.is_alive():
-                if time.monotonic() >= deadline:
-                    self.fail("child did not exit")
-                time.sleep(0.01)
+            if not wait_until(
+                lambda: f._process is None or not f._process.is_alive(),
+                timeout=5,
+            ):
+                self.fail("child did not exit")
 
             # Count select() calls the obtain-token loop performs.
             selector = js._selector

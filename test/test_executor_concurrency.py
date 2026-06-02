@@ -22,7 +22,6 @@ import typing
 import unittest
 import unittest.mock
 import weakref
-from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver, JobserverExecutor, _request, _response
 from jobserver._executor import _DispatchState, _handle_request
@@ -35,6 +34,7 @@ from .helpers import (
     executor_in_child_via_queue,
     helper_raise,
     silence_forkserver,
+    start_methods,
 )
 
 
@@ -229,10 +229,7 @@ class TestStartMethods(unittest.TestCase):
 
     def test_all_methods(self) -> None:
         """All start methods: submit, result, exception."""
-        methods = get_all_start_methods()
-        if sys.version_info >= (3, 12):
-            methods = [m for m in methods if m != "fork"]
-        for method in methods:
+        for method in start_methods(threaded=True):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     with JobserverExecutor(js) as exe:
@@ -251,10 +248,7 @@ class TestStartMethods(unittest.TestCase):
 
     def test_map_all_methods(self) -> None:
         """map() works with all start methods."""
-        methods = get_all_start_methods()
-        if sys.version_info >= (3, 12):
-            methods = [m for m in methods if m != "fork"]
-        for method in methods:
+        for method in start_methods(threaded=True):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     with JobserverExecutor(js) as exe:
@@ -263,10 +257,7 @@ class TestStartMethods(unittest.TestCase):
 
     def test_shutdown_all_methods(self) -> None:
         """Shutdown works with all start methods."""
-        methods = get_all_start_methods()
-        if sys.version_info >= (3, 12):
-            methods = [m for m in methods if m != "fork"]
-        for method in methods:
+        for method in start_methods(threaded=True):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     exe = JobserverExecutor(js)
@@ -280,9 +271,7 @@ class TestEdgeCases(unittest.TestCase):
 
     def test_executor_in_forked_child(self) -> None:
         """Executor created inside a forked child."""
-        methods = get_all_start_methods()
-        if sys.version_info >= (3, 12):
-            methods = [m for m in methods if m != "fork"]
+        methods = start_methods(threaded=True)
         method = methods[0] if methods else FAST
         # Use a non-daemonic Process so the child can
         # spawn its own children (Pool workers are

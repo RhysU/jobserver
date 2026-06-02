@@ -18,7 +18,7 @@ import sys
 import time
 import typing
 import unittest
-from multiprocessing import get_all_start_methods, get_context
+from multiprocessing import get_context
 from multiprocessing.reduction import ForkingPickler
 
 from jobserver import (
@@ -45,6 +45,7 @@ from .helpers import (
     helper_return,
     helper_return_connection,
     helper_return_kwargs,
+    start_methods,
 )
 
 
@@ -53,14 +54,13 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_submission_died(self) -> None:
         """Signal receipt by worker can be detected via Future?"""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # Permit observing callback side-effects
                 mutable = [0, 0, 0, 0, 0]
 
                 # Prepare jobs with workers possibly receiving signals
-                context = get_context(method)
-                with Jobserver(context=context, slots=2) as js:
+                with Jobserver(context=method, slots=2) as js:
                     rsig = signal.raise_signal
                     f = js.submit(fn=rsig, args=(signal.SIGKILL,))
                     f.when_done(helper_callback, mutable, 0, 2)
@@ -109,7 +109,7 @@ class TestJobserverWorker(unittest.TestCase):
             (sys.exit, (1,), "SystemExit"),
             (helper_raise, (KeyboardInterrupt,), "KeyboardInterrupt"),
         ]
-        for method in get_all_start_methods():
+        for method in start_methods():
             for fn, args, expected in base_exceptions:
                 with self.subTest(method=method, fn=fn.__name__):
                     with Jobserver(context=method, slots=1) as js:
@@ -130,7 +130,7 @@ class TestJobserverWorker(unittest.TestCase):
         EOFError -> SubmissionDied with __cause__ None (the silent-death
         path that distinguishes it from the enriched #167 case).
         """
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=os._exit, args=(1,), timeout=5)
@@ -141,10 +141,10 @@ class TestJobserverWorker(unittest.TestCase):
     def test_done_signal_terminates(self) -> None:
         """Future.wait(..., signal=...) accepts Signals enum and int forms."""
         for method, sig in itertools.product(
-            get_all_start_methods(), (signal.SIGTERM, int(signal.SIGTERM))
+            start_methods(), (signal.SIGTERM, int(signal.SIGTERM))
         ):
             with self.subTest(method=method, sig=sig):
-                with Jobserver(context=get_context(method), slots=1) as js:
+                with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=time.sleep, args=(60,))
                     self.assertTrue(f.wait(timeout=None, signal=sig))
                     with self.assertRaises(SubmissionDied):
@@ -153,11 +153,10 @@ class TestJobserverWorker(unittest.TestCase):
     def test_done_signal_invalid_raises(self) -> None:
         """Future.wait(..., signal=invalid) raises OSError from os.kill."""
         invalid_sig = max(signal.valid_signals()) + 1
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
-                with SPSCQueue(context=context) as mq:
-                    with Jobserver(context=context, slots=1) as js:
+                with SPSCQueue(context=method) as mq:
+                    with Jobserver(context=method, slots=1) as js:
                         f = js.submit(fn=helper_nonblocking, args=(mq,))
                         try:
                             with self.assertRaises(OSError):
@@ -168,7 +167,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_done_signal_after_done_is_safe(self) -> None:
         """wait(..., signal=...) on an already-completed Future is safe."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=len, args=((1, 2, 3),))
@@ -182,9 +181,9 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_done_signal_very_short_timeout(self) -> None:
         """Future.wait(timeout=tiny, signal=...) still delivers the signal."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
-                with Jobserver(context=get_context(method), slots=1) as js:
+                with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=time.sleep, args=(60,))
                     f.wait(timeout=1e-9, signal=signal.SIGTERM)
                     self.assertTrue(f.wait(timeout=5))
@@ -198,7 +197,7 @@ class TestJobserverWorker(unittest.TestCase):
         self.assertIsNone(os.environ.get(key, None))
 
         # Test observability of changes to the environment
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # Notice f sets, g confirms unset, and h re-sets they key.
@@ -246,7 +245,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_worker_process_name(self) -> None:
         """Worker process name is 'Jobserver-worker'."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=helper_current_process_name)
@@ -254,7 +253,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_preexec_fn_exception(self) -> None:
         """Exception in preexec_fn propagates through result()."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(
@@ -270,7 +269,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_sleep_fn(self) -> None:
         """Confirm sleep_fn(...) invoked and handled per documentation."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # Confirm negative/nan sleep raises ValueError, fn uncalled
@@ -356,7 +355,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_sleep_fn_raises_propagates(self) -> None:
         """Exception from sleep_fn propagates out of submit()."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # First submission fills the slot
@@ -379,7 +378,7 @@ class TestJobserverWorker(unittest.TestCase):
         """Defaults set in __init__ apply in submit."""
         key = "JOBSERVER_TEST_ENVIRON"
         self.assertIsNone(os.environ.get(key, None))
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # env: child sees key without submit() specifying it
                 with Jobserver(
@@ -408,7 +407,7 @@ class TestJobserverWorker(unittest.TestCase):
         """submit() kwargs override the instance defaults set in __init__."""
         key = "JOBSERVER_TEST_ENVIRON"
         self.assertIsNone(os.environ.get(key, None))
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # env override: submit-level value replaces the init default
                 with Jobserver(
@@ -445,7 +444,7 @@ class TestJobserverWorker(unittest.TestCase):
         """preexec_fn returning a context manager wraps fn execution."""
         key = "JOBSERVER_TEST_CM"
         self.assertIsNone(os.environ.get(key, None))
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # fn reads the env var set by __enter__
@@ -459,7 +458,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_preexec_fn_context_manager_on_exception(self) -> None:
         """Context manager __exit__ runs even when fn raises."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(
@@ -473,7 +472,7 @@ class TestJobserverWorker(unittest.TestCase):
 
     def test_preexec_fn_context_manager_suppresses(self) -> None:
         """Context manager __exit__ may suppress exceptions; result is None."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(
@@ -487,7 +486,7 @@ class TestJobserverWorker(unittest.TestCase):
     def test_preexec_fn_cm_as_init_default(self) -> None:
         """Context manager factory as __init__ default applies to all."""
         key = "JOBSERVER_TEST_CM"
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(
                     context=method, slots=1, preexec_fn=helper_preexec_cm
@@ -500,7 +499,7 @@ class TestJobserverWorker(unittest.TestCase):
     def test_preexec_fn_cm_override_at_submit(self) -> None:
         """submit-level preexec_fn overrides init-level context manager."""
         key = "JOBSERVER_TEST_CM"
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # Init sets context manager; submit overrides with callable
                 with Jobserver(
@@ -610,7 +609,7 @@ class TestKwargsNameCollisions(unittest.TestCase):
             "consume",
             "sleep_fn",
         )
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     for name in names:
@@ -627,12 +626,14 @@ class TestResultNotReconstructable(unittest.TestCase):
     parent must surface a clean library error, not a raw OS error (#303)."""
 
     @unittest.skipUnless(
-        "fork" in get_all_start_methods(), "requires fork start method"
+        "fork" in start_methods(), "requires fork start method"
     )
     def test_returned_connection_does_not_leak_filenotfounderror(self) -> None:
         """Returning a live Connection pickles in the child but fails to
         rebuild in the parent; report it via RuntimeError rather than
         leaking FileNotFoundError from recv()."""
+        # Keep the context object: it is handed to the worker to build a
+        # Connection, so it cannot collapse to a bare start-method string.
         context = get_context("fork")
         with Jobserver(context=context, slots=2) as js:
             future = js.submit(fn=helper_return_connection, args=(context,))

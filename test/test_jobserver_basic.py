@@ -21,7 +21,6 @@ import time
 import typing
 import unittest
 from collections import ChainMap
-from multiprocessing import get_all_start_methods, get_context
 
 from jobserver import (
     Blocked,
@@ -35,6 +34,7 @@ from .helpers import (
     helper_nonblocking,
     helper_recurse,
     helper_return,
+    start_methods,
 )
 
 
@@ -64,7 +64,7 @@ class TestJobserverBasic(unittest.TestCase):
     def test_basic(self) -> None:
         """Basic submission up to slot limit along with callbacks firing?"""
         for method, check_done in itertools.product(
-            get_all_start_methods(), (True, False)
+            start_methods(), (True, False)
         ):
             with self.subTest(method=method, check_done=check_done):
                 # Prepare how callbacks will be observed
@@ -76,8 +76,7 @@ class TestJobserverBasic(unittest.TestCase):
                     barrier_path = os.path.join(tmpdir, "go")
 
                     # Prepare work filling all slots
-                    context = get_context(method)
-                    with Jobserver(context=context, slots=3) as js:
+                    with Jobserver(context=method, slots=3) as js:
                         f = js.submit(
                             fn=barrier_wait,
                             args=(barrier_path,),
@@ -177,7 +176,7 @@ class TestJobserverBasic(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self) -> None:
         """None can be returned from a Future?"""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=3) as js:
                     f = js.submit(
@@ -190,7 +189,7 @@ class TestJobserverBasic(unittest.TestCase):
 
     def test_non_dict_mapping_kwargs(self) -> None:
         """Non-dict Mapping kwargs are coerced to dict for pickling."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 m = UnpickleableMapping({"object": 42})
                 self.assertNotIsInstance(m, dict)
@@ -203,7 +202,7 @@ class TestJobserverBasic(unittest.TestCase):
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
         """An Exception can be returned, not raised, from a Future?"""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=3) as js:
                     e = Exception(f"Returned by method {method}")
@@ -215,7 +214,7 @@ class TestJobserverBasic(unittest.TestCase):
         """Future.result() raises Exceptions thrown while processing work?"""
         from .helpers import helper_raise
 
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # Prepare how callbacks will be observed
                 mutable = [0]
@@ -256,13 +255,12 @@ class TestJobserverBasic(unittest.TestCase):
     def test_nonblocking(self) -> None:
         """Ensure non-blocking wait() and submit() logic honors timeouts."""
         for method, check_done in itertools.product(
-            get_all_start_methods(), (True, False)
+            start_methods(), (True, False)
         ):
             with self.subTest(method=method, check_done=check_done):
-                context = get_context(method)
                 with (
-                    SPSCQueue(context=context) as mq,
-                    Jobserver(context=context, slots=1) as js,
+                    SPSCQueue(context=method) as mq,
+                    Jobserver(context=method, slots=1) as js,
                 ):
                     delay = 0.02  # Impacts test runtime on success path
 
@@ -311,13 +309,12 @@ class TestJobserverBasic(unittest.TestCase):
         admit further work without any explicit result()/wait() read.
         Regression test for issue #269.
         """
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
                 # One megabyte far exceeds the pipe buffer so each child
                 # blocks mid-send() on its result and does not exit.
                 payload = b"X" * 1_000_000
-                with Jobserver(context=context, slots=2) as js:
+                with Jobserver(context=method, slots=2) as js:
                     f1 = js.submit(fn=helper_return, args=(payload,))
                     f2 = js.submit(fn=helper_return, args=(payload,))
 
@@ -342,12 +339,11 @@ class TestJobserverBasic(unittest.TestCase):
 
     def test_heavyusage(self) -> None:
         """Workload saturating the configured slots does not deadlock?"""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # Prepare workload based on number of available slots
-                context = get_context(method)
                 slots = 2
-                with Jobserver(context=context, slots=slots) as js:
+                with Jobserver(context=method, slots=slots) as js:
                     # Alternate between submissions with/without timeouts
                     kwargs: list[dict[str, typing.Any]] = [
                         dict(timeout=None),
@@ -365,7 +361,7 @@ class TestJobserverBasic(unittest.TestCase):
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
         """Confirm increasingly large objects can be processed."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     for size in (
@@ -379,7 +375,7 @@ class TestJobserverBasic(unittest.TestCase):
     # TODO Can the "method != fork" clause be relaxed?
     def test_duplication_futures(self) -> None:
         """Copying and pickling of Futures is explicitly disallowed."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=3) as js:
                     f = js.submit(fn=len, args=((1, 2, 3),))
@@ -401,7 +397,7 @@ class TestJobserverBasic(unittest.TestCase):
     # No behavioral assertions made around pickling, however.
     def test_duplication_jobserver(self) -> None:
         """Copying of Jobservers is explicitly allowed."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=3) as js1:
                     js2 = copy.copy(js1)
@@ -426,7 +422,7 @@ class TestJobserverBasic(unittest.TestCase):
 
     def test_jobserver_as_submit_argument(self) -> None:
         """Ensure instances with in-flight Futures passable as arguments."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 # Submit work so an in-flight Future is being tracked
                 with (
@@ -443,22 +439,21 @@ class TestJobserverBasic(unittest.TestCase):
 
     def test_submission_nested(self) -> None:
         """Jobserver resource limits honored during nested submissions."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
-                with Jobserver(context=context, slots=3) as js:
+                with Jobserver(context=method, slots=3) as js:
                     self.assertEqual(
                         0,
                         helper_recurse(js=js, max_depth=0),
                         msg="Recursive base case must terminate recursion",
                     )
-                with Jobserver(context=context, slots=3) as js:
+                with Jobserver(context=method, slots=3) as js:
                     self.assertEqual(
                         1,
                         helper_recurse(js=js, max_depth=1),
                         msg="One inductive step must be possible",
                     )
-                with Jobserver(context=context, slots=4) as js:
+                with Jobserver(context=method, slots=4) as js:
                     self.assertEqual(
                         4,
                         helper_recurse(js=js, max_depth=6),

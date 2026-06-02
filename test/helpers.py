@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import typing
+from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver, JobserverExecutor
 from jobserver._queue import SPSCQueue
@@ -28,6 +29,45 @@ T = typing.TypeVar("T")
 FAST = "forkserver" if sys.version_info >= (3, 12) else "fork"
 
 TIMEOUT = 30  # generous per-future timeout to avoid flakes
+
+
+def start_methods(*, threaded: bool = False) -> list[str]:
+    """Multiprocessing start methods to parametrize a test over.
+
+    The canonical source for ``for method in start_methods():`` loops so
+    the platform/Python policy lives in exactly one place.
+
+    Pass ``threaded=True`` from a process that owns background threads
+    (e.g. JobserverExecutor's dispatcher): "fork" is then omitted on
+    Python 3.12+, where forking a multithreaded process is deprecated
+    and unsafe.
+    """
+    methods = get_all_start_methods()
+    if threaded and sys.version_info >= (3, 12):
+        methods = [m for m in methods if m != "fork"]
+    return methods
+
+
+def wait_until(
+    predicate: typing.Callable[[], bool],
+    *,
+    timeout: float = TIMEOUT,
+    interval: float = 0.01,
+) -> bool:
+    """Poll predicate() until it is truthy or timeout elapses.
+
+    The single home for the "spin on a condition with a deadline" pattern
+    that test bodies use to wait on process/thread/filesystem state instead
+    of a fixed, flaky sleep.  Returns True once predicate() is truthy or
+    False on timeout; callers decide what a timeout means (fail, assert,
+    or simply proceed).
+    """
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+    return True
 
 
 def silence_forkserver() -> None:
@@ -54,6 +94,13 @@ def silence_forkserver() -> None:
     finally:
         os.dup2(saved_fd, 2)
         os.close(saved_fd)
+
+
+# NB: silence_forkserver() must be called from a unittest setUpModule (run
+# in the runner process only), never at import time.  An import-time call
+# would also run inside spawn/forkserver workers as they import their
+# target's module, forking the forkserver mid-import and corrupting the
+# child's view of that module.
 
 
 # ---- Module-level helpers (must be picklable for spawn) ----

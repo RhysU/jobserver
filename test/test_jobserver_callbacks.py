@@ -23,6 +23,7 @@ from .helpers import (
     FAST,
     helper_callback,
     helper_raise,
+    wait_until,
 )
 
 
@@ -36,12 +37,12 @@ class TestJobserverCallbacks(unittest.TestCase):
         default), whose slower startup can leave a child unfinished.
         Polling is_alive() waits without firing callbacks early.
         """
-        deadline = time.monotonic() + 5
         for f in futures:
-            while f._process is not None and f._process.is_alive():
-                if time.monotonic() >= deadline:
-                    self.fail("child did not exit")
-                time.sleep(0.01)
+            if not wait_until(
+                lambda f=f: f._process is None or not f._process.is_alive(),
+                timeout=5,
+            ):
+                self.fail("child did not exit")
 
     def helper_check_semantics(self, f: Future[None]) -> None:
         """Helper checking Future semantics *inside* a callback as expected."""
