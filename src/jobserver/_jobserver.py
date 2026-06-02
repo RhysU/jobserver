@@ -89,7 +89,9 @@ class CallbackRaised(Exception):
     Reports an Exception raised from callbacks registered with a Future.
 
     Instances of this type must have non-None __cause__ members (see PEP 3134).
-    The __cause__ member will be the Exception raised by client code.
+    The __cause__ member will be the Exception raised by client code.  The
+    __cause__ will never be a non-Exception BaseException, e.g.
+    KeyboardInterrupt.
 
     When raised by some method, e.g. by Future.done(...), Future.wait(...),
     or Future.result(...), the caller MAY choose to re-invoke that same
@@ -243,7 +245,8 @@ def _callback_wrapper(seqno: int, fn, *args, **kwargs) -> None:
     """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised.
 
     The seqno is the when_done(...) sequence number from registering fn
-    and is stamped on any CallbackRaised raised here.
+    and is stamped on any CallbackRaised raised here.  A non-Exception
+    BaseException is not wrapped and propagates raw.
     """
     try:
         fn(*args, **kwargs)
