@@ -622,7 +622,7 @@ class Jobserver:
         # invalid inputs cannot leave pipes or semaphores behind.
         if slots is None:
             slots = sched_getaffinity0()
-        if not isinstance(slots, int):
+        if isinstance(slots, bool) or not isinstance(slots, int):
             raise TypeError(f"slots: int, got {type(slots).__name__}")
         if slots < 1:
             raise ValueError(f"slots must be >= 1, got {slots!r}")

@@ -60,6 +60,19 @@ class TestLargeSlots(unittest.TestCase):
             future = js.submit(fn=abs, args=(-7,))
             self.assertEqual(future.result(timeout=TIMEOUT), 7)
 
+    def test_slots_rejects_bool(self) -> None:
+        """slots=True/False is a TypeError, not a silent slots=1 (#336)."""
+        for bad in (True, False):
+            with self.assertRaises(TypeError) as cm:
+                Jobserver(context=FAST, slots=bad)
+            self.assertIn("bool", str(cm.exception))
+
+    def test_slots_rejects_non_int(self) -> None:
+        """slots must be an int; str/float are TypeErrors (#336)."""
+        for bad in ("2", 2.0):
+            with self.assertRaises(TypeError):
+                Jobserver(context=FAST, slots=bad)
+
 
 if __name__ == "__main__":
     unittest.main()
