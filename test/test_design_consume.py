@@ -28,9 +28,10 @@ bottoms out normally.
 import signal
 import time
 import unittest
-from multiprocessing import get_all_start_methods
 
 from jobserver import Blocked, Jobserver
+
+from .helpers import start_methods
 
 
 def _recurse(js: Jobserver, depth: int, consume: int = 1) -> int:
@@ -53,7 +54,7 @@ class TestDesignConsume(unittest.TestCase):
 
     def test_consume_1_deadlocks_beyond_slot_count(self) -> None:
         """consume=1 (default) deadlocks when recursion depth > slots."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=self.SLOTS) as js:
                     # depth=1 succeeds: parent + child = 2 tokens = 2 slots
@@ -67,7 +68,7 @@ class TestDesignConsume(unittest.TestCase):
 
     def test_consume_0_permits_arbitrary_depth(self) -> None:
         """consume=0 is the implicit free token, avoiding deadlock."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=self.SLOTS) as js:
                     # Depth far exceeds the 2 slots, exercising the
@@ -77,7 +78,7 @@ class TestDesignConsume(unittest.TestCase):
 
     def test_top_level_backpressure_preserved(self) -> None:
         """consume=0 is for interiors; the top level still obeys slots."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=self.SLOTS) as js:
                     held = []

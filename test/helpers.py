@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import typing
+from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver, JobserverExecutor
 from jobserver._queue import SPSCQueue
@@ -28,6 +29,23 @@ T = typing.TypeVar("T")
 FAST = "forkserver" if sys.version_info >= (3, 12) else "fork"
 
 TIMEOUT = 30  # generous per-future timeout to avoid flakes
+
+
+def start_methods(*, threaded: bool = False) -> list[str]:
+    """Multiprocessing start methods to parametrize a test over.
+
+    The canonical source for ``for method in start_methods():`` loops so
+    the platform/Python policy lives in exactly one place.
+
+    Pass ``threaded=True`` from a process that owns background threads
+    (e.g. JobserverExecutor's dispatcher): "fork" is then omitted on
+    Python 3.12+, where forking a multithreaded process is deprecated
+    and unsafe.
+    """
+    methods = get_all_start_methods()
+    if threaded and sys.version_info >= (3, 12):
+        methods = [m for m in methods if m != "fork"]
+    return methods
 
 
 def silence_forkserver() -> None:

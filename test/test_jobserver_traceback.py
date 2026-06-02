@@ -13,7 +13,7 @@ import pickle
 import traceback
 import typing
 import unittest
-from multiprocessing import get_all_start_methods, get_context
+from multiprocessing import get_context
 
 from jobserver import Jobserver, SubmissionDied
 from jobserver._jobserver import (
@@ -22,7 +22,7 @@ from jobserver._jobserver import (
     ResultWrapper,
 )
 
-from .helpers import helper_raise
+from .helpers import helper_raise, start_methods
 
 
 class CustomChildError(Exception):
@@ -98,7 +98,7 @@ class TestJobserverTraceback(unittest.TestCase):
 
     def test_traceback_includes_child_frames(self) -> None:
         """Rendered traceback names the child's failing frame."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=get_context(method), slots=1) as js:
                     f = js.submit(
@@ -121,7 +121,7 @@ class TestJobserverTraceback(unittest.TestCase):
 
     def test_traceback_custom_picklable_type(self) -> None:
         """A module-level custom exception type round-trips with its trace."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=get_context(method), slots=1) as js:
                     f = js.submit(
@@ -143,7 +143,7 @@ class TestJobserverTraceback(unittest.TestCase):
 
     def test_traceback_unpicklable_exception_type(self) -> None:
         """An unpicklable child exception still surfaces a useful traceback."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=get_context(method), slots=1) as js:
                     f = js.submit(fn=helper_raise_local, timeout=None)
@@ -162,7 +162,7 @@ class TestJobserverTraceback(unittest.TestCase):
 
     def test_traceback_picklable_chain(self) -> None:
         """Both layers of a picklable cause chain render in the parent."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=get_context(method), slots=1) as js:
                     f = js.submit(
@@ -184,7 +184,7 @@ class TestJobserverTraceback(unittest.TestCase):
 
     def test_traceback_unpicklable_cause(self) -> None:
         """A locally-defined cause still renders despite being unpicklable."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=get_context(method), slots=1) as js:
                     f = js.submit(
@@ -206,7 +206,7 @@ class TestJobserverTraceback(unittest.TestCase):
 
     def test_traceback_unpicklable_outer_picklable_cause(self) -> None:
         """A locally-defined outer's chain renders through the fallback."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=get_context(method), slots=1) as js:
                     f = js.submit(

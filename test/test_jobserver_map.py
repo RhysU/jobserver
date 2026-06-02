@@ -15,7 +15,6 @@ import os
 import tempfile
 import time
 import unittest
-from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver
 
@@ -26,6 +25,7 @@ from .helpers import (
     helper_return,
     raising_at_position,
     silence_forkserver,
+    start_methods,
 )
 
 
@@ -74,7 +74,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_argses_only(self) -> None:
         """map() with argses only works like builtin map."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [((1, 2, 3),), ((4, 5),), ((),)]
@@ -94,7 +94,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_argses_and_kwargses(self) -> None:
         """map() with both argses and kwargses passes both."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [(1,), (10,), (100,)]
@@ -273,7 +273,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_exception_propagates(self) -> None:
         """Exception raised by fn surfaces from __next__, all start methods."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]
@@ -353,7 +353,7 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_many_items_few_slots(self) -> None:
         """Many work items with few slots completes without deadlock."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=2) as js:
                     argses = [(i,) for i in range(30)]

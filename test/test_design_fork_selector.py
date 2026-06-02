@@ -22,9 +22,10 @@ clean selector when it first observes a pid change.
 import os
 import time
 import unittest
-from multiprocessing import get_all_start_methods
 
 from jobserver import Jobserver
+
+from .helpers import start_methods
 
 
 def _sibling() -> int:
@@ -61,7 +62,7 @@ class TestDesignForkSelector(unittest.TestCase):
 
     def test_nested_fanout_rebuilds_inherited_selector(self) -> None:
         """A forked worker reclaims cleanly despite inherited siblings."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=8) as js:
                     f = js.submit(fn=_parent_fanout, args=(js,), consume=0)

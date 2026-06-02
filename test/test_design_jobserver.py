@@ -36,9 +36,10 @@ When the Child is killed:
 import signal
 import time
 import unittest
-from multiprocessing import get_all_start_methods
 
 from jobserver import Blocked, Jobserver, SubmissionDied
+
+from .helpers import start_methods
 
 
 def _child_work(js: Jobserver, grandchild_duration: float) -> str:
@@ -61,7 +62,7 @@ class TestDesignShortcoming(unittest.TestCase):
 
     def test_intermediate_death_leaks_one_token(self) -> None:
         """Parent -> Child -> Grandchild; kill Child; 1 token is leaked."""
-        for method in get_all_start_methods():
+        for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=self.SLOTS) as js:
                     # All slots are available: submit and immediately collect
