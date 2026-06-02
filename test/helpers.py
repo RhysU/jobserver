@@ -74,6 +74,15 @@ def silence_forkserver() -> None:
         os.close(saved_fd)
 
 
+# Silence the forkserver exactly once for the whole suite, here at import
+# time so it happens before any worker spawns regardless of which test
+# module runs first.  Every test module that spawns workers imports this
+# module, so this single call is the canonical entry point; individual
+# modules no longer need their own setUpModule/setUpClass.  A no-op unless
+# the platform default start method is "forkserver" (Python 3.12+).
+silence_forkserver()
+
+
 # ---- Module-level helpers (must be picklable for spawn) ----
 
 

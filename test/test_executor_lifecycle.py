@@ -40,12 +40,7 @@ from .helpers import (
     barrier_wait,
     create_marker,
     helper_return,
-    silence_forkserver,
 )
-
-
-def setUpModule() -> None:
-    silence_forkserver()
 
 
 class TestCancellation(unittest.TestCase):

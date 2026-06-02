@@ -24,7 +24,6 @@ from .helpers import (
     helper_marker_return,
     helper_return,
     raising_at_position,
-    silence_forkserver,
     start_methods,
 )
 
@@ -47,10 +46,6 @@ def _slow_identity(x, delay=0.0):
 
 class TestJobserverMap(unittest.TestCase):
     """Jobserver.map() functionality."""
-
-    @classmethod
-    def setUpClass(cls):
-        silence_forkserver()
 
     def test_empty_inputs(self) -> None:
         """map() with empty or None inputs yields nothing."""
@@ -380,10 +375,6 @@ class TestJobserverMapAbandonment(unittest.TestCase):
     slots promptly.  Still-running workers cannot be cancelled mid-flight
     and are not awaited, so they keep their slot until later reclamation.
     """
-
-    @classmethod
-    def setUpClass(cls):
-        silence_forkserver()
 
     def _wait_until_finished(self, directory: str, count: int) -> None:
         """Block until count workers have finished, observed via markers.

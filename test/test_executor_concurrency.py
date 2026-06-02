@@ -33,13 +33,8 @@ from .helpers import (
     TIMEOUT,
     executor_in_child_via_queue,
     helper_raise,
-    silence_forkserver,
     start_methods,
 )
-
-
-def setUpModule() -> None:
-    silence_forkserver()
 
 
 class TestConcurrencyStress(unittest.TestCase):
