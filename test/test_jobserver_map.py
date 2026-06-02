@@ -24,9 +24,14 @@ from .helpers import (
     helper_marker_return,
     helper_return,
     raising_at_position,
+    silence_forkserver,
     start_methods,
     wait_until,
 )
+
+
+def setUpModule() -> None:
+    silence_forkserver()
 
 
 def _kw_sum(a, b=0, c=0):

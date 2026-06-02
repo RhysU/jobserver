@@ -96,13 +96,11 @@ def silence_forkserver() -> None:
         os.close(saved_fd)
 
 
-# Silence the forkserver exactly once for the whole suite, here at import
-# time so it happens before any worker spawns regardless of which test
-# module runs first.  Every test module that spawns workers imports this
-# module, so this single call is the canonical entry point; individual
-# modules no longer need their own setUpModule/setUpClass.  A no-op unless
-# the platform default start method is "forkserver" (Python 3.12+).
-silence_forkserver()
+# NB: silence_forkserver() must be called from a unittest setUpModule (run
+# in the runner process only), never at import time.  An import-time call
+# would also run inside spawn/forkserver workers as they import their
+# target's module, forking the forkserver mid-import and corrupting the
+# child's view of that module.
 
 
 # ---- Module-level helpers (must be picklable for spawn) ----

@@ -38,8 +38,13 @@ from .helpers import (
     helper_raise,
     raising_at_position,
     round_trip_bytes,
+    silence_forkserver,
     wait_until,
 )
+
+
+def setUpModule() -> None:
+    silence_forkserver()
 
 
 class TestSubmitAndResult(unittest.TestCase):

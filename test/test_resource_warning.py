@@ -17,7 +17,12 @@ from .helpers import (
     TIMEOUT,
     helper_raise,
     helper_return,
+    silence_forkserver,
 )
+
+
+def setUpModule() -> None:
+    silence_forkserver()
 
 
 class TestResourceWarning(unittest.TestCase):
