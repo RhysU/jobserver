@@ -1066,14 +1066,14 @@ class Jobserver:
 
         if isinstance(argses, Mapping):
             raise TypeError(
-                "argses: expected an iterable of positional-argument"
-                " iterables (e.g. a list of tuples), got"
+                "argses: expected an Iterable of positional-argument"
+                " Iterables (e.g. a list of tuples), got"
                 f" {type(argses).__name__}; iterating it would silently"
                 " yield its keys"
             )
         if isinstance(kwargses, Mapping):
             raise TypeError(
-                "kwargses: expected an iterable of mappings (e.g. a list"
+                "kwargses: expected an Iterable of Mappings (e.g. a list"
                 f" of dicts), got a single {type(kwargses).__name__};"
                 " iterating it would silently yield its keys"
             )
