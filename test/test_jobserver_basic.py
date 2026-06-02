@@ -21,7 +21,6 @@ import time
 import typing
 import unittest
 from collections import ChainMap
-from multiprocessing import get_context
 
 from jobserver import (
     Blocked,
@@ -77,8 +76,7 @@ class TestJobserverBasic(unittest.TestCase):
                     barrier_path = os.path.join(tmpdir, "go")
 
                     # Prepare work filling all slots
-                    context = get_context(method)
-                    with Jobserver(context=context, slots=3) as js:
+                    with Jobserver(context=method, slots=3) as js:
                         f = js.submit(
                             fn=barrier_wait,
                             args=(barrier_path,),
@@ -260,10 +258,9 @@ class TestJobserverBasic(unittest.TestCase):
             start_methods(), (True, False)
         ):
             with self.subTest(method=method, check_done=check_done):
-                context = get_context(method)
                 with (
-                    SPSCQueue(context=context) as mq,
-                    Jobserver(context=context, slots=1) as js,
+                    SPSCQueue(context=method) as mq,
+                    Jobserver(context=method, slots=1) as js,
                 ):
                     delay = 0.02  # Impacts test runtime on success path
 
@@ -314,11 +311,10 @@ class TestJobserverBasic(unittest.TestCase):
         """
         for method in start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
                 # One megabyte far exceeds the pipe buffer so each child
                 # blocks mid-send() on its result and does not exit.
                 payload = b"X" * 1_000_000
-                with Jobserver(context=context, slots=2) as js:
+                with Jobserver(context=method, slots=2) as js:
                     f1 = js.submit(fn=helper_return, args=(payload,))
                     f2 = js.submit(fn=helper_return, args=(payload,))
 
@@ -346,9 +342,8 @@ class TestJobserverBasic(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 # Prepare workload based on number of available slots
-                context = get_context(method)
                 slots = 2
-                with Jobserver(context=context, slots=slots) as js:
+                with Jobserver(context=method, slots=slots) as js:
                     # Alternate between submissions with/without timeouts
                     kwargs: list[dict[str, typing.Any]] = [
                         dict(timeout=None),
@@ -446,20 +441,19 @@ class TestJobserverBasic(unittest.TestCase):
         """Jobserver resource limits honored during nested submissions."""
         for method in start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
-                with Jobserver(context=context, slots=3) as js:
+                with Jobserver(context=method, slots=3) as js:
                     self.assertEqual(
                         0,
                         helper_recurse(js=js, max_depth=0),
                         msg="Recursive base case must terminate recursion",
                     )
-                with Jobserver(context=context, slots=3) as js:
+                with Jobserver(context=method, slots=3) as js:
                     self.assertEqual(
                         1,
                         helper_recurse(js=js, max_depth=1),
                         msg="One inductive step must be possible",
                     )
-                with Jobserver(context=context, slots=4) as js:
+                with Jobserver(context=method, slots=4) as js:
                     self.assertEqual(
                         4,
                         helper_recurse(js=js, max_depth=6),

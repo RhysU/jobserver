@@ -60,8 +60,7 @@ class TestJobserverWorker(unittest.TestCase):
                 mutable = [0, 0, 0, 0, 0]
 
                 # Prepare jobs with workers possibly receiving signals
-                context = get_context(method)
-                with Jobserver(context=context, slots=2) as js:
+                with Jobserver(context=method, slots=2) as js:
                     rsig = signal.raise_signal
                     f = js.submit(fn=rsig, args=(signal.SIGKILL,))
                     f.when_done(helper_callback, mutable, 0, 2)
@@ -145,7 +144,7 @@ class TestJobserverWorker(unittest.TestCase):
             start_methods(), (signal.SIGTERM, int(signal.SIGTERM))
         ):
             with self.subTest(method=method, sig=sig):
-                with Jobserver(context=get_context(method), slots=1) as js:
+                with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=time.sleep, args=(60,))
                     self.assertTrue(f.wait(timeout=None, signal=sig))
                     with self.assertRaises(SubmissionDied):
@@ -156,9 +155,8 @@ class TestJobserverWorker(unittest.TestCase):
         invalid_sig = max(signal.valid_signals()) + 1
         for method in start_methods():
             with self.subTest(method=method):
-                context = get_context(method)
-                with SPSCQueue(context=context) as mq:
-                    with Jobserver(context=context, slots=1) as js:
+                with SPSCQueue(context=method) as mq:
+                    with Jobserver(context=method, slots=1) as js:
                         f = js.submit(fn=helper_nonblocking, args=(mq,))
                         try:
                             with self.assertRaises(OSError):
@@ -185,7 +183,7 @@ class TestJobserverWorker(unittest.TestCase):
         """Future.wait(timeout=tiny, signal=...) still delivers the signal."""
         for method in start_methods():
             with self.subTest(method=method):
-                with Jobserver(context=get_context(method), slots=1) as js:
+                with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=time.sleep, args=(60,))
                     f.wait(timeout=1e-9, signal=signal.SIGTERM)
                     self.assertTrue(f.wait(timeout=5))
@@ -634,6 +632,8 @@ class TestResultNotReconstructable(unittest.TestCase):
         """Returning a live Connection pickles in the child but fails to
         rebuild in the parent; report it via RuntimeError rather than
         leaking FileNotFoundError from recv()."""
+        # Keep the context object: it is handed to the worker to build a
+        # Connection, so it cannot collapse to a bare start-method string.
         context = get_context("fork")
         with Jobserver(context=context, slots=2) as js:
             future = js.submit(fn=helper_return_connection, args=(context,))
