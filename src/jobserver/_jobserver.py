@@ -1157,8 +1157,6 @@ def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
             result = ExceptionWrapper(died)
         raise  # Proceed with any BaseException-specific teardown
     finally:
-        # Ignore broken pipes which naturally occur when the destination
-        # terminates (or otherwise hangs up) before the result is ready
         try:
             # None means result assignment never ran (e.g. an interpreter
             # teardown between except and finally); let the pipe close so
@@ -1175,12 +1173,14 @@ def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
                             cause=result,
                         )
                     )
-                send.send_bytes(payload)  # ValueError => object too large
-        except BrokenPipeError:
+                send.send_bytes(payload)
+        except OSError:
+            # Broken or closed result fd (BrokenPipeError, EBADF, ...):
+            # close quietly and let the parent see EOFError instead.
             pass
         try:
             send.close()
-        except BrokenPipeError:
+        except OSError:
             pass
 
 

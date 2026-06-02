@@ -10,6 +10,7 @@ delivery, environment customization via env and preexec_fn, sleep_fn
 scheduling control, and propagation of __init__ defaults to submit().
 """
 
+import errno
 import functools
 import itertools
 import os
@@ -620,6 +621,29 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
+        self.assertTrue(send.closed)
+
+
+class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
+    """A broken or closed result fd is swallowed during the result-send so
+    the worker closes quietly rather than escaping with a traceback and
+    degrading to a misleading SubmissionDied (#348)."""
+
+    def test_broken_result_fd_is_swallowed(self) -> None:
+        """An OSError/EBADF from a closed result fd closes quietly instead
+        of crashing the worker; the parent still observes EOF and reports
+        SubmissionDied, but without a noisy child traceback."""
+        boom = OSError(errno.EBADF, "Bad file descriptor")
+        send = _RecordingSend(fail_with=boom)
+        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        self.assertEqual([], send.payloads)
+        self.assertTrue(send.closed)
+
+    def test_broken_pipe_still_swallowed(self) -> None:
+        """The original BrokenPipeError handling is preserved."""
+        send = _RecordingSend(fail_with=BrokenPipeError())
+        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
 
