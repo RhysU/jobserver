@@ -45,24 +45,49 @@ Examples
 
  * [ex01_basic](examples/ex01_basic.py) - Submitting jobs and collecting results
    via shorthand, keyword args, and `submit()`.
- * [ex02_nested](examples/ex02_nested.py) - Nesting submissions so child work
+ * [ex02_lifecycle](examples/ex02_lifecycle.py) - Polling with `done()`,
+   `wait()`, and `result()`, plus `reclaim_resources()` and cleanup.
+ * [ex03_nested](examples/ex03_nested.py) - Nesting submissions so child work
    shares slot constraints with its parent.
- * [ex03_death](examples/ex03_death.py) - Detecting when a worker process is
+ * [ex04_death](examples/ex04_death.py) - Detecting when a worker process is
    killed unexpectedly via `SubmissionDied`.
- * [ex04_sleep_fn](examples/ex04_sleep_fn.py) - Gating work acceptance on an
+ * [ex05_sleep_fn](examples/ex05_sleep_fn.py) - Gating work acceptance on an
    external condition using `sleep_fn`.
- * [ex05_callbacks](examples/ex05_callbacks.py) - Registering `when_done`
+ * [ex06_callbacks](examples/ex06_callbacks.py) - Registering `when_done`
    callbacks and draining errors via `CallbackRaised`.
- * [ex06_environment](examples/ex06_environment.py) - Setting and unsetting
+ * [ex07_environment](examples/ex07_environment.py) - Setting and unsetting
    environment variables in child processes via `env=`.
- * [ex07_preexec_fn](examples/ex07_preexec_fn.py) - Using `preexec_fn` as
+ * [ex08_preexec_fn](examples/ex08_preexec_fn.py) - Using `preexec_fn` as
    a plain callable or context manager factory for entry/exit semantics.
- * [ex08_timeouts](examples/ex08_timeouts.py) - Using non-blocking polling,
+ * [ex09_timeouts](examples/ex09_timeouts.py) - Using non-blocking polling,
    finite deadlines, and `Blocked` from `result()` and `submit()`.
- * [ex09_pdeathsig](examples/ex09_pdeathsig.py) - On Linux, using `preexec_fn`
+ * [ex10_pdeathsig](examples/ex10_pdeathsig.py) - On Linux, using `preexec_fn`
    to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
- * [ex10_executor](examples/ex10_executor.py) - Using `JobserverExecutor` as
+ * [ex11_executor](examples/ex11_executor.py) - Using `JobserverExecutor` as
    a context manager supporting `map()` and `c.f.Future` cancellation.
+
+Comparison with the Python Standard Library
+-------------------------------------------
+
+How `Jobserver` and `JobserverExecutor` compare to the standard library's
+[`Pool`](https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool)
+and
+[`ProcessPoolExecutor`](https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor):
+
+| Feature                           | `Pool` | `ProcessPoolExecutor` | `Jobserver` | `JobserverExecutor` |
+|-----------------------------------|:------:|:---------------------:|:-----------:|:-------------------:|
+| Nested work shares the slot pool  |   no   |          no           |     yes     |         yes         |
+| Background thread                 |  yes   |          yes          |     no      |         yes         |
+| Cancel pending work               |   no   |          yes          |     no      |         yes         |
+| Detects individual worker death   |   no   |       partial\*       |     yes     |         yes         |
+| User-defined launch criteria      |   no   |          no           |     yes     |         yes         |
+| Lambdas/closures via `fork`       |   no   |          no           |     yes     |         no          |
+| Lambdas/closures via `spawn`      |   no   |          no           |     no      |         no          |
+| Lambdas/closures via `forkserver` |   no   |          no           |     no      |         no          |
+
+\* `ProcessPoolExecutor` notices a worker died but cannot pin it to a single
+submission, so it fails every outstanding future at once instead of just the
+one whose worker died.
 
 Testing
 -------

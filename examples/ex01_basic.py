@@ -34,7 +34,19 @@ def main() -> None:
         lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
         info("lengths via map: %s", lengths)
 
+        # A worker raising an ordinary Exception has it re-raised by result().
+        future_err = jobserver.submit(fn=int, args=("not a number",))
+        try:
+            future_err.result()
+            raise RuntimeError("Expected ValueError was not raised")
+        except ValueError as e:
+            info("Worker raised and result() re-raised: %r", e)
+            # __cause__ shows the worker's traceback for the original failure.
+            info("Child traceback preserved via __cause__: %s", e.__cause__)
 
+
+# The spawn and forkserver start methods re-import this module in every
+# child, so the if __name__ == "__main__" guard below is required.
 if __name__ == "__main__":
     basicConfig(
         level=INFO,
