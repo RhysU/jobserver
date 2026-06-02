@@ -156,7 +156,11 @@ class AbstractQueue(Generic[T], abc.ABC):
         Closes the underlying pipe end so EOF propagates on crash.
         """
         if self._reader is not None:
-            self._reader.close()
+            try:
+                self._reader.close()
+            except OSError:
+                # Tolerate EBADF from an already-closed or duplicated fd.
+                pass
             self._reader = None
 
     def close_put(self) -> None:
@@ -165,7 +169,11 @@ class AbstractQueue(Generic[T], abc.ABC):
         Closes the underlying pipe end so EOF propagates on crash.
         """
         if self._writer is not None:
-            self._writer.close()
+            try:
+                self._writer.close()
+            except OSError:
+                # Tolerate EBADF from an already-closed or duplicated fd.
+                pass
             self._writer = None
 
     @abc.abstractmethod

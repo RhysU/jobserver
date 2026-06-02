@@ -11,6 +11,7 @@ and the resolve_context / timeout_to_deadline helpers.
 """
 
 import copy
+import os
 import queue
 import time
 import unittest
@@ -68,6 +69,20 @@ class SPSCQueueTest(unittest.TestCase):
         # Both ends already closed by __exit__; repeat must not raise
         mq.close_get()
         mq.close_put()
+
+    def test_close_tolerates_already_closed_fd(self) -> None:
+        """close_*() swallows OSError/EBADF from a stale fd (#335).
+
+        Mirrors a pickled in-process clone sharing the same fd: closing
+        the underlying handle after it has already gone must not raise.
+        """
+        mq: SPSCQueue = SPSCQueue()
+        # Close the raw fds out from under the queue, then close_*() must
+        # tolerate the resulting EBADF rather than propagating it.
+        os.close(mq._writer.fileno())
+        os.close(mq._reader.fileno())
+        mq.close_put()  # would raise OSError(EBADF) without the guard
+        mq.close_get()
 
     def test_context_manager(self) -> None:
         """Context manager closes both ends; put/get raise after exit."""
