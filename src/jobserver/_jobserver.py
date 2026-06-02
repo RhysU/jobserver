@@ -951,8 +951,7 @@ class Jobserver:
             recv, send = self._context.Pipe(duplex=False)
             process = self._context.Process(  # type: ignore
                 target=_worker_entrypoint,
-                args=((send, env, preexec_fn, fn) + args),
-                kwargs=kwargs,
+                args=(send, env, preexec_fn, fn, args, kwargs),
                 daemon=False,
                 name="Jobserver-worker",
             )
@@ -1099,7 +1098,7 @@ class Jobserver:
         )
 
 
-def _worker_entrypoint(send, env, preexec_fn, fn, *args, **kwargs) -> None:
+def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
     """Entry point for workers to run fn(...) due to some submit(...)."""
     ignore_sigpipe()
 

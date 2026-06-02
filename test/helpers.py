@@ -117,6 +117,11 @@ def helper_return(arg: T) -> T:
     return arg
 
 
+def helper_return_kwargs(**kwargs: typing.Any) -> dict:
+    """Helper returning whatever keyword arguments it received."""
+    return kwargs
+
+
 def helper_marker_return(directory: str, arg: T) -> T:
     """Create a marker file named for arg under directory then return arg.
 

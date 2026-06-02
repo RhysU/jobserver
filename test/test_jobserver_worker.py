@@ -44,6 +44,7 @@ from .helpers import (
     helper_raise,
     helper_return,
     helper_return_connection,
+    helper_return_kwargs,
 )
 
 
@@ -562,7 +563,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         boom = AttributeError("misbehaving connection")
         send = _RecordingSend(fail_with=boom)
         with self.assertRaises(AttributeError) as ctx:
-            _worker_entrypoint(send, {}, lambda: None, len, (1, 2, 3))
+            _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
         self.assertIs(boom, ctx.exception)
         # No "not picklable" rewrap was sent in place of the real error.
         self.assertEqual([], send.payloads)
@@ -570,7 +571,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     def test_picklable_result_sent_unchanged(self) -> None:
         """A picklable result rides the happy path to a single send."""
         send = _RecordingSend()
-        _worker_entrypoint(send, {}, lambda: None, len, (1, 2, 3))
+        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ResultWrapper)
@@ -580,7 +581,9 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     def test_unpicklable_result_uses_fallback(self) -> None:
         """A genuinely unpicklable result still degrades to the fallback."""
         send = _RecordingSend()
-        _worker_entrypoint(send, {}, lambda: None, _make_unpicklable_result)
+        _worker_entrypoint(
+            send, {}, lambda: None, _make_unpicklable_result, (), {}
+        )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ExceptionWrapper)
@@ -588,6 +591,35 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
         self.assertTrue(send.closed)
+
+
+class TestKwargsNameCollisions(unittest.TestCase):
+    """A target's kwargs must forward verbatim for any key name, including
+    those shared with the internal worker entrypoint parameters (#322)."""
+
+    def test_entrypoint_parameter_names_forward(self) -> None:
+        """fn/env/preexec_fn/send no longer collide with the entrypoint."""
+        names = (
+            "send",
+            "env",
+            "preexec_fn",
+            "fn",
+            "args",
+            "kwargs",
+            "timeout",
+            "consume",
+            "sleep_fn",
+        )
+        for method in get_all_start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=2) as js:
+                    for name in names:
+                        with self.subTest(name=name):
+                            future = js.submit(
+                                fn=helper_return_kwargs,
+                                kwargs={name: 1},
+                            )
+                            self.assertEqual({name: 1}, future.result())
 
 
 class TestResultNotReconstructable(unittest.TestCase):
