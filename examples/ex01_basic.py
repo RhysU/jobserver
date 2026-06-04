@@ -14,8 +14,7 @@ def main() -> None:
     """Shows submitting jobs and collecting results."""
     # Instance will use the default multiprocessing context for this platform
     with Jobserver(slots=2) as jobserver:
-        # Full Jobserver.submit(...) example with args and kwargs
-        # The submit(...) method has many additional options
+        # Calling Jobserver.submit(...) submits work and returns a Future
         future_a = jobserver.submit(fn=pow, args=(2, 10), kwargs={"mod": 1000})
 
         # Simpler shorthand via Jobserver.__call__(...) with positional args
@@ -30,7 +29,7 @@ def main() -> None:
         info("pow(2, 10, mod=1000) = %s", future_a.result())
 
         # Map over multiple inputs yielding results in order
-        # (argses and kwargses are the plurals of args and kwargs)
+        # (Argument names argses and kwargses are plurals for args and kwargs)
         lengths = list(jobserver.map(fn=len, argses=[("ab",), ("cde",)]))
         info("lengths via map: %s", lengths)
 

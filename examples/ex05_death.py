@@ -14,16 +14,14 @@ from jobserver import Jobserver, SubmissionDied
 def main() -> None:
     """Shows detecting when a worker process dies unexpectedly."""
     with Jobserver(context="spawn", slots=2) as jobserver:
-        # Submit work that will be killed
-        future_killed = jobserver.submit(
-            fn=signal.raise_signal, args=(signal.SIGKILL,)
-        )
+        # To emulate unexpected process death within a work,
+        # submit work that will kill itself when it runs
+        future_killed = jobserver(signal.raise_signal, signal.SIGKILL)
 
         # Submit normal work alongside the doomed submission
         future_ok = jobserver.submit(fn=len, args=("hello",))
 
         # wait() returns True even for dead submissions
-        # Blocks by default
         info("Killed worker wait: %s", future_killed.wait())
         info("Normal result: %s", future_ok.result())
 

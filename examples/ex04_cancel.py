@@ -23,13 +23,15 @@ def main() -> None:
 
         # wait(signal=...) sends a signal to the running worker, then waits.
         # wait() returns True once completion (here, death) is confirmed.
+        # Any signal can be sent (SIGTERM, SIGKILL, SIGUSR1, etc.)
+        # and the wait timeout can be as short or as long as desired.
         info(
             "Cancelled worker wait: %s",
             future_cancel.wait(signal=signal.SIGTERM),
         )
         info("Normal result: %s", future_ok.result())
 
-        # result() raises SubmissionDied for the cancelled worker.
+        # Here, result() raises SubmissionDied for the SIGTERM-ed worker
         try:
             future_cancel.result()
             raise RuntimeError("Expected SubmissionDied was not raised")

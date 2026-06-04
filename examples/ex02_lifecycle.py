@@ -15,8 +15,7 @@ def main() -> None:
     # A "with" block is optional but convenient: on exit it reclaims any
     # outstanding Futures, avoiding a ResourceWarning at finalization.
     with Jobserver(slots=2) as jobserver:
-        # jobserver.submit(...) can be abbreviated to
-        # jobserver(fn, *args, **kwargs).
+        # jobserver(fn, *args, **kwargs) is shorthand for jobserver.submit(...)
         future1 = jobserver(len, "lifecycle")
 
         # done(): a cheap progress check that never blocks the caller.
