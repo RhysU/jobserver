@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 8 shows preexec_fn as a plain callable and context manager factory.
+"""Example 9 shows preexec_fn as a plain callable and context manager factory.
 
 preexec_fn is called in the worker before the task function.  If it returns
 None, it acts as a plain pre-execution hook.  If it returns a context manager,

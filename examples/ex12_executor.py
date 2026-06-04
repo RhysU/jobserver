@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 11 shows JobserverExecutor with an owned or shared Jobserver.
+"""Example 12 shows JobserverExecutor with an owned or shared Jobserver.
 
 Prefer JobserverExecutor for drop-in concurrent.futures compatibility and
 cancellable PENDING futures; use Jobserver directly for thread-free nesting.
