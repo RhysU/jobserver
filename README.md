@@ -48,17 +48,17 @@ How `Jobserver` and `JobserverExecutor` compare to the standard library's
 and
 [`ProcessPoolExecutor`](https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor):
 
-| Feature                           | `Pool` | `ProcessPoolExecutor` | `Jobserver` | `JobserverExecutor` |
-|-----------------------------------|:------:|:---------------------:|:-----------:|:-------------------:|
-| Nested work shares the slot pool  |   no   |          no           |     yes     |         yes         |
-| Background thread                 |  yes   |          yes          |     no      |         yes         |
-| Cancel pending work               |   no   |          yes          |     no      |         yes         |
-| Cancel running work               |   no   |          no           |     yes     |         no          |
-| Detects individual worker death   |   no   |       partial\*       |     yes     |         yes         |
-| User-defined launch criteria      |   no   |          no           |     yes     |         yes         |
-| Lambdas/closures via `fork`       |   no   |          no           |     yes     |         no          |
-| Lambdas/closures via `spawn`      |   no   |          no           |     no      |         no          |
-| Lambdas/closures via `forkserver` |   no   |          no           |     no      |         no          |
+| Feature                           | `Jobserver` | `JobserverExecutor` | `ProcessPoolExecutor` | `Pool` |
+|-----------------------------------|:-----------:|:-------------------:|:---------------------:|:------:|
+| Nested work shares the slot pool  |     yes     |         yes         |          no           |   no   |
+| Background thread                 |     no      |         yes         |          yes          |  yes   |
+| Cancel pending work               |     no      |         yes         |          yes          |   no   |
+| Cancel running work               |     yes     |         no          |          no           |   no   |
+| Detects individual worker death   |     yes     |         yes         |       partial\*       |   no   |
+| User-defined launch criteria      |     yes     |         yes         |          no           |   no   |
+| Lambdas/closures via `fork`       |     yes     |         no          |          no           |   no   |
+| Lambdas/closures via `spawn`      |     no      |         no          |          no           |   no   |
+| Lambdas/closures via `forkserver` |     no      |         no          |          no           |   no   |
 
 \* `ProcessPoolExecutor` notices a worker died but cannot pin it to a single
 submission, so it fails every outstanding future at once instead of just the
