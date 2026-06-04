@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 7 shows environment variable injection for child processes."""
+"""Example 8 shows environment variable injection for child processes."""
 
 import os
 from logging import INFO, basicConfig, captureWarnings, info

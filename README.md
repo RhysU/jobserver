@@ -49,21 +49,23 @@ Examples
    `wait()`, and `result()`, plus `reclaim_resources()` and cleanup.
  * [ex03_nested](examples/ex03_nested.py) - Nesting submissions so child work
    shares slot constraints with its parent.
- * [ex04_death](examples/ex04_death.py) - Detecting when a worker process is
+ * [ex04_cancel](examples/ex04_cancel.py) - Cancelling running work by sending
+   `SIGTERM` to a worker via `Future.wait(signal=...)`.
+ * [ex05_death](examples/ex05_death.py) - Detecting when a worker process is
    killed unexpectedly via `SubmissionDied`.
- * [ex05_sleep_fn](examples/ex05_sleep_fn.py) - Gating work acceptance on an
+ * [ex06_sleep_fn](examples/ex06_sleep_fn.py) - Gating work acceptance on an
    external condition using `sleep_fn`.
- * [ex06_callbacks](examples/ex06_callbacks.py) - Registering `when_done`
+ * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`
    callbacks and draining errors via `CallbackRaised`.
- * [ex07_environment](examples/ex07_environment.py) - Setting and unsetting
+ * [ex08_environment](examples/ex08_environment.py) - Setting and unsetting
    environment variables in child processes via `env=`.
- * [ex08_preexec_fn](examples/ex08_preexec_fn.py) - Using `preexec_fn` as
+ * [ex09_preexec_fn](examples/ex09_preexec_fn.py) - Using `preexec_fn` as
    a plain callable or context manager factory for entry/exit semantics.
- * [ex09_timeouts](examples/ex09_timeouts.py) - Using non-blocking polling,
+ * [ex10_timeouts](examples/ex10_timeouts.py) - Using non-blocking polling,
    finite deadlines, and `Blocked` from `result()` and `submit()`.
- * [ex10_pdeathsig](examples/ex10_pdeathsig.py) - On Linux, using `preexec_fn`
+ * [ex11_pdeathsig](examples/ex11_pdeathsig.py) - On Linux, using `preexec_fn`
    to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
- * [ex11_executor](examples/ex11_executor.py) - Using `JobserverExecutor` as
+ * [ex12_executor](examples/ex12_executor.py) - Using `JobserverExecutor` as
    a context manager supporting `map()` and `c.f.Future` cancellation.
 
 Comparison with the Python Standard Library
@@ -79,6 +81,7 @@ and
 | Nested work shares the slot pool  |   no   |          no           |     yes     |         yes         |
 | Background thread                 |  yes   |          yes          |     no      |         yes         |
 | Cancel pending work               |   no   |          yes          |     no      |         yes         |
+| Cancel running work               |   no   |          no           |     yes     |         no          |
 | Detects individual worker death   |   no   |       partial\*       |     yes     |         yes         |
 | User-defined launch criteria      |   no   |          no           |     yes     |         yes         |
 | Lambdas/closures via `fork`       |   no   |          no           |     yes     |         no          |

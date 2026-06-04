@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 9 shows timeout handling for submit(), done(), wait(), result()."""
+"""Example 10 shows timeout handling for submit(), done(), wait(), result()."""
 
 import time
 from logging import INFO, basicConfig, captureWarnings, info
