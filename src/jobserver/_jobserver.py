@@ -233,12 +233,15 @@ class ExceptionWrapper(Wrapper[Any]):
         return f"Exception of type {type(self._raised).__name__}"
 
 
-# Callback priorities for the Future heapq-based callback queue.
-# Token restoration fires first, user callbacks in the middle,
-# and sentinel cleanup fires last.
-_PRIORITY_TOKEN = 0
+# Internal callbacks may run before and after user callbacks.
+#
+# _PRIORITY_AFTER callbacks may not run because of (a) the user
+# observing a CallbackRaised without draining remaining callbacks
+# or (b) BaseExceptions escaping user callbacks.  Consider
+# _PRIORITY_AFTER best-effort for resource cleanup purposes.
+_PRIORITY_BEFORE = 0
 _PRIORITY_USER = 1
-_PRIORITY_CLEANUP = 2
+_PRIORITY_AFTER = 2
 
 
 def _callback_wrapper(seqno: int, fn, *args, **kwargs) -> None:
@@ -479,11 +482,10 @@ class Future(Generic[T]):
             self._process.join()
             self._process = None
 
-            # Drop our reference so _issue_callbacks's invariant holds and
-            # __del__ will not warn.  The actual close() is deferred to a
-            # _PRIORITY_CLEANUP callback (see _unregister_connection) so the
-            # connection fd stays registered, and thus unreusable, until
-            # after it is unregistered from the Jobserver's selector.
+            # Drop our reference so _issue_callbacks's invariant holds
+            # and __del__ will not warn.  The actual close() is deferred
+            # to a _PRIORITY_BEFORE callback (see _unregister_connection)
+            # so the fd is unregistered from the selector before reuse.
             self._connection = None
             self._issue_callbacks()
             return True
@@ -928,7 +930,7 @@ class Jobserver:
         #
         #   (A) Silently ignore the CallbackRaised?
         #       No, client code must know about Exceptions it causes.
-        #   (B) Issue callback priorities <= _PRIORITY_TOKEN?
+        #   (B) Issue callback priorities <= _PRIORITY_BEFORE?
         #       No, client used a callback because client wanted immediacy.
         #       Otherwise, the client could do its own work after done()
         #       and would not have employed callbacks in the first place.
@@ -994,30 +996,33 @@ class Jobserver:
                 self._slots.put(token)
             raise
 
+        # Unregister and close the result connection before user callbacks
+        # so a raising user callback cannot leak the connection fd.
+        # Holding recv keeps its fd open until unregister.
+        future._when_done(
+            fn=_unregister_connection,
+            args=(selector, recv),
+            priority=_PRIORITY_BEFORE,
+        )
+
         # As above process.start() succeeded, now Future must restore token
         future._when_done(
             fn=_restore_token,
             args=(self._slots, token),
-            priority=_PRIORITY_TOKEN,
+            priority=_PRIORITY_BEFORE,
         )
 
-        # After token restoration, stop tracking this Future's sentinel.
-        # Prevent premature garbage collection of process (which closes
-        # the sentinel fd and silently removes it from epoll) by
-        # holding a reference until this last-priority callback fires.
+        # The sentinel stays registered so the Future remains discoverable
+        # if a raising user callback aborts the drain.  Prevent premature
+        # GC of process (closing the sentinel fd) by holding a reference.
+        #
+        # Because _PRIORITY_AFTER is best-effort, unregistering the
+        # sentinel additionally happens implicitly in __exit__ and
+        # __del__ when the selector is closed.
         future._when_done(
             fn=_unregister_sentinel,
             args=(selector, process.sentinel, process),
-            priority=_PRIORITY_CLEANUP,
-        )
-
-        # Likewise unregister and close the result connection.  Holding recv
-        # here keeps its fd open until unregister so its integer cannot be
-        # reused by a concurrent submit() before removal from the selector.
-        future._when_done(
-            fn=_unregister_connection,
-            args=(selector, recv),
-            priority=_PRIORITY_CLEANUP,
+            priority=_PRIORITY_AFTER,
         )
 
         # Finally, return a viable Future to the caller
