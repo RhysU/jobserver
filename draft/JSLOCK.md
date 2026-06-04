@@ -417,6 +417,97 @@ All in `test/test_jobserver_concurrency.py`:
 4. **`test_concurrent_exit_blocks_submit`** — After `__exit__`, a
    concurrent `submit()` raises `RuntimeError`.
 
+## Alternatives Considered but Rejected
+
+### A. Keep Not-Thread-Safe, Document Better
+
+Leave `submit()` / `reclaim_resources()` unsynchronized.  Update the
+docstring to more prominently direct users to `JobserverExecutor` for
+multi-threaded use.
+
+**Rejected because:** the issue explicitly asks to revisit the decision,
+and the locking cost is modest for a class whose hot path is "spawn a
+child process."  The RLock acquisition overhead (tens of nanoseconds)
+is negligible next to `Process.start()` (milliseconds).  Providing
+thread-safety at the `Jobserver` level makes the simpler API safe by
+default rather than requiring users to discover the executor wrapper.
+
+### B. Per-Method `threading.Lock` (Non-Reentrant)
+
+Use a plain `Lock` instead of `RLock`.  Restructure `submit()` so it
+does not call `reclaim_resources()` under the lock — e.g., release the
+lock before entering `_maybe_obtain_token`, or have `_maybe_obtain_token`
+call a lock-free internal reclaim helper.
+
+**Rejected because:** the re-entrant call path (`submit` →
+`_maybe_obtain_token` → `reclaim_tokens_fn` → `reclaim_resources`) is
+deeply embedded in the token-acquisition loop.  Splitting the loop
+into locked and unlocked phases would complicate the logic, introduce
+subtle gaps where the selector is unsynchronized, and make the code
+harder to reason about — all to avoid `RLock`, whose only cost is one
+extra owner-thread check per acquisition.
+
+### C. Fine-Grained Locking (Separate Locks per Resource)
+
+Use one lock for `_selector` access and another for `_slots` access,
+reducing contention by allowing concurrent slot operations and selector
+mutations.
+
+**Rejected because:** `_slots` (`FixedBytesQueue`) is already
+process-safe (pipe-backed, OS-atomic reads and writes).  It needs no
+Python-level lock.  The only resource that needs synchronization is the
+`DefaultSelector` and its associated bookkeeping (`_selector_pid`,
+`_selector_closed`).  A single lock for that resource is the
+minimum — splitting it further adds complexity with no benefit.
+
+### D. Replace DefaultSelector With a Thread-Safe Wrapper
+
+Wrap `DefaultSelector` in a class that synchronizes `select()`,
+`register()`, and `unregister()` internally, keeping `Jobserver`
+methods lock-free.
+
+**Rejected because:** `select()` can block, so the wrapper would need
+the same timeout-aware acquisition and blocking-select tradeoffs that
+the coarse lock addresses.  It pushes the same problem into a different
+class without simplifying it.  Additionally, the selector is an
+implementation detail of `Jobserver`; encapsulating its locking there
+keeps the synchronization policy in one place.
+
+### E. Lock-Free Design With `queue.SimpleQueue` Dispatch
+
+Replace the selector-based architecture with a `SimpleQueue` that
+worker threads pull from, similar to `concurrent.futures.ThreadPoolExecutor`.
+Each `submit()` enqueues work; a dispatcher thread handles process
+creation and completion.
+
+**Rejected because:** this is `JobserverExecutor`.  It already exists.
+The goal of issue #326 is to make the simpler, lower-level `Jobserver`
+API safe for concurrent use, not to duplicate the executor's architecture.
+
+### F. Release Lock Around Blocking `select()` From Day One
+
+Hold the lock for `register()` / `unregister()` but release it around
+`selector.select()` in `_maybe_obtain_token`, relying on the kernel's
+thread-safety for `epoll_wait`.
+
+**Rejected as the initial approach** (but preserved as a future
+optimization path in the plan) because:
+
+1. Python's `DefaultSelector._fd_to_key` dict is read by `select()` to
+   build the return value.  A concurrent `register()` or `unregister()`
+   mutating that dict during `select()`'s iteration would be a race at
+   the Python level, even though the underlying `epoll_wait` is safe.
+2. The release-reacquire pattern introduces a window where another
+   thread can mutate the selector, requiring `_maybe_obtain_token` to
+   re-validate state after reacquiring.  This adds complexity for a
+   marginal gain — the coarse lock serializes `submit()` calls, but
+   each `select()` wakes promptly when a child exits, so the
+   serialization delay is bounded by child execution time, not by
+   the full timeout.
+3. If profiling later shows the coarse lock is a bottleneck, this
+   optimization can be added incrementally without changing the
+   external API or test contracts.
+
 ## Implementation Checklist
 
 - [ ] Add `"_lock"` and `"_lock_pid"` to `__slots__`
