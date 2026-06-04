@@ -38,7 +38,31 @@ more robustness at the expense of slower process launching.
 Dependencies
 ------------
 
-None aside from the Python standard library.
+None aside from the Python Standard Library.
+
+Comparison with the Python Standard Library
+-------------------------------------------
+
+How `Jobserver` and `JobserverExecutor` compare to the standard library's
+[`Pool`](https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool)
+and
+[`ProcessPoolExecutor`](https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor):
+
+| Feature                           | `Pool` | `ProcessPoolExecutor` | `Jobserver` | `JobserverExecutor` |
+|-----------------------------------|:------:|:---------------------:|:-----------:|:-------------------:|
+| Nested work shares the slot pool  |   no   |          no           |     yes     |         yes         |
+| Background thread                 |  yes   |          yes          |     no      |         yes         |
+| Cancel pending work               |   no   |          yes          |     no      |         yes         |
+| Cancel running work               |   no   |          no           |     yes     |         no          |
+| Detects individual worker death   |   no   |       partial\*       |     yes     |         yes         |
+| User-defined launch criteria      |   no   |          no           |     yes     |         yes         |
+| Lambdas/closures via `fork`       |   no   |          no           |     yes     |         no          |
+| Lambdas/closures via `spawn`      |   no   |          no           |     no      |         no          |
+| Lambdas/closures via `forkserver` |   no   |          no           |     no      |         no          |
+
+\* `ProcessPoolExecutor` notices a worker died but cannot pin it to a single
+submission, so it fails every outstanding future at once instead of just the
+one whose worker died.
 
 Examples
 --------
@@ -67,30 +91,6 @@ Examples
    to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
  * [ex12_executor](examples/ex12_executor.py) - Using `JobserverExecutor` as
    a context manager supporting `map()` and `c.f.Future` cancellation.
-
-Comparison with the Python Standard Library
--------------------------------------------
-
-How `Jobserver` and `JobserverExecutor` compare to the standard library's
-[`Pool`](https://docs.python.org/3/library/multiprocessing.html#multiprocessing.pool.Pool)
-and
-[`ProcessPoolExecutor`](https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ProcessPoolExecutor):
-
-| Feature                           | `Pool` | `ProcessPoolExecutor` | `Jobserver` | `JobserverExecutor` |
-|-----------------------------------|:------:|:---------------------:|:-----------:|:-------------------:|
-| Nested work shares the slot pool  |   no   |          no           |     yes     |         yes         |
-| Background thread                 |  yes   |          yes          |     no      |         yes         |
-| Cancel pending work               |   no   |          yes          |     no      |         yes         |
-| Cancel running work               |   no   |          no           |     yes     |         no          |
-| Detects individual worker death   |   no   |       partial\*       |     yes     |         yes         |
-| User-defined launch criteria      |   no   |          no           |     yes     |         yes         |
-| Lambdas/closures via `fork`       |   no   |          no           |     yes     |         no          |
-| Lambdas/closures via `spawn`      |   no   |          no           |     no      |         no          |
-| Lambdas/closures via `forkserver` |   no   |          no           |     no      |         no          |
-
-\* `ProcessPoolExecutor` notices a worker died but cannot pin it to a single
-submission, so it fails every outstanding future at once instead of just the
-one whose worker died.
 
 Testing
 -------
