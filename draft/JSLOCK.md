@@ -106,6 +106,9 @@ serialized.
 ### Responsibilities and interface
 
 ```python
+import os               # already imported by _jobserver.py
+import select           # NEW: for select.EPOLLIN on the wake fd (Linux)
+import threading        # already imported by _jobserver.py
 from selectors import DefaultSelector, EVENT_READ
 
 class _LockedSelector:
@@ -119,7 +122,7 @@ class _LockedSelector:
     lock with submit()-driven register().
     """
 
-    __slots__ = ("_sel", "_lock", "_closed", "_epoll")
+    __slots__ = ("_sel", "_lock", "_closed", "_epoll", "_wake_r", "_wake_w")
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -127,8 +130,18 @@ class _LockedSelector:
         self._sel = DefaultSelector()
         # Backend used to release the lock around the blocking wait; None
         # when the platform selector is not epoll-based (then fall back to
-        # holding the lock across select(), see "Blocking wait").
+        # the time-sliced wait in select(), see "Blocking wait").
         self._epoll = getattr(self._sel, "_epoll", None)
+        # Shutdown wake-up: a self-pipe registered DIRECTLY in the epoll set
+        # (not via DefaultSelector, so it never appears in _fd_to_key).  Only
+        # the epoll path releases the lock around the kernel wait, so only it
+        # needs an out-of-band way for close() to interrupt a parked
+        # epoll_wait(); the non-epoll path re-checks _closed every slice.
+        self._wake_r = self._wake_w = None
+        if self._epoll is not None:
+            self._wake_r, self._wake_w = os.pipe()
+            os.set_blocking(self._wake_r, False)
+            self._epoll.register(self._wake_r, select.EPOLLIN)
 
     def register(self, fileobj, events, data) -> None:
         with self._lock:
@@ -152,7 +165,25 @@ class _LockedSelector:
         with self._lock:
             if not self._closed:
                 self._closed = True
+                # Wake any thread parked in epoll_wait BEFORE closing the
+                # epoll fd: closing an fd does NOT interrupt a concurrent
+                # epoll_wait on Linux, so without this a timeout=None submit
+                # parked for a slot would hang until its (multi-day) deadline.
+                # The byte is never drained, so the level-triggered wake fd
+                # stays readable and releases all current and future waiters.
+                if self._wake_w is not None:
+                    try:
+                        os.write(self._wake_w, b"\0")
+                    except OSError:
+                        pass
                 self._sel.close()
+                for fd in (self._wake_r, self._wake_w):
+                    if fd is not None:
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass
+                self._wake_r = self._wake_w = None
 
     def select(self, timeout):
         ...   # see below
@@ -183,35 +214,68 @@ interleaving, so it **must** let `register()`/`unregister()` proceed while
 another thread is parked in the kernel wait.  On Linux this is exactly what
 `epoll` allows — `epoll_wait` and `epoll_ctl` are kernel-synchronized;
 only Python's `_fd_to_key` dict needs protection, and that is touched only
-*before* and *after* the syscall:
+*before* and *after* the syscall.
+
+Two further hazards force shape on the code below, beyond simply releasing
+the lock:
+
+1. **Shutdown.** While the lock is released a thread sits in `epoll_wait`.
+   A concurrent `close()` cannot rely on closing the epoll fd to wake it
+   (Linux does not interrupt an in-flight `epoll_wait` when its fd is
+   closed).  `close()` therefore makes the registered `_wake_r` self-pipe
+   readable; the parked `epoll_wait` returns, the thread re-takes the lock,
+   sees `_closed`, and returns `[]`.  Without this a `submit(timeout=None)`
+   parked for a slot would hang until its multi-day deadline.
+2. **Close racing the syscall.** A thread may have snapshotted `epoll` and
+   released the lock, then have `close()` shut the epoll fd before it calls
+   `poll()`; the `poll()` then raises `OSError`/`ValueError`.  That is
+   indistinguishable from shutdown, so it is caught and yields `[]`.
+
+The non-epoll fallback uses **time-sliced** blocking (Alternative A1), NOT a
+lock held across the whole wait: each slice releases the lock so a
+registering thread is delayed by at most one slice (no deadlock) and the
+next entry re-checks `_closed` (no shutdown hang).
 
 ```python
+_POLL_SLICE = 1.0  # seconds; bounds non-epoll register latency and, on
+                   # any backend, how long a slice-capped wait lingers.
+
 def select(self, timeout):
     # Non-blocking poll (reclaim's hot path) stays fully under the lock.
-    # Same for platforms without an epoll backend: correctness first,
-    # accepting coarser blocking there (see Alternatives).
-    if timeout == 0 or self._epoll is None:
+    if timeout == 0:
         with self._lock:
             if self._closed:
                 raise RuntimeError("Jobserver is closed")
-            return self._sel.select(timeout)
+            return self._sel.select(0)
 
-    # Blocking wait: hold the lock only for the _fd_to_key bookkeeping,
-    # release it around epoll_wait.
+    # No epoll backend: time-sliced blocking under the lock (A1).  The lock
+    # is released between slices, so register()/unregister() wait at most
+    # one slice and the caller's loop re-enters to re-check _closed.
+    if self._epoll is None:
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Jobserver is closed")
+            return self._sel.select(min(timeout, _POLL_SLICE))
+
+    # epoll backend: hold the lock only for the _fd_to_key bookkeeping,
+    # release it around epoll_wait.  The +1 leaves room for the wake fd.
     with self._lock:
         if self._closed:
             raise RuntimeError("Jobserver is closed")
-        max_ev = max(len(self._sel._fd_to_key), 1)
+        max_ev = max(len(self._sel._fd_to_key) + 1, 1)
         epoll = self._epoll
     try:
         fd_event_list = epoll.poll(timeout, max_ev)   # GIL + lock released
     except InterruptedError:
         return []
+    except (OSError, ValueError):
+        return []      # epoll fd closed by a concurrent close(): shutdown
     with self._lock:
         if self._closed:
             return []
         ready = []
         for fd, _ev in fd_event_list:
+            # The wake fd is absent from _fd_to_key, so it filters out here.
             key = self._sel._fd_to_key.get(fd)
             if key is not None:
                 # Only EVENT_READ is ever registered by this library.
@@ -220,8 +284,8 @@ def select(self, timeout):
 ```
 
 This is `selectors.EpollSelector.select()` re-expressed with explicit lock
-discipline.  Every consumer only reads `key.data`, `key.fd`, and
-`key.fileobj` (`_jobserver.py:853, 1282-1287`), so returning
+discipline plus the wake fd.  Every consumer only reads `key.data`,
+`key.fd`, and `key.fileobj` (`_jobserver.py:853, 1282-1287`), so returning
 `(key, EVENT_READ)` is faithful.
 
 Properties this preserves from the existing design:
@@ -233,19 +297,24 @@ Properties this preserves from the existing design:
   even if another thread registered it mid-wait.
 - **No busy-spin:** `_maybe_obtain_token`'s existing `stall_fds` backoff
   (`_jobserver.py:1280-1289`) is unchanged and still bounds the
-  contested-sentinel case.
+  contested-sentinel case.  The wake fd's byte is never read, so the wake is
+  a one-shot level-triggered edge at shutdown, not a recurring poll.
+- **Prompt shutdown:** a parked `epoll_wait` is released the instant
+  `close()` writes the wake byte, so `__exit__`/`__del__` never strand a
+  submitter waiting on a slot.
 
 ### Dependence on a private attribute
 
 `self._sel._epoll` and `self._sel._fd_to_key` are CPython implementation
 details of `selectors.EpollSelector`.  Mitigations:
 - Feature-detect once in `__init__` (`getattr(self._sel, "_epoll", None)`);
-  when absent, fall back to holding `_lock` across the whole `select()`.
-  That fallback is correct everywhere and only reintroduces the
-  blocking-wait serialization (and its deadlock risk) on **non-epoll**
-  platforms.  Per `_compat.py`, this library already targets Linux for its
-  hot path (epoll, `PR_SET_PDEATHSIG`, `PIPE_BUF`) while degrading on
-  others; the fallback keeps non-Linux correct, just coarser.
+  when absent, fall back to the **time-sliced** wait (A1) shown in
+  `select()`.  That fallback is correct everywhere — it does NOT hold the
+  lock across the whole wait, so it avoids the registration-starvation
+  deadlock; it only trades up to `_POLL_SLICE` of register/shutdown latency
+  on non-epoll platforms.  Per `_compat.py`, this library already targets
+  Linux for its hot path (epoll, `PR_SET_PDEATHSIG`, `PIPE_BUF`) while
+  degrading on others; the fallback keeps non-Linux correct, just coarser.
 - A guard test asserts the fast path is actually taken on Linux
   (`isinstance(js._selector._sel, selectors.EpollSelector)` and
   `_epoll is not None`), so a CPython change that renames the attribute
@@ -334,6 +403,23 @@ the wrapper lock; `done(timeout=0)` keeps the existing non-blocking
 `Future._rlock` semantics that make a contested future skip-and-retry
 (exercised by `test_reclaim_resources_with_contested_lock`).
 
+### Scope of `_spawn_lock`, and a GIL caveat
+
+`_spawn_lock` serializes the *creation* side (`Process.start()`).  It does
+**not** cover the *teardown* side: `Process.join()` in `Future.wait()`
+(`_jobserver.py:479`) and `multiprocessing._cleanup()` also mutate the same
+module-global state (`_children`, the resource tracker) from whatever thread
+drives a future to completion, with no `_spawn_lock` held.  Those mutations
+are individually atomic only **under the GIL** (`set.add`/`discard`,
+`itertools.count`).  That is sufficient on the GIL builds this library
+targets, but it is an assumption, not a guarantee, and would need revisiting
+for a free-threaded (no-GIL) interpreter.  By contrast the `FixedBytesQueue`
+slot traffic is GIL-independent (its safety is OS-level `os.read`/`os.write`
+atomicity), so only the `multiprocessing` global-state argument leans on the
+GIL.  Both the new docstring guarantee and the test plan are therefore
+scoped to the GIL builds; a `test_locked_selector_uses_epoll_fast_path`-style
+guard keeps that scope explicit.
+
 ## Changes to lifecycle methods
 
 ### `__init__` / `__setstate__`: eager construction
@@ -347,16 +433,37 @@ discarded selector, invisible to `reclaim_resources()`.
 ```python
 # __init__ (after _slots is built) and __setstate__:
 self._spawn_lock = threading.Lock()
-self._selector = self._build_selector()    # _LockedSelector + slots.waitable()
 self._selector_pid = os.getpid()
-self._selector_closed = False
+self._selector_closed = False            # set first; _build_selector may flip
+self._selector = self._build_selector()  # _LockedSelector + slots.waitable()
 ```
 
+(`_selector_closed` is assigned before `_build_selector()` so the closed-slots
+guard below can set it `True` without being overwritten.)
+
 `_build_selector()` factors the wrapper construction plus the one
-`register(slots.waitable(), EVENT_READ, SlotsSentinel())` call.  Tradeoff:
-every `Jobserver` (including one unpickled into a child that never submits)
-now opens an epoll fd up front.  This is one fd; acceptable, and it makes
-the concurrency story far simpler than a guarded lazy build.
+`register(slots.waitable(), EVENT_READ, SlotsSentinel())` call.  It guards
+that registration against a slots queue that was already closed before this
+construction (e.g. unpickling a `Jobserver` whose `_slots` were closed prior
+to pickling): `waitable()` asserts the reader is open (`_queue.py:154`), so
+`_build_selector()` skips the `register()` — and marks the instance closed —
+when `self._slots.waitable()` is unavailable, rather than raising
+`AssertionError` from inside `__setstate__`:
+
+```python
+def _build_selector(self) -> _LockedSelector:
+    sel = _LockedSelector()
+    try:
+        sel.register(self._slots.waitable(), EVENT_READ, SlotsSentinel())
+    except AssertionError:        # slots already closed; nothing to track
+        sel.close()
+        self._selector_closed = True
+    return sel
+```
+
+Tradeoff: every `Jobserver` (including one unpickled into a child that never
+submits) now opens an epoll fd up front.  This is one fd; acceptable, and it
+makes the concurrency story far simpler than a guarded lazy build.
 
 ### `_lazy_selector()`: fork rebuild only
 
@@ -408,11 +515,16 @@ def __exit__(self, *exc) -> None:
 Holding `_spawn_lock` across the close means a concurrent `submit()` either
 (a) has not yet entered its `with self._spawn_lock` block — it will then see
 `selector._closed` and raise before spawning a worker — or (b) is mid-spawn,
-in which case `__exit__` waits for it, then closes; that worker's future is
-fully registered and will be drained by the *next* reclaim or orphaned
-cleanly on `__del__`.  Either way no worker is started after the selector
-closes.  The drain loop runs **before** taking `_spawn_lock` so it cannot
-deadlock against an in-progress spawn.
+in which case `__exit__` waits for it, then closes.  In case (b) that
+worker's future is fully registered but **orphaned**: once the selector is
+closed `reclaim_resources()` raises `RuntimeError` (`_jobserver.py:814`), so
+there is no "next reclaim" to drain it — the worker runs to completion, the
+parent never reads its result, and the connection fd leaks until GC, with
+`__del__` emitting the usual `ResourceWarning`.  This is the accepted cost
+of submitting concurrently with shutdown; what the lock *guarantees* is only
+that no worker is **started** after the selector closes.  The drain loop
+runs **before** taking `_spawn_lock` so it cannot deadlock against an
+in-progress spawn.
 
 ### `__del__`
 
@@ -536,6 +648,16 @@ race path.
   when `submit()` attaches them.  `_tracked()`'s "transiently
   half-unregistered" tolerance (`_jobserver.py:675`) already anticipates
   this shape.
+- **`close()` racing a parked `submit()`:** the wake fd releases the parked
+  `epoll_wait`; if the snapshot/`poll()` interleaving instead surfaces the
+  closed epoll fd as `OSError`/`ValueError`, `select()` maps it to `[]`.
+  Either way the waiter re-enters `_maybe_obtain_token`, calls
+  `reclaim_resources()` → `_lazy_selector()` raises `RuntimeError`, and the
+  submit unwinds promptly instead of hanging to its deadline.
+- **Unpickling a closed `Jobserver`:** `_build_selector()` skips the
+  `slots.waitable()` registration and marks the instance closed when the
+  reader is already closed, so `__setstate__` does not raise `AssertionError`
+  (see "eager construction").
 - **Partial construction:** `__del__` guards with `getattr`/`hasattr`;
   `_tracked()` and `wrapper.get_map()` tolerate a missing or closed
   selector.
@@ -557,25 +679,30 @@ race path.
   and `_spawn_lock` is not held during reclaim).
 
 **Cons of the wrapper:**
-- More moving parts: two locks, a wrapper class, eager construction.
+- More moving parts: two locks, a wrapper class, eager construction, and a
+  shutdown wake-up self-pipe on the epoll path.
 - The blocking-wait fast path depends on a private `EpollSelector`
-  attribute (mitigated by feature-detect + fallback + a guard test).
+  attribute (mitigated by feature-detect + A1 fallback + a guard test).
 - Must reason explicitly about `multiprocessing` spawn safety
-  (`_spawn_lock`), which the RLock got incidentally.
+  (`_spawn_lock`), which the RLock got incidentally — and that reasoning is
+  GIL-scoped (see "Scope of `_spawn_lock`").
 
 ## Alternatives Within This Design
 
-### A1. Time-sliced blocking instead of releasing the lock
+### A1. Time-sliced blocking instead of releasing the lock — *adopted as the non-epoll fallback*
 
-Keep `select()` fully under `sel_lock` but cap each blocking wait at a small
-slice (e.g. `min(timeout, 0.05)`), returning empty on slice expiry and
-letting `_maybe_obtain_token` loop.  Avoids the private attribute entirely
-and is trivially portable.  Cost: up to one slice of added registration
-latency and wakeup latency, and a low-rate wake/relock cycle.  Good enough
-for a process-spawning workload (spawns are milliseconds); arguably the
-better default for portability.  Recommend this as the **fallback** the
-non-epoll branch uses, and consider it as the primary if the private-attr
-dependence is judged unacceptable.
+Keep `select()` under `sel_lock` but cap each blocking wait at a small slice
+(`min(timeout, _POLL_SLICE)`), returning empty on slice expiry and letting
+`_maybe_obtain_token` loop.  Because the lock is released between slices a
+registering thread is delayed by at most one slice — so this avoids the
+deadlock **without** releasing the lock mid-syscall — and the next entry
+re-checks `_closed`, so it needs no wake fd.  Avoids the private attribute
+entirely and is trivially portable.  Cost: up to one slice of added
+register/wakeup latency and a low-rate wake/relock cycle.  Good enough for a
+process-spawning workload (spawns are milliseconds).  **This is the fallback
+the non-epoll branch in `select()` uses.**  It could also serve as the
+primary everywhere if the private-attr dependence is judged unacceptable,
+trading the epoll path's zero-latency wakeups for portability.
 
 ### A2. Build directly on `select.epoll`
 
@@ -587,13 +714,12 @@ reimplement the small amount of `register`/`unregister` bookkeeping and lose
 `DefaultSelector` portability (epoll = Linux), so a separate portable path
 (A1) is still needed for non-Linux.  Cleanest on Linux; most code.
 
-### A3. Hold `sel_lock` across the whole blocking `select()`
+### A3. Hold `sel_lock` across the whole blocking `select()` — *rejected*
 
 Simplest to write, but reintroduces the registration-starvation **deadlock**
-documented under "Blocking wait."  Rejected except as the degenerate
-non-epoll fallback, where it is acceptable only because that path is not the
-supported hot platform. (A1 is strictly safer than A3 and similarly simple;
-prefer A1 for the fallback.)
+documented under "Blocking wait" (and gives `close()` no way to interrupt a
+parked waiter).  Rejected outright: A1 is strictly safer and similarly
+simple, so the non-epoll fallback uses A1, not A3.
 
 ## Docstring Update
 
@@ -628,19 +754,29 @@ All in `test/test_jobserver_concurrency.py`:
 5. **`test_concurrent_exit_blocks_submit`** — after `__exit__`, a concurrent
    `submit()` raises `RuntimeError` and starts no worker (assert no orphan
    via process count / `_tracked()`).
-6. **`test_locked_selector_uses_epoll_fast_path`** — on Linux, assert the
+6. **`test_close_wakes_parked_submit`** — the R1 regression: one thread parks
+   in `submit(timeout=None)` waiting for a slot (all slots held by an
+   infinite worker) while another thread calls `__exit__`/`close()`; assert
+   the parked submit returns (raising `RuntimeError`/`Blocked`) within a
+   short wall-clock bound rather than hanging.
+7. **`test_locked_selector_uses_epoll_fast_path`** — on Linux, assert the
    wrapper's `_epoll` is non-None and the backend is `EpollSelector`, so a
    silent fallback is caught.
-7. **`test_fork_rebuilds_locks`** — submit from a child after fork; confirm
+8. **`test_fork_rebuilds_locks`** — submit from a child after fork; confirm
    no inherited-lock stall.
+9. **`test_unpickle_closed_jobserver`** — pickling a `Jobserver` whose slots
+   were closed, then unpickling, does not raise from eager construction.
 
 ## Implementation Checklist
 
 - [ ] Add `_LockedSelector` (register/unregister/select/get_map/close,
-      `_closed`, epoll fast path + fallback)
+      `_closed`, epoll fast path with shutdown wake fd + A1 time-sliced
+      fallback; `poll()` tolerates a concurrent close)
 - [ ] Add `"_spawn_lock"` to `Jobserver.__slots__`
-- [ ] Add `_build_selector()`; construct wrapper + `_spawn_lock` eagerly in
-      `__init__` and `__setstate__`
+- [ ] Add `_build_selector()` (guarding the `slots.waitable()` register
+      against an already-closed queue); construct wrapper + `_spawn_lock`
+      eagerly in `__init__` and `__setstate__`, assigning `_selector_closed`
+      *before* the build
 - [ ] Simplify `_lazy_selector()` to closed-check + fork-rebuild (rebuild
       both locks)
 - [ ] Wrap `submit()`'s spawn tail in `_spawn_lock` with a `_closed`
