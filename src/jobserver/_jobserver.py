@@ -280,7 +280,8 @@ class Future(Generic[T]):
         "_connection",
         "_wrapper",
         "_callbacks",
-        "_callback_seqno",
+        "_callbacks_issuing",
+        "_callbacks_seqno",
     )
 
     def __init__(self, process: BaseProcess, connection: Connection) -> None:
@@ -302,10 +303,15 @@ class Future(Generic[T]):
         # (priority, callback_seqno, ...) so token restoration fires before
         # user callbacks, which fire before sentinel cleanup.
         self._callbacks: list[tuple] = []
+
+        # True iff callbacks are actively being issued.
+        # Flag should only be observed/manipulated within _issue_callbacks()
+        self._callbacks_issuing = False
+
         # Monotonic seqno needed due to reentrancy.  Starting at -3 lets the
         # three internal registrations submit() makes (token restoration plus
         # sentinel and connection cleanup) consume -3, -2, -1 so user 0-based.
-        self._callback_seqno = -3
+        self._callbacks_seqno = -3
 
     def __repr__(self) -> str:
         with self._rlock:
@@ -344,7 +350,10 @@ class Future(Generic[T]):
         """
         Register fn(*args, **kwargs) for execution after Future.done(...).
 
-        When already done(...) the requested function is immediately invoked.
+        When already done(...) function fn(...) will be invoked immediately
+        after completion of any currently executing or registered callbacks
+        for *this* Future.
+
         The Future is not automatically passed; to receive it, bind it
         explicitly via args, e.g. future.when_done(cb, future).
         May raise CallbackRaised from at most this new callback.
@@ -353,11 +362,11 @@ class Future(Generic[T]):
         the resulting CallbackRaised reports it via CallbackRaised.seqno.
         """
         # _when_done assigns and returns the seqno under the same lock.
-        # self._callback_seqno is an int, so the partial curries a copy.
+        # self._callbacks_seqno is an int, so the partial curries a copy.
         with self._rlock:
             return self._when_done(
                 fn=functools.partial(
-                    _callback_wrapper, self._callback_seqno, fn
+                    _callback_wrapper, self._callbacks_seqno, fn
                 ),
                 args=args,
                 kwargs=kwargs,
@@ -373,7 +382,7 @@ class Future(Generic[T]):
     ) -> int:
         """Register a callback with some priority, returning its seqno."""
         with self._rlock:
-            seqno = self._callback_seqno
+            seqno = self._callbacks_seqno
             heapq.heappush(
                 self._callbacks,
                 (
@@ -384,7 +393,7 @@ class Future(Generic[T]):
                     {} if kwargs is None else kwargs,
                 ),
             )
-            self._callback_seqno += 1
+            self._callbacks_seqno += 1
             if self._connection is None:
                 self._issue_callbacks()
             return seqno
@@ -496,9 +505,19 @@ class Future(Generic[T]):
         # _is_owned is expected on RLock but not guaranteed; skip if absent
         assert getattr(self._rlock, "_is_owned", object)(), "must hold _rlock"
         assert self._connection is None and self._process is None, "Invariant"
-        while self._callbacks:
-            _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
-            fn(*args, **kwargs)
+
+        # Avoiding nested drains converts unbounded recursion into a flat loop
+        # Otherwise callbacks re-registering themselves blow out the stack
+        if self._callbacks_issuing:
+            return
+
+        self._callbacks_issuing = True
+        try:
+            while self._callbacks:
+                _, _, fn, args, kwargs = heapq.heappop(self._callbacks)
+                fn(*args, **kwargs)
+        finally:
+            self._callbacks_issuing = False
 
     def result(self, timeout: Optional[float] = None) -> T:
         """

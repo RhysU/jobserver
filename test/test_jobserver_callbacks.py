@@ -44,11 +44,10 @@ class TestJobserverCallbacks(unittest.TestCase):
             ):
                 self.fail("child did not exit")
 
-    def helper_check_semantics(self, f: Future[None]) -> None:
+    def helper_check_semantics(
+        self, f: Future[None], mutable: list[int]
+    ) -> None:
         """Helper checking Future semantics *inside* a callback as expected."""
-        # Prepare how callbacks will be observed
-        mutable = [0]
-
         # Confirm that inside a callback the Future reports done()
         self.assertTrue(f.done())
         self.assertTrue(f.wait(timeout=0))
@@ -58,15 +57,28 @@ class TestJobserverCallbacks(unittest.TestCase):
         f.when_done(helper_callback, mutable, 0, 1)
         f.when_done(helper_callback, mutable, 0, 2)
 
-        # Confirm that inside a callback above work was immediately performed
-        self.assertEqual(mutable[0], 3, "Two callbacks observed")
+        # Confirm that *inside* this callback above callbacks haven't happened
+        # Those helper_callback(...) calls occur *after* helper_check_semantics
+        self.assertEqual(mutable[0], 0, "Zero callbacks observed")
 
     def test_callback_semantics(self) -> None:
         """Inside a Future's callback the Future reports done() is True."""
+        # Prepare how callbacks will be observed
+        mutable_a = [0]
+        mutable_b = [0]
+
         with Jobserver(context=FAST, slots=3) as js:
+            # First, test registering callbacks before waiting for result()
             f = js.submit(fn=len, args=((1, 2, 3),))
-            f.when_done(self.helper_check_semantics, f)
+            f.when_done(self.helper_check_semantics, f, mutable_a)
             self.assertEqual(3, f.result())
+            self.assertEqual(mutable_a[0], 3, "Two callbacks observed")
+
+            # Second, test registering callbacks after waiting for result()
+            g = js.submit(fn=len, args=((1, 2, 3, 4),))
+            self.assertEqual(4, g.result())
+            g.when_done(self.helper_check_semantics, g, mutable_b)
+            self.assertEqual(mutable_b[0], 3, "Two callbacks observed")
 
     def test_done_callback_raises(self) -> None:
         """Future.wait() raises CallbackRaised from processing callbacks."""
