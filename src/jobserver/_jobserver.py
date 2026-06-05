@@ -350,9 +350,11 @@ class Future(Generic[T]):
         """
         Register fn(*args, **kwargs) for execution after Future.done(...).
 
-        When already done(...) function fn(...) will be invoked immediately
-        after completion of any currently executing or registered callbacks
-        for *this* Future.
+        Callbacks run synchronously, inline, on whichever thread first
+        observes completion.  There is no background thread or timeout.
+        When already done(...) function fn(...) will be invoked
+        immediately after completion of any currently executing or
+        registered callbacks for *this* Future.
 
         The Future is not automatically passed; to receive it, bind it
         explicitly via args, e.g. future.when_done(cb, future).
