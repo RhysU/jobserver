@@ -905,7 +905,7 @@ class Jobserver:
         in which case the result is None.
 
         Optional sleep_fn() permits injecting additional logic as
-        to when a slot may be consumed.  For example, one can accept work
+        to when any work may be accepted.  For example, one can accept work
         only when sufficient RAM is available.  Function sleep_fn()
         should either return None when work is acceptable or return the
         non-negative number of seconds for which this process should sleep.
@@ -1260,8 +1260,8 @@ def _maybe_obtain_token(
         # (1) Eagerly clean up any completed work to avoid deadlocks
         reclaim_tokens_fn()
 
-        # (2) Exit loop if all requested resources have been acquired
-        if consume == 0 or token is not None:
+        # (2) Exit once a consume == 1 submission already holds its slot.
+        if token is not None:
             break
 
         # (3) When sleep_fn() vetoes new work proceed to sleep.
@@ -1284,22 +1284,26 @@ def _maybe_obtain_token(
                 raise Blocked()
             continue
 
+        # (4) Gate passed; a consume == 0 submission needs no slot.
+        if consume == 0:
+            break
+
         try:
-            # (4) Grab any immediately available token
+            # (5) Grab any immediately available token
             token = slots.get(timeout=0)
         except queue.Empty:
-            # (5) Otherwise, possibly throw in the towel...
+            # (6) Otherwise, possibly throw in the towel...
             monotonic = time.monotonic()
             if monotonic >= deadline:
                 raise Blocked() from None
 
-            # (6) ...then block until some interesting event.
+            # (7) ...then block until some interesting event.
             # O(k) via the persistent selector: _lazy_selector() places
             # slots.waitable() once so only one epoll_wait is needed here.
             # No rebuilding of the interest set.
             keys_events = selector.select(timeout=deadline - monotonic)
 
-            # (7) A sentinel wakeup normally means a child exited and the next
+            # (8) A sentinel wakeup normally means a child exited and the next
             # reclaim_tokens_fn() pass will restore its slot, so loop at once.
             # But if that Future's lock is held elsewhere, reclaim cannot
             # complete it and its sentinel stays ready, so re-select()ing would

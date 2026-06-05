@@ -319,6 +319,56 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual(1, f.result())
                     self.assertEqual(0, g.result())
 
+    def test_sleep_fn_consume_zero(self) -> None:
+        """sleep_fn gates consume == 0 work too, uniformly (#340).
+
+        A consume == 0 submission consumes no slot but still spawns real
+        work, so the admission gate must apply.
+        """
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # A vetoing gate must block consume == 0 work to timeout
+                    # rather than letting it slip through ungated; fn never
+                    # runs because the gate is never satisfied.
+                    veto_calls = [0]
+
+                    def veto(veto_calls=veto_calls) -> float:
+                        veto_calls[0] += 1
+                        return 0.05
+
+                    with self.assertRaises(Blocked):
+                        js.submit(
+                            fn=len,
+                            args=((),),
+                            consume=0,
+                            sleep_fn=veto,
+                            timeout=0.1,
+                        )
+                    self.assertGreater(
+                        veto_calls[0],
+                        0,
+                        "sleep_fn never consulted for consume == 0 work",
+                    )
+
+                    # A permissive gate admits consume == 0 work and is
+                    # consulted at least once on the way in.
+                    allow_calls = [0]
+
+                    def allow(allow_calls=allow_calls):
+                        allow_calls[0] += 1
+                        return None
+
+                    f = js.submit(
+                        fn=len, args=((1, 2),), consume=0, sleep_fn=allow
+                    )
+                    self.assertEqual(2, f.result(timeout=5))
+                    self.assertGreater(
+                        allow_calls[0],
+                        0,
+                        "sleep_fn never consulted for admitted consume == 0",
+                    )
+
     def test_sleep_fn_timeout_not_overshot(self) -> None:
         """sleep_fn veto must raise Blocked once the deadline passes.
 
