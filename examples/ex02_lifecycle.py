@@ -27,9 +27,9 @@ def main() -> None:
         # result(): block for and return the value, re-raising on failure.
         info("result(): %r", future1.result())
 
-        # reclaim_resources() frees resources and issues callbacks for
-        # finished Futures you never waited on, like invoking the garbage
-        # collector, generally unnecessary but occasionally useful.
+        # reclaim_resources() frees resources and issues callbacks for finished
+        # Futures you never waited on.  Like invoking the garbage collector,
+        # the method is generally unnecessary but occasionally useful.
         reclaimed: list = []
         future2 = jobserver(len, "second")
         future2.when_done(reclaimed.append, "callback fired")
