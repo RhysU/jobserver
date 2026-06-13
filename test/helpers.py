@@ -195,6 +195,22 @@ def helper_noop() -> None:
     """A do-nothing callable picklable for spawn/forkserver contexts."""
 
 
+def helper_fork_orphan_then_die(q: SPSCQueue[int]) -> typing.NoReturn:
+    """Fork a grandchild that inherits the result pipe, then die silently.
+
+    The grandchild reports its pid via q (so the test can reap it) and then
+    sleeps, keeping the inherited result-pipe write end open.  The worker
+    exits via os._exit() WITHOUT sending a result, so the pipe never reaches
+    EOF: from the parent the Future is *undetermined* -- not dead -- until
+    the orphan is reaped and the last write end closes (see #328).
+    """
+    if os.fork() == 0:  # grandchild keeps the inherited result pipe open
+        q.put(os.getpid())
+        time.sleep(60)
+        os._exit(0)
+    os._exit(0)  # worker dies WITHOUT sending a result
+
+
 def helper_preexec_fn() -> None:
     """Mutates os.environ so that the change can be observed."""
     os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"

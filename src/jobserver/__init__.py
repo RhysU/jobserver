@@ -17,7 +17,7 @@ concurrent.futures.Executor with a few differences:
    queues consequently permitting the implementation to play well with
    more 3rd party libraries.
  * Fourth, Futures are eagerly scanned to quickly reclaim resources.
- * Fifth, Futures can detect when a child process died unexpectedly.
+ * Fifth, Futures can detect when a result pipe closes without a result.
  * Sixth, the user can specify additional work acceptance criteria.
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
