@@ -1306,7 +1306,7 @@ def _maybe_obtain_token(
 
             # (8) A sentinel wakeup normally means a child exited and the next
             # reclaim_tokens_fn() pass will restore its slot, so loop at once.
-            # But if that Future's lock is held elsewhere, reclaim cannot
+            # But if its pipe stays open or its lock is held, reclaim cannot
             # complete it and its sentinel stays ready, so re-select()ing would
             # peg a CPU.  Back off only when a sentinel-only wakeup repeats
             # fds the prior pass failed to reclaim, bounded by the deadline.
