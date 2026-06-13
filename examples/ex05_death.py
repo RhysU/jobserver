@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 5 shows detecting when a worker process dies unexpectedly."""
+"""Example 5 shows detecting a submission that ends without a result."""
 
 import signal
 from logging import INFO, basicConfig, captureWarnings, info
@@ -12,16 +12,16 @@ from jobserver import Jobserver, SubmissionDied
 
 
 def main() -> None:
-    """Shows detecting when a worker process dies unexpectedly."""
+    """Shows detecting a submission that ends without a result."""
     with Jobserver(context="spawn", slots=2) as jobserver:
-        # To emulate unexpected process death within a work,
-        # submit work that will kill itself when it runs
+        # Submit work that SIGKILLs itself, closing the result pipe
+        # without sending a result.
         future_killed = jobserver(signal.raise_signal, signal.SIGKILL)
 
         # Submit normal work alongside the doomed submission
         future_ok = jobserver.submit(fn=len, args=("hello",))
 
-        # wait() returns True even for dead submissions
+        # wait() returns True once settled, even when the submission died
         info("Killed worker wait: %s", future_killed.wait())
         info("Normal result: %s", future_ok.result())
 

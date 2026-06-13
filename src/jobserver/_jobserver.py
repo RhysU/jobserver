@@ -125,7 +125,9 @@ class SubmissionDied(Exception):
     Reports a submission died for unknowable reasons, e.g. being killed.
 
     Work that is killed, terminated, interrupted, etc. raises this exception.
-    Exactly what has transpired is not reported.  Do not attempt to recover.
+    The trigger is the result pipe closing without a result, not just the
+    worker dying. Exactly what has transpired is not reported. Do not attempt
+    to recover.
     """
 
 
@@ -427,7 +429,8 @@ class Future(Generic[T]):
         Waiting at most timeout, return True if result(timeout=0) must succeed.
 
         First, sends any provided signal to any underlying, running process.
-        Second, returns True if process completion confirmed by the timeout.
+        Second, returns True once the result pipe yields a result or closes
+        without one. The work is not done until the pipe is closed.
         Timeout is given in seconds with None meaning to block indefinitely.
         Never raises Blocked but instead returns False on unavailable result.
 
@@ -461,19 +464,17 @@ class Future(Generic[T]):
                 except ProcessLookupError:
                     pass
 
-            # Wait for either pipe data or process death
+            # The result pipe is the contract: a readable connection has data
+            # or has closed without one. Wait on it, not on process exit.
             assert self._process is not None
-            ready = wait(
-                [self._connection, self._process.sentinel],
+            if not wait(
+                [self._connection],
                 timeout=deadline_to_timeout(deadline),
-            )
-            # Sentinel ready implies process exited; trust it over is_alive()
-            # because Linux closes fds before marking the process as a zombie
-            if not ready and self._process.is_alive():
+            ):
                 return False
 
-            # Attempt to read the result Wrapper from the Connection
-            # EOFError is an unexpected hang up from the other end
+            # The connection is readable, so recv() will not block past the
+            # deadline.  EOFError is the contract closing without a result.
             try:
                 self._wrapper = self._connection.recv()
             except EOFError:

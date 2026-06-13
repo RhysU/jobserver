@@ -18,7 +18,7 @@ Purpose
    queues consequently permitting the implementation to play well with
    more 3rd party libraries.
  * Fourth, Futures are eagerly scanned to quickly reclaim resources.
- * Fifth, Futures can detect when a child process died unexpectedly.
+ * Fifth, Futures can detect when a result pipe closes without a result.
  * Sixth, the user can specify additional work acceptance criteria.
    For example, not launching work unless some amount of RAM is available.
  * Lastly, the API communicates when Exceptions occur within a callback.
@@ -54,15 +54,16 @@ and
 | Background thread                 |     no      |         yes         |          yes          |  yes   |
 | Cancel pending work               |     no      |         yes         |          yes          |   no   |
 | Cancel running work               |     yes     |         no          |          no           |   no   |
-| Detects individual worker death   |     yes     |         yes         |       partial\*       |   no   |
+| Detects individual lost results   |     yes     |         yes         |       partial\*       |   no   |
 | User-defined launch criteria      |     yes     |         yes         |          no           |   no   |
 | Lambdas/closures via `fork`       |     yes     |         no          |          no           |   no   |
 | Lambdas/closures via `spawn`      |     no      |         no          |          no           |   no   |
 | Lambdas/closures via `forkserver` |     no      |         no          |          no           |   no   |
 
-\* `ProcessPoolExecutor` notices a worker died but cannot pin it to a single
-submission, so it fails every outstanding future at once instead of just the
-one whose worker died.
+\* Each submission owns its own result pipe, so a pipe that closes without a
+result is reported as `SubmissionDied` against exactly that one `Future`.
+`ProcessPoolExecutor`, by contrast, cannot tell which submission lost its
+worker, so it fails all outstanding futures at once.
 
 Examples
 --------
@@ -75,8 +76,8 @@ Examples
    shares slot constraints with its parent.
  * [ex04_cancel](examples/ex04_cancel.py) - Cancelling running work by sending
    `SIGTERM` to a worker via `Future.wait(signal=...)`.
- * [ex05_death](examples/ex05_death.py) - Detecting when a worker process is
-   killed unexpectedly via `SubmissionDied`.
+ * [ex05_death](examples/ex05_death.py) - Detecting a submission whose result
+   pipe closes without a result (e.g. a killed worker) via `SubmissionDied`.
  * [ex06_sleep_fn](examples/ex06_sleep_fn.py) - Gating work acceptance on an
    external condition using `sleep_fn`.
  * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`

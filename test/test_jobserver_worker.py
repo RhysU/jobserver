@@ -16,6 +16,7 @@ import itertools
 import os
 import signal
 import sys
+import threading
 import time
 import typing
 import unittest
@@ -35,8 +36,10 @@ from jobserver._jobserver import (
 from jobserver._queue import SPSCQueue
 
 from .helpers import (
+    TIMEOUT,
     helper_callback,
     helper_current_process_name,
+    helper_fork_orphan_then_die,
     helper_nonblocking,
     helper_noop,
     helper_preexec_cm,
@@ -138,6 +141,60 @@ class TestJobserverWorker(unittest.TestCase):
                     with self.assertRaises(SubmissionDied) as ctx:
                         f.result(timeout=5)
                 self.assertIsNone(ctx.exception.__cause__)
+
+    def test_open_result_pipe_keeps_future_undetermined(self) -> None:
+        """An open result pipe leaves a Future undetermined, not dead (#328).
+
+        A worker forks a grandchild that inherits the result-pipe write end,
+        then exits without sending a result.  Per the pipe-as-contract model
+        the result is merely *undetermined* while that write end stays open:
+        the worker's exit must NOT manufacture a death, so wait(timeout)
+        returns False within its deadline (rather than hanging in recv() or
+        reporting SubmissionDied).  Only once the orphan is reaped does the
+        pipe reach EOF and the death legitimately surface.
+
+        wait() runs on a daemon thread so a regression to an unbounded recv()
+        shows up as the thread failing to finish rather than wedging the suite.
+        """
+        for method in start_methods():
+            with self.subTest(method=method):
+                # The grandchild reports its pid here so the test can reap it.
+                with SPSCQueue(context=method) as q:
+                    with Jobserver(context=method, slots=1) as js:
+                        f = js.submit(
+                            fn=helper_fork_orphan_then_die, args=(q,)
+                        )
+                        # Block until the orphan exists and holds the pipe.
+                        orphan_pid = q.get(timeout=TIMEOUT)
+                        returned = threading.Event()
+                        out: list = []
+
+                        # Bind loop vars as defaults so the closure captures
+                        # this iteration's objects (ruff B023).
+                        def _waiter(f=f, ev=returned, sink=out) -> None:
+                            sink.append(f.wait(timeout=0.5))
+                            ev.set()
+
+                        t = threading.Thread(target=_waiter, daemon=True)
+                        t.start()
+                        try:
+                            self.assertTrue(
+                                returned.wait(TIMEOUT),
+                                "wait() ignored its timeout",
+                            )
+                            # Undetermined: a finite wait returns False, with
+                            # no death synthesized from the worker's exit.
+                            self.assertEqual(out, [False])
+                        finally:
+                            # Reaping the orphan closes the last write end so
+                            # the pipe reaches EOF (also unwedges any hang).
+                            try:
+                                os.kill(orphan_pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+                        # Pipe now EOFs: the death legitimately surfaces.
+                        with self.assertRaises(SubmissionDied):
+                            f.result(timeout=TIMEOUT)
 
     def test_done_signal_terminates(self) -> None:
         """Future.wait(..., signal=...) accepts Signals enum and int forms."""
