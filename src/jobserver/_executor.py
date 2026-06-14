@@ -6,6 +6,7 @@
 """A concurrent.futures.Executor backed by a Jobserver."""
 
 import concurrent.futures
+import contextlib
 import functools
 import itertools
 import logging
@@ -473,25 +474,19 @@ def _drain_requests(
 
 
 class _CloseResponseWriter:
-    """preexec_fn that closes the response pipe's write end in each worker.
+    """preexec_fn closing the response pipe write end in each worker.
 
-    Under fork, workers inherit all open fds including the response pipe's
-    write end held by the dispatcher.  Closing it ensures the receiver sees
-    EOF promptly when the dispatcher dies, rather than waiting for the worker
-    to exit (issue #345).  OSError is silenced so this is safe under
-    spawn/forkserver where the fd may not exist in the child.
-    """
+    Workers inherit open fds under fork; closing this end ensures the
+    receiver sees EOF promptly when the dispatcher dies."""
 
     __slots__ = ("_fd",)
 
-    def __init__(self, fd: int) -> None:
-        self._fd = fd
+    def __init__(self, writer: Optional[Connection]) -> None:
+        self._fd = writer.fileno() if writer is not None else -1
 
     def __call__(self) -> None:
-        try:
+        with contextlib.suppress(OSError):
             os.close(self._fd)
-        except OSError:
-            pass
 
 
 def _dispatch_pending(
@@ -505,12 +500,8 @@ def _dispatch_pending(
     spawned.  Stops on first Blocked since remaining will be too.
     """
     pending = state.pending
-    # Close the response writer in each worker so the receiver sees EOF
-    # promptly when the dispatcher is killed (issue #345).
-    writer = responses._writer
-    preexec: Optional[_CloseResponseWriter] = (
-        _CloseResponseWriter(writer.fileno()) if writer is not None else None
-    )
+    # Close response writer in each worker so the receiver sees EOF promptly.
+    preexec = _CloseResponseWriter(responses._writer)
     while pending:
         # Peek the oldest entry; insertion order makes dispatch FIFO.
         work_id, item = next(iter(pending.items()))
