@@ -9,6 +9,7 @@ import concurrent.futures
 import functools
 import itertools
 import logging
+import os
 import queue
 import threading
 import traceback
@@ -471,6 +472,28 @@ def _drain_requests(
             return
 
 
+class _CloseResponseWriter:
+    """preexec_fn that closes the response pipe's write end in each worker.
+
+    Under fork, workers inherit all open fds including the response pipe's
+    write end held by the dispatcher.  Closing it ensures the receiver sees
+    EOF promptly when the dispatcher dies, rather than waiting for the worker
+    to exit (issue #345).  OSError is silenced so this is safe under
+    spawn/forkserver where the fd may not exist in the child.
+    """
+
+    __slots__ = ("_fd",)
+
+    def __init__(self, fd: int) -> None:
+        self._fd = fd
+
+    def __call__(self) -> None:
+        try:
+            os.close(self._fd)
+        except OSError:
+            pass
+
+
 def _dispatch_pending(
     jobserver: Jobserver,
     state: _DispatchState,
@@ -482,6 +505,12 @@ def _dispatch_pending(
     spawned.  Stops on first Blocked since remaining will be too.
     """
     pending = state.pending
+    # Close the response writer in each worker so the receiver sees EOF
+    # promptly when the dispatcher is killed (issue #345).
+    writer = responses._writer
+    preexec: Optional[_CloseResponseWriter] = (
+        _CloseResponseWriter(writer.fileno()) if writer is not None else None
+    )
     while pending:
         # Peek the oldest entry; insertion order makes dispatch FIFO.
         work_id, item = next(iter(pending.items()))
@@ -491,6 +520,7 @@ def _dispatch_pending(
                 args=item.args,
                 kwargs=item.kwargs,
                 timeout=0,
+                preexec_fn=preexec,
             )
         except Blocked:
             return
