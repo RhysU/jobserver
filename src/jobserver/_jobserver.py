@@ -1152,6 +1152,9 @@ def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
     """Entry point for workers to run fn(...) due to some submit(...)."""
     ignore_sigpipe()
 
+    # Enforce close-on-exec so exec()'d grandchildren don't inherit the pipe.
+    os.set_inheritable(send.fileno(), False)
+
     # Wrapper usage tracks whether a value was returned or raised
     # in degenerate case where client code returns an Exception
     result: Optional[Wrapper[Any]] = None
