@@ -8,7 +8,7 @@
 import signal
 from logging import INFO, basicConfig, captureWarnings, info
 
-from jobserver import Jobserver, SubmissionDied
+from jobserver import Jobserver, LostResult
 
 
 def main() -> None:
@@ -25,12 +25,12 @@ def main() -> None:
         info("Killed worker wait: %s", future_killed.wait())
         info("Normal result: %s", future_ok.result())
 
-        # result() raises SubmissionDied for the killed worker
+        # result() raises LostResult for the killed worker
         try:
             future_killed.result()
-            raise RuntimeError("Expected SubmissionDied was not raised")
-        except SubmissionDied:
-            info("Caught expected SubmissionDied from SIGKILL worker")
+            raise RuntimeError("Expected LostResult was not raised")
+        except LostResult:
+            info("Caught expected LostResult from SIGKILL worker")
 
 
 if __name__ == "__main__":

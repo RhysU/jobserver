@@ -25,7 +25,7 @@ import unittest
 from jobserver import (
     Jobserver,
     JobserverExecutor,
-    SubmissionDied,
+    LostResult,
     _response,
 )
 from jobserver._executor import _responses_put_failed
@@ -128,7 +128,7 @@ class TestExceptionPropagation(unittest.TestCase):
         with Jobserver(context=FAST, slots=2) as js:
             with JobserverExecutor(js) as exe:
                 f = exe.submit(signal.raise_signal, signal.SIGKILL)
-                with self.assertRaises(SubmissionDied):
+                with self.assertRaises(LostResult):
                     f.result(timeout=TIMEOUT)
                 # Executor must recover for multiple subsequent tasks
                 for i in range(5):
@@ -140,7 +140,7 @@ class TestExceptionPropagation(unittest.TestCase):
         with Jobserver(context=FAST, slots=2) as js:
             with JobserverExecutor(js) as exe:
                 f = exe.submit(sys.exit, 1)
-                with self.assertRaises(SubmissionDied):
+                with self.assertRaises(LostResult):
                     f.result(timeout=TIMEOUT)
                 # Executor must remain usable
                 g = exe.submit(len, (1, 2, 3))

@@ -14,7 +14,7 @@ import traceback
 import typing
 import unittest
 
-from jobserver import Jobserver, SubmissionDied
+from jobserver import Jobserver, LostResult
 from jobserver._jobserver import (
     ExceptionWrapper,
     RemoteTraceback,
@@ -79,15 +79,15 @@ def _wrap_live_exception() -> ExceptionWrapper:
 
 
 def _wrap_live_base_exception(klass: type, *args) -> ExceptionWrapper:
-    """Mirror _worker_entrypoint's BaseException path: raise SubmissionDied
+    """Mirror _worker_entrypoint's BaseException path: raise LostResult
     from a freshly-raised control-flow BaseException, then wrap it (#167).
     """
     try:
         raise klass(*args)
     except BaseException as e:
         try:
-            raise SubmissionDied() from e
-        except SubmissionDied as died:
+            raise LostResult() from e
+        except LostResult as died:
             return ExceptionWrapper(died)
     raise AssertionError("unreachable")
 
@@ -265,7 +265,7 @@ class TestExceptionWrapperPickle(unittest.TestCase):
 
     def test_round_trip_without_traceback(self) -> None:
         """Parent-built wrappers have no tb; round-trips stay empty."""
-        w = ExceptionWrapper(SubmissionDied())
+        w = ExceptionWrapper(LostResult())
         self.assertEqual(w._raised_tb, "")
         self._assert_idempotent(w)
 
@@ -291,10 +291,10 @@ class TestExceptionWrapperPickle(unittest.TestCase):
         self._assert_idempotent(w)
 
     def test_submission_died_chained_from_keyboard_interrupt(self) -> None:
-        """SubmissionDied raised-from KeyboardInterrupt captures both."""
+        """LostResult raised-from KeyboardInterrupt captures both."""
         w = _wrap_live_base_exception(KeyboardInterrupt)
-        self.assertIsInstance(w._raised, SubmissionDied)
-        self.assertIn("SubmissionDied", w._raised_tb)
+        self.assertIsInstance(w._raised, LostResult)
+        self.assertIn("LostResult", w._raised_tb)
         self.assertIn("KeyboardInterrupt", w._raised_tb)
         self.assertIn("_wrap_live_base_exception", w._raised_tb)
         self._assert_idempotent(w)
@@ -302,15 +302,15 @@ class TestExceptionWrapperPickle(unittest.TestCase):
     def test_submission_died_chained_from_system_exit(self) -> None:
         """The chained SystemExit type renders so the parent can debug."""
         w = _wrap_live_base_exception(SystemExit, 2)
-        self.assertIsInstance(w._raised, SubmissionDied)
+        self.assertIsInstance(w._raised, LostResult)
         self.assertIn("SystemExit", w._raised_tb)
         self._assert_idempotent(w)
 
     def test_chained_base_exception_round_trips(self) -> None:
-        """unwrap() after pickle raises SubmissionDied whose RemoteTraceback
+        """unwrap() after pickle raises LostResult whose RemoteTraceback
         renders the chained control-flow cause."""
         w = self._round_trip(_wrap_live_base_exception(KeyboardInterrupt))
-        with self.assertRaises(SubmissionDied) as ctx:
+        with self.assertRaises(LostResult) as ctx:
             w.unwrap()
         self.assertIsInstance(ctx.exception.__cause__, RemoteTraceback)
         self.assertIn("KeyboardInterrupt", str(ctx.exception.__cause__))

@@ -15,7 +15,7 @@ import signal
 import time
 import unittest
 
-from jobserver import Blocked, Jobserver, SubmissionDied
+from jobserver import Blocked, Jobserver, LostResult
 
 from .helpers import start_methods
 
@@ -213,7 +213,7 @@ class TestDesignForkSelector(unittest.TestCase):
 # When the Child is killed:
 #
 #   * The Parent detects Child death via EOFError on the result pipe,
-#     wraps it as SubmissionDied, and fires the Child future's internal
+#     wraps it as LostResult, and fires the Child future's internal
 #     callback restoring token 0.
 #
 #   * But the Grandchild's token-restoring callback existed only in the
@@ -260,7 +260,7 @@ class TestDesignShortcoming(unittest.TestCase):
 
                     # Kill the intermediate Child and collect it
                     future.wait(signal=signal.SIGKILL, timeout=5)
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         future.result()
 
                     # Grandchild finishes but nobody reclaims its token.
@@ -293,5 +293,5 @@ class TestDesignShortcoming(unittest.TestCase):
                     # Clean up the submissions that did succeed
                     for f in futures:
                         f.wait(signal=signal.SIGKILL)
-                        with self.assertRaises(SubmissionDied):
+                        with self.assertRaises(LostResult):
                             f.result()
