@@ -39,6 +39,7 @@ from .helpers import (
     TIMEOUT,
     helper_callback,
     helper_current_process_name,
+    helper_exec_grandchild_then_die,
     helper_fork_orphan_then_die,
     helper_nonblocking,
     helper_noop,
@@ -195,6 +196,35 @@ class TestJobserverWorker(unittest.TestCase):
                         # Pipe now EOFs: the death legitimately surfaces.
                         with self.assertRaises(SubmissionDied):
                             f.result(timeout=TIMEOUT)
+
+    def test_exec_grandchild_does_not_pin_result_pipe(self) -> None:
+        """An exec'd grandchild does not hold the result pipe open (#368).
+
+        A worker spawns a grandchild via subprocess.Popen (which exec()s) and
+        exits without sending a result.  With FD_CLOEXEC set on the write end,
+        exec() closes the fd in the grandchild, the pipe reaches EOF when the
+        worker exits, and the Future completes promptly -- in contrast to the
+        bare-fork case in test_open_result_pipe_keeps_future_undetermined.
+        """
+        for method in start_methods():
+            with self.subTest(method=method):
+                with SPSCQueue(context=method) as q:
+                    with Jobserver(context=method, slots=1) as js:
+                        f = js.submit(
+                            fn=helper_exec_grandchild_then_die, args=(q,)
+                        )
+                        grandchild_pid = q.get(timeout=TIMEOUT)
+                        try:
+                            # The pipe must reach EOF promptly; the exec'd
+                            # grandchild must not hold the write end open.
+                            with self.assertRaises(SubmissionDied):
+                                f.result(timeout=TIMEOUT)
+                        finally:
+                            try:
+                                os.kill(grandchild_pid, signal.SIGKILL)
+                                os.waitpid(grandchild_pid, 0)
+                            except (ProcessLookupError, ChildProcessError):
+                                pass
 
     def test_done_signal_terminates(self) -> None:
         """Future.wait(..., signal=...) accepts Signals enum and int forms."""
@@ -661,6 +691,10 @@ class _RecordingSend:
         self.payloads: list[bytes] = []
         self.closed = False
         self._fail_with = fail_with
+        self._fd = os.open(os.devnull, os.O_WRONLY)
+
+    def fileno(self) -> int:
+        return self._fd
 
     def send_bytes(self, payload: typing.Any) -> None:
         if self._fail_with is not None:
@@ -670,6 +704,7 @@ class _RecordingSend:
 
     def close(self) -> None:
         self.closed = True
+        os.close(self._fd)
 
 
 class TestWorkerEntrypointPickleFallback(unittest.TestCase):

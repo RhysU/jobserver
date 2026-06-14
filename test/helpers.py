@@ -211,6 +211,23 @@ def helper_fork_orphan_then_die(q: SPSCQueue[int]) -> typing.NoReturn:
     os._exit(0)  # worker dies WITHOUT sending a result
 
 
+def helper_exec_grandchild_then_die(q: SPSCQueue[int]) -> typing.NoReturn:
+    """Exec a long-lived grandchild via subprocess.Popen, then die silently.
+
+    The grandchild is a plain ``sleep`` process that would inherit the
+    result-pipe write end without FD_CLOEXEC.  With close-on-exec set (the
+    fix for #368) exec() closes the fd in the grandchild, so when the worker
+    exits the pipe reaches EOF and the Future completes promptly.
+
+    The grandchild's pid is sent via q so the test can reap it.
+    """
+    import subprocess
+
+    proc = subprocess.Popen(["sleep", "60"])
+    q.put(proc.pid)
+    os._exit(0)  # worker dies WITHOUT sending a result
+
+
 def helper_preexec_fn() -> None:
     """Mutates os.environ so that the change can be observed."""
     os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
