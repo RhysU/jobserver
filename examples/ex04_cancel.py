@@ -9,7 +9,7 @@ import signal
 import time
 from logging import INFO, basicConfig, captureWarnings, info
 
-from jobserver import Jobserver, SubmissionDied
+from jobserver import Jobserver, LostResult
 
 
 def main() -> None:
@@ -31,12 +31,12 @@ def main() -> None:
         )
         info("Normal result: %s", future_ok.result())
 
-        # Here, result() raises SubmissionDied for the SIGTERM-ed worker
+        # Here, result() raises LostResult for the SIGTERM-ed worker
         try:
             future_cancel.result()
-            raise RuntimeError("Expected SubmissionDied was not raised")
-        except SubmissionDied:
-            info("Caught expected SubmissionDied from cancelled worker")
+            raise RuntimeError("Expected LostResult was not raised")
+        except LostResult:
+            info("Caught expected LostResult from cancelled worker")
 
 
 if __name__ == "__main__":

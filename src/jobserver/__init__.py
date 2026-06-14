@@ -4,12 +4,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-A nestable Jobserver with futures, callbacks, and complete type-hinting
+A nestable Jobserver with thread-safe futures, callbacks, and type-hinting
 
 Jobserver is similar in spirit to multiprocessing.Pool or
 concurrent.futures.Executor with a few differences:
 
- * First, the implementation choices are based upon
+ * First, the implementation choices are based upon the GNU Make
+   Jobserver at
    https://www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html.
  * Second, as a result, the Jobserver is "nestable" meaning that resource
    constraints will be shared with work submitted by other work.
@@ -44,7 +45,7 @@ from ._jobserver import (
     CallbackRaised,
     Future,
     Jobserver,
-    SubmissionDied,
+    LostResult,
 )
 
 __all__ = (
@@ -53,5 +54,5 @@ __all__ = (
     "Future",
     "Jobserver",
     "JobserverExecutor",
-    "SubmissionDied",
+    "LostResult",
 )

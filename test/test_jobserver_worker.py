@@ -26,7 +26,7 @@ from multiprocessing.reduction import ForkingPickler
 from jobserver import (
     Blocked,
     Jobserver,
-    SubmissionDied,
+    LostResult,
 )
 from jobserver._jobserver import (
     ExceptionWrapper,
@@ -88,25 +88,25 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual([2, 3, 5, 7, 11], mutable)
 
                     # Confirm results or signals in reverse order
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         j.result()
                     self.assertEqual(14, i.result())
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         h.result()
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         g.result()
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         f.result()
 
     def test_base_exception_surfaces_as_submission_died(self) -> None:
-        """BaseException subclasses escaping fn surface as SubmissionDied.
+        """BaseException subclasses escaping fn surface as LostResult.
 
         sys.exit(1) raises SystemExit and helper_raise(KeyboardInterrupt)
         raises KeyboardInterrupt – both are BaseException subclasses that
         fall outside the ``except Exception:`` guard in _worker_entrypoint().
         The worker catches them via ``except BaseException``, sends a
-        SubmissionDied carrying the cause's traceback, then re-raises for
-        normal teardown.  The parent sees SubmissionDied whose __cause__ is a
+        LostResult carrying the cause's traceback, then re-raises for
+        normal teardown.  The parent sees LostResult whose __cause__ is a
         RemoteTraceback naming the originating type (see #167).
         """
         # fn, args, substring expected in the propagated child traceback.
@@ -119,7 +119,7 @@ class TestJobserverWorker(unittest.TestCase):
                 with self.subTest(method=method, fn=fn.__name__):
                     with Jobserver(context=method, slots=1) as js:
                         f = js.submit(fn=fn, args=args, timeout=5)
-                        with self.assertRaises(SubmissionDied) as ctx:
+                        with self.assertRaises(LostResult) as ctx:
                             f.result(timeout=5)
                     # The enriched path attaches the child's traceback as a
                     # cause; a silent death would leave __cause__ as None.
@@ -128,18 +128,18 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertIn(expected, str(cause))
 
     def test_os_exit_becomes_submission_died(self) -> None:
-        """os._exit() in worker produces a bare, causeless SubmissionDied.
+        """os._exit() in worker produces a bare, causeless LostResult.
 
         Unlike SystemExit/KeyboardInterrupt, os._exit() raises nothing the
         worker can catch, so no cause is sent and the parent falls back to
-        EOFError -> SubmissionDied with __cause__ None (the silent-death
+        EOFError -> LostResult with __cause__ None (the silent-death
         path that distinguishes it from the enriched #167 case).
         """
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=os._exit, args=(1,), timeout=5)
-                    with self.assertRaises(SubmissionDied) as ctx:
+                    with self.assertRaises(LostResult) as ctx:
                         f.result(timeout=5)
                 self.assertIsNone(ctx.exception.__cause__)
 
@@ -151,7 +151,7 @@ class TestJobserverWorker(unittest.TestCase):
         the result is merely *undetermined* while that write end stays open:
         the worker's exit must NOT manufacture a death, so wait(timeout)
         returns False within its deadline (rather than hanging in recv() or
-        reporting SubmissionDied).  Only once the orphan is reaped does the
+        reporting LostResult).  Only once the orphan is reaped does the
         pipe reach EOF and the death legitimately surface.
 
         wait() runs on a daemon thread so a regression to an unbounded recv()
@@ -194,7 +194,7 @@ class TestJobserverWorker(unittest.TestCase):
                             except ProcessLookupError:
                                 pass
                         # Pipe now EOFs: the death legitimately surfaces.
-                        with self.assertRaises(SubmissionDied):
+                        with self.assertRaises(LostResult):
                             f.result(timeout=TIMEOUT)
 
     def test_exec_grandchild_does_not_pin_result_pipe(self) -> None:
@@ -217,7 +217,7 @@ class TestJobserverWorker(unittest.TestCase):
                         try:
                             # The pipe must reach EOF promptly; the exec'd
                             # grandchild must not hold the write end open.
-                            with self.assertRaises(SubmissionDied):
+                            with self.assertRaises(LostResult):
                                 f.result(timeout=TIMEOUT)
                         finally:
                             try:
@@ -235,7 +235,7 @@ class TestJobserverWorker(unittest.TestCase):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.submit(fn=time.sleep, args=(60,))
                     self.assertTrue(f.wait(timeout=None, signal=sig))
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         f.result()
 
     def test_done_signal_invalid_raises(self) -> None:
@@ -275,7 +275,7 @@ class TestJobserverWorker(unittest.TestCase):
                     f = js.submit(fn=time.sleep, args=(60,))
                     f.wait(timeout=1e-9, signal=signal.SIGTERM)
                     self.assertTrue(f.wait(timeout=5))
-                    with self.assertRaises(SubmissionDied):
+                    with self.assertRaises(LostResult):
                         f.result()
 
     def test_environ(self) -> None:
@@ -754,7 +754,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     def test_deeply_nested_result_uses_fallback(self) -> None:
         """A picklable-but-too-deep result overflows the pickler with a
         RecursionError that now degrades to the descriptive fallback rather
-        than crashing the worker into a misleading SubmissionDied (#343)."""
+        than crashing the worker into a misleading LostResult (#343)."""
         send = _RecordingSend()
         _worker_entrypoint(send, {}, lambda: None, _make_deep_result, (), {})
         self.assertEqual(1, len(send.payloads))
@@ -769,12 +769,12 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
 class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
     """A broken or closed result fd is swallowed during the result-send so
     the worker closes quietly rather than escaping with a traceback and
-    degrading to a misleading SubmissionDied (#348)."""
+    degrading to a misleading LostResult (#348)."""
 
     def test_broken_result_fd_is_swallowed(self) -> None:
         """An OSError/EBADF from a closed result fd closes quietly instead
         of crashing the worker; the parent still observes EOF and reports
-        SubmissionDied, but without a noisy child traceback."""
+        LostResult, but without a noisy child traceback."""
         boom = OSError(errno.EBADF, "Bad file descriptor")
         send = _RecordingSend(fail_with=boom)
         _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})

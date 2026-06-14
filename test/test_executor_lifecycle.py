@@ -27,7 +27,7 @@ from unittest import mock
 from jobserver import (
     Jobserver,
     JobserverExecutor,
-    SubmissionDied,
+    LostResult,
     _request,
     _response,
 )
@@ -430,7 +430,7 @@ class TestResourceLeaks(unittest.TestCase):
         with Jobserver(context=FAST, slots=2) as js:
             with JobserverExecutor(js) as exe:
                 f = exe.submit(signal.raise_signal, signal.SIGKILL)
-                with self.assertRaises(SubmissionDied):
+                with self.assertRaises(LostResult):
                     f.result(timeout=TIMEOUT)
         time.sleep(0.5)
         after = len(multiprocessing.active_children())

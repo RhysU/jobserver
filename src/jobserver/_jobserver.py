@@ -58,7 +58,7 @@ __all__ = (
     "CallbackRaised",
     "Future",
     "Jobserver",
-    "SubmissionDied",
+    "LostResult",
 )
 
 T = TypeVar("T")
@@ -120,14 +120,14 @@ class CallbackRaised(Exception):
 
 
 @final
-class SubmissionDied(Exception):
+class LostResult(Exception):
     """
-    Reports a submission died for unknowable reasons, e.g. being killed.
+    Reports that a submission failed to return a result.
 
-    Work that is killed, terminated, interrupted, etc. raises this exception.
-    The trigger is the result pipe closing without a result, not just the
-    worker dying. Exactly what has transpired is not reported. Do not attempt
-    to recover.
+    This happens when a worker is killed, exits, or replaces itself with
+    another program via the exec call before sending a result on the
+    shared result pipe. Exactly what transpired is not reported. Do not
+    attempt to recover.
     """
 
 
@@ -478,7 +478,7 @@ class Future(Generic[T]):
             try:
                 self._wrapper = self._connection.recv()
             except EOFError:
-                self._wrapper = ExceptionWrapper(SubmissionDied())
+                self._wrapper = ExceptionWrapper(LostResult())
             except Exception as e:
                 # A value can pickle in the child yet fail to reconstitute
                 # in the parent (e.g. a returned Connection raises
@@ -1179,21 +1179,21 @@ def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
         result = ExceptionWrapper(exception)
     except BaseException as base_exception:
         # When possible, send cause of death back to the parent to aid
-        # users in debugging.  Raising SubmissionDied() from the escaped
+        # users in debugging.  Raising LostResult() from the escaped
         # BaseException gives it a live traceback whose chained __cause__
         # names the SystemExit/KeyboardInterrupt for the parent to render.
-        # SubmissionDied() without __cause__ indicates this send failed,
+        # LostResult() without __cause__ indicates this send failed,
         # e.g. due to a SIGKILL.
         try:
-            raise SubmissionDied() from base_exception
-        except SubmissionDied as died:
-            result = ExceptionWrapper(died)
+            raise LostResult() from base_exception
+        except LostResult as lost:
+            result = ExceptionWrapper(lost)
         raise  # Proceed with any BaseException-specific teardown
     finally:
         try:
             # None means result assignment never ran (e.g. an interpreter
             # teardown between except and finally); let the pipe close so
-            # the parent sees EOFError -> SubmissionDied.
+            # the parent sees EOFError -> LostResult.
             if result is not None:
                 try:
                     payload = ForkingPickler.dumps(result)

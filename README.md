@@ -1,8 +1,7 @@
 Jobserver
 =========
 
-A nestable Jobserver with thread-safe futures, callbacks, and complete
-type-hinting
+A nestable Jobserver with thread-safe futures, callbacks, and type-hinting
 
 Purpose
 -------
@@ -61,7 +60,7 @@ and
 | Lambdas/closures via `forkserver` |     no      |         no          |          no           |   no   |
 
 \* Each submission owns its own result pipe, so a pipe that closes without a
-result is reported as `SubmissionDied` against exactly that one `Future`.
+result is reported as `LostResult` against exactly that one `Future`.
 `ProcessPoolExecutor`, by contrast, cannot tell which submission lost its
 worker, so it fails all outstanding futures at once.
 
@@ -77,7 +76,7 @@ Examples
  * [ex04_cancel](examples/ex04_cancel.py) - Cancelling running work by sending
    `SIGTERM` to a worker via `Future.wait(signal=...)`.
  * [ex05_death](examples/ex05_death.py) - Detecting a submission whose result
-   pipe closes without a result (e.g. a killed worker) via `SubmissionDied`.
+   pipe closes without a result (e.g. a killed worker) via `LostResult`.
  * [ex06_sleep_fn](examples/ex06_sleep_fn.py) - Gating work acceptance on an
    external condition using `sleep_fn`.
  * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`
