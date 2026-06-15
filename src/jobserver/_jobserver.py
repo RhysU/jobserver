@@ -1075,9 +1075,10 @@ class Jobserver:
         element of kwargses provides keyword arguments for one call
         to fn.  Non-None argses and kwargses must have equal length.
 
-        Inputs are collected immediately unless buffersize limits
-        the number of outstanding submissions, in which case inputs
-        are consumed lazily as results are yielded.
+        Input argses and kwargses are collected immediately unless
+        buffersize limits the number of outstanding submissions, in
+        which case they are consumed lazily as results are yielded.
+        Individual args and kwargs are always collected eagerly.
 
         Timeout is given in seconds from this call; if a result is
         not available by the deadline, the iterator raises
