@@ -547,16 +547,17 @@ def noop(*args, **kwargs) -> None:
 
 @dataclass(frozen=True)
 class SlotsSentinel:
-    """Selector data for the slots waitable; its no-op done() lets
-    reclaim_resources() treat it like a Future.  Frozen, hence hashable,
-    so reclaim can dedup selector data with a set instead of via id().
+    """Callable selector data for the slots waitable: __call__ returns
+    self so reclaim_resources() resolves a live Future via its weakref
+    and this entry via itself.
 
-    A Future is registered weakly via weakref.ref so __call__ returns self
-    to let reclaim_resources() resolve any selector data uniformly: a live
-    Future via its weakref, this entry via itself.
+    Frozen, hence hashable, so reclaim can dedup selector data with a set
+    instead of via id(); a no-op done() lets reclaim_resources() treat it
+    like a Future.
     """
 
     def __call__(self) -> "SlotsSentinel":
+        # TODO: return typing.Self once Python 3.11 is the minimum version.
         return self
 
     def done(self) -> None:
@@ -693,7 +694,7 @@ class Jobserver:
         self._sleep_fn = sleep_fn
 
     def _tracked(self) -> int:
-        """Live Futures in the selector, excluding the slots entry.
+        """Live Futures in the selector, excluding any slots entry.
 
         Tolerates partial construction (returns 0 when __init__ raised
         before _selector was assigned) and a closed selector (get_map()
@@ -710,10 +711,10 @@ class Jobserver:
         # whose weakref now resolves to None.
         return len(
             {
-                t
-                for k in sm.values()
-                if (t := k.data()) is not None
-                and not isinstance(t, SlotsSentinel)
+                target
+                for key in sm.values()
+                if (target := key.data()) is not None
+                and not isinstance(target, SlotsSentinel)
             }
         )
 
@@ -1029,14 +1030,12 @@ class Jobserver:
             # while its child stays blocked mid-send() and thus unexited.
             #
             # Reference the Future weakly so dropping it before completion
-            # lets it finalize and emit Future.__del__'s ResourceWarning
-            # instead of being pinned alive until the Jobserver closes;
-            # reclaim_resources() reaps the abandoned registration on its
-            # next poll.  One shared weakref keeps the two fds collapsing
-            # to a single reclaim.
-            ref = weakref.ref(future)
-            selector.register(recv, EVENT_READ, data=ref)
-            selector.register(process.sentinel, EVENT_READ, data=ref)
+            # finalizes it, emitting Future.__del__'s ResourceWarning rather
+            # than pinning it until the Jobserver closes; reclaim_resources()
+            # reaps the abandoned registration, shared so the fds collapse.
+            reference = weakref.ref(future)
+            selector.register(recv, EVENT_READ, data=reference)
+            selector.register(process.sentinel, EVENT_READ, data=reference)
         except Exception:
             # Undo any registration that succeeded before the failure.
             # The connection registers first, so cleanup it first too.

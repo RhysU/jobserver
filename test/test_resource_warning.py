@@ -55,6 +55,29 @@ class TestResourceWarning(unittest.TestCase):
         self.assertRegex(str(rw[0].message), r"Finalizing .* running Future")
         self.assertIsNotNone(rw[0].source)
 
+    def test_future_warning_when_dropped_before_completion(self) -> None:
+        """A running Future dropped while its Jobserver is alive warns.
+
+        The selector references the Future weakly (see issue #338), so
+        releasing the last reference finalizes it and Future.__del__
+        fires its per-Future "open connection" ResourceWarning rather
+        than the Future being pinned until the Jobserver is closed.  No
+        reclaim runs between submit and del, so the connection stays open
+        and a worker finishing first does not create a race.
+        """
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=helper_return, args=(42,))
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                del f
+                gc.collect()
+            rw = [w for w in caught if issubclass(w.category, ResourceWarning)]
+            self.assertEqual(len(rw), 1)
+            self.assertRegex(
+                str(rw[0].message),
+                r"Finalizing Future.* with open connection",
+            )
+
     def test_no_warning_when_properly_closed(self) -> None:
         """__del__ is silent after the context manager cleans up."""
         with Jobserver(context=FAST, slots=1) as js:
