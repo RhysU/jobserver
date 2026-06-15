@@ -857,12 +857,7 @@ class TestResultNotReconstructable(unittest.TestCase):
 
 
 class _BadSetState:
-    """Pickles in the parent but raises while unpickling in a worker.
-
-    __getstate__ succeeds so the object serializes cleanly in submit(),
-    but __setstate__ raises so reconstruction fails in the child -- the
-    inbound counterpart to a result that fails to rebuild in the parent.
-    """
+    """Pickles in the parent but raises while unpickling in a worker."""
 
     def __getstate__(self) -> dict:
         return {"ok": True}
@@ -872,27 +867,18 @@ class _BadSetState:
 
 
 class TestArgumentNotReconstructable(unittest.TestCase):
-    """An argument that pickles in the parent but whose reconstruction
-    raises in the worker is reported, not degraded to LostResult (#351).
-
-    Under spawn/forkserver the payload is delivered pre-pickled so the
-    worker unpickles it inside its try/except; the __setstate__ failure is
-    caught and wrapped like any exception fn itself would raise.  This is
-    the inbound counterpart to TestResultNotReconstructable (#303)."""
+    """An argument whose reconstruction raises in the worker is reported,
+    not degraded to LostResult (#351); inbound counterpart to #303."""
 
     def test_setstate_failure_is_reported_not_lost(self) -> None:
         for method in start_methods():
-            # Fork inherits parent memory: nothing is unpickled inbound, so
-            # the failure mode this guards against cannot occur there.
             if method == "fork":
-                continue
+                continue  # fork unpickles nothing inbound
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     future = js.submit(
                         fn=id, args=(_BadSetState(),), timeout=5
                     )
-                    # The original exception surfaces (not a bare LostResult),
-                    # carrying the child's traceback via RemoteTraceback.
                     with self.assertRaises(RuntimeError) as ctx:
                         future.result(timeout=5)
                 self.assertIn("blows up in the child", str(ctx.exception))

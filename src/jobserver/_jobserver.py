@@ -988,14 +988,9 @@ class Jobserver:
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
-            # Deliver the reconstruction-prone payload so that the worker,
-            # not multiprocessing's bootstrap, performs any failure-prone
-            # unpickling.  Under fork the child inherits memory and nothing
-            # is unpickled inbound, so the live objects ride along (keeping
-            # fork-only lambda/closure support).  Under spawn/forkserver the
-            # bootstrap would otherwise unpickle fn/args/kwargs/preexec_fn
-            # before _worker_entrypoint runs, so pre-pickle them to an opaque
-            # blob the worker unpickles itself inside its try/except (#351).
+            # Pre-pickle under spawn/forkserver so the worker, not the
+            # bootstrap, unpickles fn/args inside its try/except (#351).
+            # Fork inherits memory, so pass live objects (keeps lambdas).
             if self._context.get_start_method() == "fork":
                 payload = _Payload.from_live(preexec_fn, fn, args, kwargs)
             else:
@@ -1168,25 +1163,7 @@ class Jobserver:
 
 
 class _Payload:
-    """Carries (preexec_fn, fn, args, kwargs) from submit() to a worker.
-
-    The reconstruction-prone payload is delivered one of two ways:
-
-      * Under fork the child inherits parent memory, so nothing is pickled
-        on the way in; the live tuple is held directly and resolve() returns
-        it.  This preserves fork-only support for lambdas and local closures,
-        which cannot survive pickling.
-
-      * Under spawn/forkserver multiprocessing pickles the Process target's
-        args in the parent and unpickles them in the child *before*
-        _worker_entrypoint runs -- outside any try/except jobserver controls.
-        An argument whose __setstate__ raises would therefore crash the
-        bootstrap and degrade to a bare LostResult (#351).  To avoid that,
-        submit() pre-pickles the payload to an opaque bytes blob here; the
-        blob reconstitutes trivially in the bootstrap and resolve() performs
-        the real, failure-prone unpickling inside the worker's try/except so
-        an inbound reconstruction failure is reported like an outbound one.
-    """
+    """Carries (preexec_fn, fn, args, kwargs) to a worker, live or pickled."""
 
     __slots__ = ("_live", "_blob")
 
@@ -1199,29 +1176,16 @@ class _Payload:
 
     @classmethod
     def from_live(cls, preexec_fn, fn, args, kwargs) -> "_Payload":
-        """Hold the live objects; used under fork (no inbound pickling)."""
         return cls(live=(preexec_fn, fn, args, kwargs), blob=None)
 
     @classmethod
     def from_blob(cls, preexec_fn, fn, args, kwargs) -> "_Payload":
-        """Pre-pickle the payload; used under spawn/forkserver.
-
-        ForkingPickler (not plain pickle) so the same reductions
-        multiprocessing would apply to the Process args -- e.g. for a
-        nested Jobserver's queue -- still hold.  bytes() copies the buffer
-        view out so the blob itself pickles trivially when the bootstrap
-        re-pickles the Process args.  Any outbound pickling failure raises
-        here, inside submit()'s try, exactly as process.start() raised before.
-        """
+        # ForkingPickler so multiprocessing's reductions apply; bytes() so
+        # the blob re-pickles trivially in the bootstrap.
         blob = bytes(ForkingPickler.dumps((preexec_fn, fn, args, kwargs)))
         return cls(live=None, blob=blob)
 
     def resolve(self) -> tuple:
-        """Return (preexec_fn, fn, args, kwargs), unpickling if blob-backed.
-
-        Called inside _worker_entrypoint's try/except so a blob that fails
-        to reconstruct surfaces as an ExceptionWrapper, not a dead worker.
-        """
         if self._blob is not None:
             return ForkingPickler.loads(self._blob)
         assert self._live is not None
@@ -1239,10 +1203,8 @@ def _worker_entrypoint(send, env, inbound: _Payload) -> None:
     # in degenerate case where client code returns an Exception
     result: Optional[Wrapper[Any]] = None
     try:
-        # Reconstruct the inbound payload here, inside the try, so an argument
-        # that pickles in the parent but fails to unpickle in the worker (e.g.
-        # a __setstate__ that raises) is reported as an ExceptionWrapper rather
-        # than crashing the bootstrap into a bare LostResult (#351).
+        # Unpickle inside the try so an inbound reconstruction failure is
+        # reported, not crashed into a bare LostResult (#351).
         preexec_fn, fn, args, kwargs = inbound.resolve()
         # None invalid in os.environ so interpret as sentinel for popping
         for key, value in env.items():
