@@ -535,5 +535,5 @@ class TestJobserverBasic(unittest.TestCase):
         with Jobserver(slots=2) as js:
             f = js.submit(fn=time.sleep, args=(0.5,), timeout=5)
         # __exit__ closed the selector; result() fires all callbacks
-        # including the _unregister_sentinel cleanup callback
+        # including the _deregister_sentinel cleanup callback
         self.assertIsNone(f.result(timeout=5))

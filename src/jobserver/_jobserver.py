@@ -17,6 +17,7 @@ import time
 import traceback
 import types
 import warnings
+import weakref
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager, ExitStack
@@ -284,6 +285,7 @@ class Future(Generic[T]):
         "_callbacks",
         "_callbacks_issuing",
         "_callbacks_seqno",
+        "__weakref__",
     )
 
     def __init__(self, process: BaseProcess, connection: Connection) -> None:
@@ -496,7 +498,7 @@ class Future(Generic[T]):
 
             # Drop our reference so _issue_callbacks's invariant holds
             # and __del__ will not warn.  The actual close() is deferred
-            # to a _PRIORITY_BEFORE callback (see _unregister_connection)
+            # to a _PRIORITY_BEFORE callback (see _deregister_connection)
             # so the fd is unregistered from the selector before reuse.
             self._connection = None
             self._issue_callbacks()
@@ -548,7 +550,14 @@ class SlotsSentinel:
     """Selector data for the slots waitable; its no-op done() lets
     reclaim_resources() treat it like a Future.  Frozen, hence hashable,
     so reclaim can dedup selector data with a set instead of via id().
+
+    A Future is registered weakly via weakref.ref so __call__ returns self
+    to let reclaim_resources() resolve any selector data uniformly: a live
+    Future via its weakref, this entry via itself.
     """
+
+    def __call__(self) -> "SlotsSentinel":
+        return self
 
     def done(self) -> None:
         return None
@@ -563,21 +572,22 @@ def _restore_token(slots: FixedBytesQueue, token: Optional[bytes]) -> None:
             pass  # Queue closed; Jobserver is shutting down
 
 
-def _unregister_sentinel(
+def _deregister_sentinel(
     selector: DefaultSelector,
     sentinel: int,
-    _process: BaseProcess,
+    _process: Optional[BaseProcess],
 ) -> None:
     """Unregister sentinel from selector, tolerating prior close."""
     # Argument _process is unused but required to prevent garbage
-    # collection of the Process until after this callback fires.
+    # collection of the Process until after this callback fires.  It is
+    # None when reclaim_resources() reaps an already-collected Future.
     try:
         selector.unregister(sentinel)
     except KeyError:
         pass  # Already unregistered or selector closed
 
 
-def _unregister_connection(
+def _deregister_connection(
     selector: DefaultSelector,
     connection: Connection,
 ) -> None:
@@ -683,7 +693,7 @@ class Jobserver:
         self._sleep_fn = sleep_fn
 
     def _tracked(self) -> int:
-        """Futures in the selector, excluding any slots entry.
+        """Live Futures in the selector, excluding the slots entry.
 
         Tolerates partial construction (returns 0 when __init__ raised
         before _selector was assigned) and a closed selector (get_map()
@@ -695,10 +705,17 @@ class Jobserver:
         sm = selector.get_map()  # None once the selector is closed
         if not sm:
             return 0
-        # Each Future registers two fds (sentinel and connection) beyond
-        # the lone self._slots.waitable() entry.  Approximate while a
-        # completing Future is transiently half-unregistered.
-        return (len(sm) - 1) // 2
+        # Each live Future's two fds resolve to one weakref target, so dedupe
+        # them and drop the slots sentinel and any garbage-collected Future
+        # whose weakref now resolves to None.
+        return len(
+            {
+                t
+                for k in sm.values()
+                if (t := k.data()) is not None
+                and not isinstance(t, SlotsSentinel)
+            }
+        )
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
@@ -870,13 +887,27 @@ class Jobserver:
         # a non-blocking poll returning only the k ready entries.
         # done() triggers callbacks mutating the selector.
         #
-        # A Future's two fds (connection and sentinel) share one data and
-        # are often ready together; the set collapses them so done() runs
-        # once, and it materializes before any done() mutates the selector.
-        ready = self._lazy_selector().select(timeout=0)
-        for data in {key.data for key, _ in ready}:
-            assert hasattr(data, "done"), type(data)
-            data.done()
+        # A Future's two fds (connection and sentinel) share one weakref and
+        # are often ready together; deduping the resolved targets collapses
+        # them so done() runs once.
+        targets = set()
+        selector = self._lazy_selector()
+        for key, _ in selector.select(timeout=0):
+            # None means the weakly-held Future was garbage-collected: the
+            # caller released its last reference before the work completed.
+            if (target := key.data()) is not None:
+                targets.add(target)
+            elif isinstance(key.fileobj, int):
+                # Garbage-collected Future requires reaping its sentinel fd.
+                _deregister_sentinel(selector, key.fileobj, None)
+            else:
+                # Garbage-collected Future requires reaping its connection.
+                assert isinstance(key.fileobj, Connection), type(key.fileobj)
+                _deregister_connection(selector, key.fileobj)
+
+        # Must be fully materialized before any done() mutates the selector.
+        for target in targets:
+            target.done()
 
     def submit(
         self,
@@ -996,8 +1027,16 @@ class Jobserver:
             # Register both the connection and the sentinel for O(k) polling.
             # Observing the connection reclaims a Future whose result is ready
             # while its child stays blocked mid-send() and thus unexited.
-            selector.register(recv, EVENT_READ, data=future)
-            selector.register(process.sentinel, EVENT_READ, data=future)
+            #
+            # Reference the Future weakly so dropping it before completion
+            # lets it finalize and emit Future.__del__'s ResourceWarning
+            # instead of being pinned alive until the Jobserver closes;
+            # reclaim_resources() reaps the abandoned registration on its
+            # next poll.  One shared weakref keeps the two fds collapsing
+            # to a single reclaim.
+            ref = weakref.ref(future)
+            selector.register(recv, EVENT_READ, data=ref)
+            selector.register(process.sentinel, EVENT_READ, data=ref)
         except Exception:
             # Undo any registration that succeeded before the failure.
             # The connection registers first, so cleanup it first too.
@@ -1022,7 +1061,7 @@ class Jobserver:
         # so a raising user callback cannot leak the connection fd.
         # Holding recv keeps its fd open until unregister.
         future._when_done(
-            fn=_unregister_connection,
+            fn=_deregister_connection,
             args=(selector, recv),
             priority=_PRIORITY_BEFORE,
         )
@@ -1042,7 +1081,7 @@ class Jobserver:
         # sentinel additionally happens implicitly in __exit__ and
         # __del__ when the selector is closed.
         future._when_done(
-            fn=_unregister_sentinel,
+            fn=_deregister_sentinel,
             args=(selector, process.sentinel, process),
             priority=_PRIORITY_AFTER,
         )
