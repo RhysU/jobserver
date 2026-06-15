@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import operator
-import pickle
 import signal
 import sys
 import threading
@@ -28,6 +27,7 @@ from jobserver import (
     LostResult,
     _response,
 )
+from jobserver._compat import PICKLE_DUMP_ERRORS
 from jobserver._executor import _responses_put_failed
 from jobserver._queue import SPSCQueue
 
@@ -147,26 +147,39 @@ class TestExceptionPropagation(unittest.TestCase):
                 self.assertEqual(3, g.result(timeout=TIMEOUT))
 
     def test_unpicklable_callable(self) -> None:
-        """Unpicklable callable raises, not hangs."""
+        """Unpicklable callable: submit() returns a failed future like PPE."""
+        # PPE first to confirm the observed behavior we are matching.
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=2,
+            mp_context=__import__("multiprocessing").get_context("spawn"),
+        ) as exe:
+            f = exe.submit(lambda: 42)
+            with self.assertRaises(PICKLE_DUMP_ERRORS):
+                f.result(timeout=TIMEOUT)
         with Jobserver(context="spawn", slots=2) as js:
             with JobserverExecutor(js) as exe:
-                # lambda is not picklable under spawn;
-                # pickling fails at submit() time in put().
-                with self.assertRaises(
-                    (AttributeError, TypeError, pickle.PicklingError)
-                ):
-                    exe.submit(lambda: 42)
+                f = exe.submit(lambda: 42)
+                self.assertIsInstance(f, concurrent.futures.Future)
+                with self.assertRaises(PICKLE_DUMP_ERRORS):
+                    f.result(timeout=TIMEOUT)
 
     def test_unpicklable_arguments(self) -> None:
-        """Unpicklable arguments raise, not hang."""
+        """Unpicklable args: submit() returns a failed future, matching PPE."""
+        # PPE first to confirm the observed behavior we are matching.
+        lock = threading.Lock()
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=2,
+            mp_context=__import__("multiprocessing").get_context("spawn"),
+        ) as exe:
+            f = exe.submit(len, lock)
+            with self.assertRaises(PICKLE_DUMP_ERRORS):
+                f.result(timeout=TIMEOUT)
         with Jobserver(context="spawn", slots=2) as js:
             with JobserverExecutor(js) as exe:
-                lock = threading.Lock()
-                # Lock is not picklable; fails at submit().
-                with self.assertRaises(
-                    (AttributeError, TypeError, pickle.PicklingError)
-                ):
-                    exe.submit(len, lock)
+                f = exe.submit(len, lock)
+                self.assertIsInstance(f, concurrent.futures.Future)
+                with self.assertRaises(PICKLE_DUMP_ERRORS):
+                    f.result(timeout=TIMEOUT)
 
     def test_large_arguments_and_results(self) -> None:
         """Very large arguments and results."""

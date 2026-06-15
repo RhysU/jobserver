@@ -161,6 +161,10 @@ class JobserverExecutor(concurrent.futures.Executor):
                 )
             )
             success = True
+        except PICKLE_DUMP_ERRORS as exc:
+            # Match ProcessPoolExecutor observed behavior: pickling
+            # failures set the exception on the future rather than raising.
+            future.set_exception(exc)
         except BrokenPipeError:
             # Issue RuntimeError to match post-shutdown submit() behavior.
             raise RuntimeError(
