@@ -991,10 +991,9 @@ class Jobserver:
             # Pre-pickle under spawn/forkserver so the worker, not the
             # bootstrap, unpickles fn/args inside its try/except (#351).
             # Fork inherits memory, so pass live objects (keeps lambdas).
-            if self._context.get_start_method() == "fork":
-                payload = _Payload.from_live(preexec_fn, fn, args, kwargs)
-            else:
-                payload = _Payload.from_blob(preexec_fn, fn, args, kwargs)
+            payload: Union[tuple, bytes] = (preexec_fn, fn, args, kwargs)
+            if self._context.get_start_method() != "fork":
+                payload = bytes(ForkingPickler.dumps(payload))
             process = self._context.Process(  # type: ignore
                 target=_worker_entrypoint,
                 args=(send, env, payload),
@@ -1162,37 +1161,7 @@ class Jobserver:
         )
 
 
-class _Payload:
-    """Carries (preexec_fn, fn, args, kwargs) to a worker, live or pickled."""
-
-    __slots__ = ("_live", "_blob")
-
-    _live: Optional[tuple]
-    _blob: Optional[bytes]
-
-    def __init__(self, live: Optional[tuple], blob: Optional[bytes]) -> None:
-        self._live = live
-        self._blob = blob
-
-    @classmethod
-    def from_live(cls, preexec_fn, fn, args, kwargs) -> "_Payload":
-        return cls(live=(preexec_fn, fn, args, kwargs), blob=None)
-
-    @classmethod
-    def from_blob(cls, preexec_fn, fn, args, kwargs) -> "_Payload":
-        # ForkingPickler so multiprocessing's reductions apply; bytes() so
-        # the blob re-pickles trivially in the bootstrap.
-        blob = bytes(ForkingPickler.dumps((preexec_fn, fn, args, kwargs)))
-        return cls(live=None, blob=blob)
-
-    def resolve(self) -> tuple:
-        if self._blob is not None:
-            return ForkingPickler.loads(self._blob)
-        assert self._live is not None
-        return self._live
-
-
-def _worker_entrypoint(send, env, inbound: _Payload) -> None:
+def _worker_entrypoint(send, env, payload) -> None:
     """Entry point for workers to run fn(...) due to some submit(...)."""
     ignore_sigpipe()
 
@@ -1203,9 +1172,11 @@ def _worker_entrypoint(send, env, inbound: _Payload) -> None:
     # in degenerate case where client code returns an Exception
     result: Optional[Wrapper[Any]] = None
     try:
-        # Unpickle inside the try so an inbound reconstruction failure is
-        # reported, not crashed into a bare LostResult (#351).
-        preexec_fn, fn, args, kwargs = inbound.resolve()
+        # Unpickle a blob inside the try so an inbound reconstruction failure
+        # is reported, not crashed into a bare LostResult (#351).
+        if isinstance(payload, bytes):
+            payload = ForkingPickler.loads(payload)
+        preexec_fn, fn, args, kwargs = payload
         # None invalid in os.environ so interpret as sentinel for popping
         for key, value in env.items():
             if value is None:

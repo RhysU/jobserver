@@ -31,7 +31,6 @@ from jobserver import (
 from jobserver._jobserver import (
     ExceptionWrapper,
     ResultWrapper,
-    _Payload,
     _worker_entrypoint,
 )
 from jobserver._queue import SPSCQueue
@@ -726,7 +725,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
             _worker_entrypoint(
                 send,
                 {},
-                _Payload.from_live(lambda: None, len, ((1, 2, 3),), {}),
+                (lambda: None, len, ((1, 2, 3),), {}),
             )
         self.assertIs(boom, ctx.exception)
         # No "not picklable" rewrap was sent in place of the real error.
@@ -735,9 +734,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     def test_picklable_result_sent_unchanged(self) -> None:
         """A picklable result rides the happy path to a single send."""
         send = _RecordingSend()
-        _worker_entrypoint(
-            send, {}, _Payload.from_live(lambda: None, len, ((1, 2, 3),), {})
-        )
+        _worker_entrypoint(send, {}, (lambda: None, len, ((1, 2, 3),), {}))
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ResultWrapper)
@@ -750,7 +747,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         _worker_entrypoint(
             send,
             {},
-            _Payload.from_live(lambda: None, _make_unpicklable_result, (), {}),
+            (lambda: None, _make_unpicklable_result, (), {}),
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -768,7 +765,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         _worker_entrypoint(
             send,
             {},
-            _Payload.from_live(lambda: None, _make_deep_result, (), {}),
+            (lambda: None, _make_deep_result, (), {}),
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -790,18 +787,14 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         LostResult, but without a noisy child traceback."""
         boom = OSError(errno.EBADF, "Bad file descriptor")
         send = _RecordingSend(fail_with=boom)
-        _worker_entrypoint(
-            send, {}, _Payload.from_live(lambda: None, len, ((1, 2, 3),), {})
-        )
+        _worker_entrypoint(send, {}, (lambda: None, len, ((1, 2, 3),), {}))
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
     def test_broken_pipe_still_swallowed(self) -> None:
         """The original BrokenPipeError handling is preserved."""
         send = _RecordingSend(fail_with=BrokenPipeError())
-        _worker_entrypoint(
-            send, {}, _Payload.from_live(lambda: None, len, ((1, 2, 3),), {})
-        )
+        _worker_entrypoint(send, {}, (lambda: None, len, ((1, 2, 3),), {}))
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
