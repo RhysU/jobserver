@@ -39,9 +39,12 @@ T = TypeVar("T")
 class JobserverExecutor(concurrent.futures.Executor):
     """A concurrent.futures.Executor that delegates to a Jobserver.
 
-    Decouples submission from dispatch so that returned
-    concurrent.futures.Future instances are genuinely PENDING and
-    cancellable before execution begins.
+    JobserverExecutor is a drop-in replacement for ProcessPoolExecutor that
+    honors the standard Executor interface.  Existing code using submit(),
+    map(), and the context manager protocol should work without modification.
+
+    Do not provide untrusted arguments to submit() because they may be
+    pickled.
     """
 
     def __init__(self, jobserver: Optional[Jobserver] = None) -> None:
