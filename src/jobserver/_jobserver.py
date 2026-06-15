@@ -278,6 +278,7 @@ class Future(Generic[T]):
     """
 
     __slots__ = (
+        "__weakref__",
         "_rlock",
         "_process",
         "_connection",
@@ -285,7 +286,6 @@ class Future(Generic[T]):
         "_callbacks",
         "_callbacks_issuing",
         "_callbacks_seqno",
-        "__weakref__",
     )
 
     def __init__(self, process: BaseProcess, connection: Connection) -> None:
@@ -547,17 +547,16 @@ def noop(*args, **kwargs) -> None:
 
 @dataclass(frozen=True)
 class SlotsSentinel:
-    """Callable selector data for the slots waitable: __call__ returns
-    self so reclaim_resources() resolves a live Future via its weakref
-    and this entry via itself.
+    """Callable selector data for the slots waitable.
 
-    Frozen, hence hashable, so reclaim can dedup selector data with a set
-    instead of via id(); a no-op done() lets reclaim_resources() treat it
-    like a Future.
+    __call__ returns self so reclaim_resources() resolves a live Future
+    via its weakref and this entry via itself.  Frozen, hence hashable,
+    so reclaim can dedup selector data with a set instead of via id(); a
+    no-op done() lets reclaim_resources() treat it like a Future.
     """
 
+    # TODO: return typing.Self once Python 3.11 is the minimum version.
     def __call__(self) -> "SlotsSentinel":
-        # TODO: return typing.Self once Python 3.11 is the minimum version.
         return self
 
     def done(self) -> None:
