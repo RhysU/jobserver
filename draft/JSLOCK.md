@@ -40,7 +40,7 @@ that this plan exists to close.
 The shared resource is the `DefaultSelector` and its unsynchronized
 `_fd_to_key` dict.  `submit()` mutates it via `selector.register()`
 (`_jobserver.py:975-976`).  But it is **also** mutated by the Future
-completion callbacks `_unregister_sentinel` / `_unregister_connection`
+completion callbacks `_deregister_sentinel` / `_deregister_connection`
 (`_jobserver.py:542-572`), which call `selector.unregister()`.  Those
 callbacks fire from `Future._issue_callbacks()`, reached by **any** call to
 `Future.wait()` / `done()` / `result()` — including a user calling
@@ -368,10 +368,10 @@ def submit(self, fn, *, ..., timeout=None) -> Future[T]:
     # --- callback wiring: outside spawn lock (Future is self-synchronizing) ---
     future._when_done(fn=_restore_token, args=(self._slots, token),
                       priority=_PRIORITY_TOKEN)
-    future._when_done(fn=_unregister_sentinel,
+    future._when_done(fn=_deregister_sentinel,
                       args=(selector, process.sentinel, process),
                       priority=_PRIORITY_CLEANUP)
-    future._when_done(fn=_unregister_connection, args=(selector, recv),
+    future._when_done(fn=_deregister_connection, args=(selector, recv),
                       priority=_PRIORITY_CLEANUP)
     return future
 ```

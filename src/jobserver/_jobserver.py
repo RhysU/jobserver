@@ -339,7 +339,15 @@ class Future(Generic[T]):
         raise TypeError("Futures cannot be pickled.")
 
     def __del__(self) -> None:
-        """Emit ResourceWarning if this Future still holds OS resources."""
+        """Emit ResourceWarning if this Future still holds OS resources.
+
+        An in-flight Future is pinned alive by its Jobserver: the selector
+        registers it as the data for both of its fds, so it is not finalized
+        while that Jobserver remains open.  This warning therefore primarily
+        covers Futures that outlive a closed Jobserver.  A Future dropped
+        while its Jobserver is still open keeps its worker running and is
+        surfaced instead by Jobserver.__del__'s "running Futures" warning.
+        """
         if getattr(self, "_connection", None) is not None:
             warnings.warn(
                 f"Finalizing {self!r} with open connection",
@@ -496,7 +504,7 @@ class Future(Generic[T]):
 
             # Drop our reference so _issue_callbacks's invariant holds
             # and __del__ will not warn.  The actual close() is deferred
-            # to a _PRIORITY_BEFORE callback (see _unregister_connection)
+            # to a _PRIORITY_BEFORE callback (see _deregister_connection)
             # so the fd is unregistered from the selector before reuse.
             self._connection = None
             self._issue_callbacks()
@@ -563,7 +571,7 @@ def _restore_token(slots: FixedBytesQueue, token: Optional[bytes]) -> None:
             pass  # Queue closed; Jobserver is shutting down
 
 
-def _unregister_sentinel(
+def _deregister_sentinel(
     selector: DefaultSelector,
     sentinel: int,
     _process: BaseProcess,
@@ -577,7 +585,7 @@ def _unregister_sentinel(
         pass  # Already unregistered or selector closed
 
 
-def _unregister_connection(
+def _deregister_connection(
     selector: DefaultSelector,
     connection: Connection,
 ) -> None:
@@ -1022,7 +1030,7 @@ class Jobserver:
         # so a raising user callback cannot leak the connection fd.
         # Holding recv keeps its fd open until unregister.
         future._when_done(
-            fn=_unregister_connection,
+            fn=_deregister_connection,
             args=(selector, recv),
             priority=_PRIORITY_BEFORE,
         )
@@ -1042,7 +1050,7 @@ class Jobserver:
         # sentinel additionally happens implicitly in __exit__ and
         # __del__ when the selector is closed.
         future._when_done(
-            fn=_unregister_sentinel,
+            fn=_deregister_sentinel,
             args=(selector, process.sentinel, process),
             priority=_PRIORITY_AFTER,
         )
