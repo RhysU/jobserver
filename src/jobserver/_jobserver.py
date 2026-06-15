@@ -341,12 +341,10 @@ class Future(Generic[T]):
     def __del__(self) -> None:
         """Emit ResourceWarning if this Future still holds OS resources.
 
-        An in-flight Future is pinned alive by its Jobserver: the selector
-        registers it as the data for both of its fds, so it is not finalized
-        while that Jobserver remains open.  This warning therefore primarily
-        covers Futures that outlive a closed Jobserver.  A Future dropped
-        while its Jobserver is still open keeps its worker running and is
-        surfaced instead by Jobserver.__del__'s "running Futures" warning.
+        The Jobserver keeps an in-flight Future alive while it remains open,
+        so this warning mostly covers a Future that outlives a closed
+        Jobserver.  A Future dropped while the Jobserver is open keeps the
+        worker running and the Jobserver reports it on finalization instead.
         """
         if getattr(self, "_connection", None) is not None:
             warnings.warn(
