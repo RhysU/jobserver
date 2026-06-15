@@ -31,6 +31,7 @@ from jobserver import (
 from jobserver._jobserver import (
     ExceptionWrapper,
     ResultWrapper,
+    _Payload,
     _worker_entrypoint,
 )
 from jobserver._queue import SPSCQueue
@@ -722,7 +723,11 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         boom = AttributeError("misbehaving connection")
         send = _RecordingSend(fail_with=boom)
         with self.assertRaises(AttributeError) as ctx:
-            _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+            _worker_entrypoint(
+                send,
+                {},
+                _Payload.from_live(lambda: None, len, ((1, 2, 3),), {}),
+            )
         self.assertIs(boom, ctx.exception)
         # No "not picklable" rewrap was sent in place of the real error.
         self.assertEqual([], send.payloads)
@@ -730,7 +735,9 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     def test_picklable_result_sent_unchanged(self) -> None:
         """A picklable result rides the happy path to a single send."""
         send = _RecordingSend()
-        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        _worker_entrypoint(
+            send, {}, _Payload.from_live(lambda: None, len, ((1, 2, 3),), {})
+        )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ResultWrapper)
@@ -741,7 +748,9 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         """A genuinely unpicklable result still degrades to the fallback."""
         send = _RecordingSend()
         _worker_entrypoint(
-            send, {}, lambda: None, _make_unpicklable_result, (), {}
+            send,
+            {},
+            _Payload.from_live(lambda: None, _make_unpicklable_result, (), {}),
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -756,7 +765,11 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         RecursionError that now degrades to the descriptive fallback rather
         than crashing the worker into a misleading LostResult (#343)."""
         send = _RecordingSend()
-        _worker_entrypoint(send, {}, lambda: None, _make_deep_result, (), {})
+        _worker_entrypoint(
+            send,
+            {},
+            _Payload.from_live(lambda: None, _make_deep_result, (), {}),
+        )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ExceptionWrapper)
@@ -777,14 +790,18 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         LostResult, but without a noisy child traceback."""
         boom = OSError(errno.EBADF, "Bad file descriptor")
         send = _RecordingSend(fail_with=boom)
-        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        _worker_entrypoint(
+            send, {}, _Payload.from_live(lambda: None, len, ((1, 2, 3),), {})
+        )
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
     def test_broken_pipe_still_swallowed(self) -> None:
         """The original BrokenPipeError handling is preserved."""
         send = _RecordingSend(fail_with=BrokenPipeError())
-        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        _worker_entrypoint(
+            send, {}, _Payload.from_live(lambda: None, len, ((1, 2, 3),), {})
+        )
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
@@ -837,3 +854,47 @@ class TestResultNotReconstructable(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 future.result(timeout=10)
         self.assertIn("not reconstructable", str(ctx.exception))
+
+
+class _BadSetState:
+    """Pickles in the parent but raises while unpickling in a worker.
+
+    __getstate__ succeeds so the object serializes cleanly in submit(),
+    but __setstate__ raises so reconstruction fails in the child -- the
+    inbound counterpart to a result that fails to rebuild in the parent.
+    """
+
+    def __getstate__(self) -> dict:
+        return {"ok": True}
+
+    def __setstate__(self, state: dict) -> None:
+        raise RuntimeError("blows up in the child")
+
+
+class TestArgumentNotReconstructable(unittest.TestCase):
+    """An argument that pickles in the parent but whose reconstruction
+    raises in the worker is reported, not degraded to LostResult (#351).
+
+    Under spawn/forkserver the payload is delivered pre-pickled so the
+    worker unpickles it inside its try/except; the __setstate__ failure is
+    caught and wrapped like any exception fn itself would raise.  This is
+    the inbound counterpart to TestResultNotReconstructable (#303)."""
+
+    def test_setstate_failure_is_reported_not_lost(self) -> None:
+        for method in start_methods():
+            # Fork inherits parent memory: nothing is unpickled inbound, so
+            # the failure mode this guards against cannot occur there.
+            if method == "fork":
+                continue
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    future = js.submit(
+                        fn=id, args=(_BadSetState(),), timeout=5
+                    )
+                    # The original exception surfaces (not a bare LostResult),
+                    # carrying the child's traceback via RemoteTraceback.
+                    with self.assertRaises(RuntimeError) as ctx:
+                        future.result(timeout=5)
+                self.assertIn("blows up in the child", str(ctx.exception))
+                self.assertNotIsInstance(ctx.exception, LostResult)
+                self.assertIsNotNone(ctx.exception.__cause__)
