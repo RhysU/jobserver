@@ -454,6 +454,34 @@ class TestResourceLeaks(unittest.TestCase):
             finally:
                 exe.shutdown(wait=True)
 
+    def test_dispatcher_death_with_running_worker_fails_promptly(
+        self,
+    ) -> None:
+        """Killing the dispatcher fails futures promptly with a live worker.
+
+        Issue #345: a worker inherits the response pipe write end.
+        Without the fix EOF never arrives until the worker exits.
+        With the fix the worker closes the fd via preexec_fn promptly.
+        """
+        with Jobserver(context=FAST, slots=1) as js:
+            exe = JobserverExecutor(js)
+            try:
+                # Long sleep so the worker outlives the prompt-fail window.
+                f = exe.submit(time.sleep, 60)
+                # Wait until the future is RUNNING (worker is live, dispatcher
+                # has dispatched and is still alive).
+                wait_until(lambda: f.running(), timeout=TIMEOUT)
+                self.assertTrue(f.running())
+                pid = exe._dispatcher.pid
+                os.kill(pid, signal.SIGKILL)
+                # Must raise BrokenExecutor well before the 60 s worker exits.
+                with self.assertRaises(
+                    (concurrent.futures.BrokenExecutor, RuntimeError)
+                ):
+                    f.result(timeout=10)
+            finally:
+                exe.shutdown(wait=False)
+
     def test_submit_after_dispatcher_death(self) -> None:
         """submit() after dispatcher death raises RuntimeError."""
         with Jobserver(context=FAST, slots=2) as js:
