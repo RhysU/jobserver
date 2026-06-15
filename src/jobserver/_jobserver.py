@@ -616,9 +616,10 @@ class Jobserver:
     parent crash orphans running workers rather than terminating them.
     OS features, like PR_SET_PDEATHSIG on Linux, can force termination.
 
-    Under spawn/forkserver, everything sent to a child is pickled: fn,
-    args/kwargs, env values, preexec_fn, and sleep_fn.  Lambdas and local
-    closures are unpicklable and so work only under fork.
+    Do not provide untrusted arguments to submit().  Under spawn/forkserver,
+    everything sent to a child is pickled: fn, args/kwargs, env values,
+    preexec_fn, and sleep_fn.  Lambdas and local closures are unpicklable and
+    so work only under fork.
     """
 
     __slots__ = (
