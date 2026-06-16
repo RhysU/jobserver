@@ -55,6 +55,8 @@ def timeout_to_deadline(timeout: Optional[float]) -> float:
     if timeout is None:
         return _MAX_TIMEOUT_SECS + time.monotonic()
     if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+        if timeout < 0:
+            raise ValueError(f"timeout must be non-negative, got {timeout!r}")
         return timeout + time.monotonic()
     raise TypeError(
         f"timeout: None or a real number, got {type(timeout).__name__}"
