@@ -858,7 +858,7 @@ class Jobserver:
     __slots__ = ("_resources", "_env", "_preexec", "_sleep")
 
     _resources: Resources
-    _env: tuple[tuple[str, Optional[str]], ...]
+    _env: dict[str, Optional[str]]
     _preexec: Callable
     _sleep: Callable
 
@@ -879,7 +879,7 @@ class Jobserver:
         derive a handle with different submission controls.
         """
         self._resources = Resources(context, slots)
-        self._env = ()
+        self._env = {}
         self._preexec = noop
         self._sleep = noop
 
@@ -929,15 +929,15 @@ class Jobserver:
         Return a Jobserver whose child also applies additions to os.environ.
 
         Additions is a Mapping of names to values or an iterable of such
-        pairs.  They stack onto any env already set on this Jobserver and
-        apply in order, so a later pair overrides an earlier one for the same
-        key; a None value unsets the name, including one set by an earlier
-        modify_env(...).  Shares this Jobserver's slots.
+        pairs.  They merge onto any env already set on this Jobserver,
+        overriding entries for the same key; a None value unsets the name,
+        including one set by an earlier modify_env(...).  Shares this
+        Jobserver's slots.
         """
         items = (
             additions.items() if isinstance(additions, Mapping) else additions
         )
-        env = []
+        env = dict(self._env)  # Merge onto a copy of the prior env
         for key, value in items:
             if not isinstance(key, str):
                 raise TypeError(
@@ -948,10 +948,10 @@ class Jobserver:
                     f"env key {key!r}: value must be str"
                     f" or None, got {type(value).__name__}"
                 )
-            env.append((key, value))
+            env[key] = value
 
         other = self.__copy__()
-        other._env = self._env + tuple(env)  # Extend prior tuple
+        other._env = env
         return other
 
     def replace_preexec(
@@ -1274,8 +1274,8 @@ def _worker_entrypoint(send, env, preexec, fn, args, kwargs) -> None:
     """
     Entry point for workers to run fn(...) due to some submit(...).
 
-    The env is a tuple of (str, Optional[str]) pairs already validated by
-    modify_env; pairs apply in order so a later one overrides an earlier.
+    The env is a dict of str to Optional[str] already validated by
+    modify_env; a None value unsets the name in os.environ.
     """
     ignore_sigpipe()
 
@@ -1287,7 +1287,7 @@ def _worker_entrypoint(send, env, preexec, fn, args, kwargs) -> None:
     result: Optional[Wrapper[Any]] = None
     try:
         # None invalid in os.environ so interpret as sentinel for popping
-        for key, value in env:
+        for key, value in env.items():
             if value is None:
                 os.environ.pop(key, None)
             else:

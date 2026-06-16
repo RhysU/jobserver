@@ -353,6 +353,9 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual("1", f.result())
                     self.assertEqual("2", g.result())
                     self.assertEqual("SENTINEL", h.result())
+                    # Stored env is canonical: one entry per key, None kept.
+                    self.assertEqual({a: "1", b: "2"}, both._env)
+                    self.assertEqual({a: None}, undo._env)
 
     def test_worker_process_name(self) -> None:
         """Worker process name is 'Jobserver-worker'."""
