@@ -6,7 +6,7 @@
 """Jobserver worker process behavior.
 
 Covers the per-submission child process: abnormal exits and signal
-delivery, environment customization via modify_env and replace_preexec,
+delivery, environment customization via revise_env and replace_preexec,
 replace_sleep scheduling control, and how derived handles apply in submit().
 """
 
@@ -289,13 +289,13 @@ class TestJobserverWorker(unittest.TestCase):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # Notice f sets, g confirms unset, and h re-sets they key.
-                    f = js.modify_env({key: "5678"}).submit(
+                    f = js.revise_env({key: "5678"}).submit(
                         fn=os.getenv, args=(key, "SENTINEL")
                     )
-                    g = js.modify_env({}).submit(
+                    g = js.revise_env({}).submit(
                         fn=os.getenv, args=(key, "SENTINEL")
                     )
-                    h = js.modify_env({key: "1234"}).submit(
+                    h = js.revise_env({key: "1234"}).submit(
                         fn=os.getenv, args=(key, "SENTINEL")
                     )
                     # i uses replace_preexec, not env, to set the key.
@@ -305,7 +305,7 @@ class TestJobserverWorker(unittest.TestCase):
                     )
                     # j uses both to confirm env updated before preexec.
                     j = (
-                        js.modify_env({key: "OVERWRITTEN"})
+                        js.revise_env({key: "OVERWRITTEN"})
                         .replace_preexec(helper_preexec_fn)
                         .submit(
                             fn=os.getenv,
@@ -313,7 +313,7 @@ class TestJobserverWorker(unittest.TestCase):
                         )
                     )
                     # k sets then unsets to check unsetting and Iterables.
-                    k = js.modify_env(
+                    k = js.revise_env(
                         ((key, "OVERWRITTEN"), (key, None))
                     ).submit(
                         fn=os.getenv,
@@ -321,7 +321,7 @@ class TestJobserverWorker(unittest.TestCase):
                     )
                     # Variable l is skipped because flake8 complains otherwise
                     # Lastly, m confirms removal of a possibly pre-existing key
-                    m = js.modify_env(((key, None),)).submit(
+                    m = js.revise_env(((key, None),)).submit(
                         fn=os.getenv,
                         args=(key, "SENTINEL"),
                     )
@@ -334,8 +334,8 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual("5678", f.result())
                     self.assertEqual("SENTINEL", k.result())
 
-    def test_modify_env_stacks(self) -> None:
-        """Successive modify_env(...) calls accumulate; None unsets a prior."""
+    def test_revise_env_stacks(self) -> None:
+        """Successive revise_env(...) calls accumulate; None unsets a prior."""
         a = "JOBSERVER_TEST_ENVIRON_A"
         b = "JOBSERVER_TEST_ENVIRON_B"
         self.assertIsNone(os.environ.get(a, None))
@@ -343,12 +343,12 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
-                    # Two stacked modify_env calls both take effect.
-                    both = js.modify_env({a: "1"}).modify_env({b: "2"})
+                    # Two stacked revise_env calls both take effect.
+                    both = js.revise_env({a: "1"}).revise_env({b: "2"})
                     f = both.submit(fn=os.getenv, args=(a, "SENTINEL"))
                     g = both.submit(fn=os.getenv, args=(b, "SENTINEL"))
                     # A later None unsets an entry set by an earlier call.
-                    undo = js.modify_env({a: "1"}).modify_env({a: None})
+                    undo = js.revise_env({a: "1"}).revise_env({a: None})
                     h = undo.submit(fn=os.getenv, args=(a, "SENTINEL"))
                     self.assertEqual("1", f.result())
                     self.assertEqual("2", g.result())
@@ -551,7 +551,7 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 # env: child sees key without submit() specifying it
-                with Jobserver(context=method, slots=1).modify_env(
+                with Jobserver(context=method, slots=1).revise_env(
                     {key: "FROM_INIT"}
                 ) as js:
                     f = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
@@ -578,10 +578,10 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 # env override: later value replaces the base handle's
-                with Jobserver(context=method, slots=1).modify_env(
+                with Jobserver(context=method, slots=1).revise_env(
                     {key: "FROM_INIT"}
                 ) as js:
-                    f = js.modify_env({key: "FROM_SUBMIT"}).submit(
+                    f = js.revise_env({key: "FROM_SUBMIT"}).submit(
                         fn=os.getenv, args=(key, "SENTINEL")
                     )
                     self.assertEqual("FROM_SUBMIT", f.result())

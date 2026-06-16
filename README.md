@@ -82,7 +82,7 @@ Examples
  * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`
    callbacks and draining errors via `CallbackRaised`.
  * [ex08_environment](examples/ex08_environment.py) - Setting and unsetting
-   environment variables in child processes via `modify_env()`.
+   environment variables in child processes via `revise_env()`.
  * [ex09_preexec](examples/ex09_preexec.py) - Using `replace_preexec()`
    with a plain callable or context manager factory for entry/exit semantics.
  * [ex10_timeouts](examples/ex10_timeouts.py) - Using non-blocking polling,
