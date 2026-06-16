@@ -1160,10 +1160,15 @@ class Jobserver:
                 daemon=False,
                 name="Jobserver-worker",
             )
-            future: Future[T] = Future(process, recv)
-            # TODO: better report pickling problems (e.g. preexec)
-            process.start()
+            try:
+                process.start()
+            except PICKLE_DUMP_ERRORS as e:
+                raise TypeError(
+                    f"fn or arguments not picklable for start method"
+                    f" '{resources.context.get_start_method()}'"
+                ) from e
             send.close()
+            future: Future[T] = Future(process, recv)
 
             # Register both the connection and the sentinel for O(k) polling.
             # Observing the connection reclaims a Future whose result is ready

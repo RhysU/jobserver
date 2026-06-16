@@ -199,6 +199,23 @@ class TestJobserverBasic(unittest.TestCase):
                     f = js.submit(fn=str, kwargs=m, timeout=None)
                     self.assertEqual("42", f.result())
 
+    def test_unpicklable_fn_wrapped(self) -> None:
+        """Pickling failures from process.start() raise a clear TypeError?"""
+        for method in start_methods():
+            if method == "fork":
+                continue  # fork pickles nothing, so lambdas run fine
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # A lambda is unpicklable under spawn/forkserver.
+                    with self.assertRaises(TypeError) as cm:
+                        js.submit(fn=lambda: 42, timeout=None)
+                    message = str(cm.exception)
+                    self.assertIn("not picklable", message)
+                    self.assertIn(method, message)
+                    # The slot token was restored, so new work still runs.
+                    f = js.submit(fn=str, kwargs=dict(object=7), timeout=None)
+                    self.assertEqual("7", f.result())
+
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
         """An Exception can be returned, not raised, from a Future?"""
