@@ -427,11 +427,11 @@ class TestJobserverMapAbandonment(unittest.TestCase):
                 # All workers finish, yet only the first (drained by the
                 # next() above) has returned its slot: the rest leak.
                 self._wait_until_finished(directory, slots)
-                self.assertGreater(js._tracked(), 0)
+                self.assertGreater(js._resources.tracked(), 0)
 
                 # Abandoning the generator must reclaim those slots.
                 gen.close()
-                self.assertEqual(js._tracked(), 0)
+                self.assertEqual(js._resources.tracked(), 0)
 
     def test_del_reclaims_finished_slots(self) -> None:
         """Dropping the only reference (GC) returns finished workers' slots."""
@@ -447,8 +447,8 @@ class TestJobserverMapAbandonment(unittest.TestCase):
                 )
                 self.assertEqual(next(gen), 0)
                 self._wait_until_finished(directory, slots)
-                self.assertGreater(js._tracked(), 0)
+                self.assertGreater(js._resources.tracked(), 0)
 
                 del gen
                 gc.collect()
-                self.assertEqual(js._tracked(), 0)
+                self.assertEqual(js._resources.tracked(), 0)

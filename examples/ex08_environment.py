@@ -15,18 +15,16 @@ def main() -> None:
     """Shows environment variable injection for child processes."""
     with Jobserver(context="spawn", slots=2) as jobserver:
         # Set an environment variable in the child process
-        future_set = jobserver.submit(
+        future_set = jobserver.modify_env({"DEMO_KEY": "hello"}).submit(
             fn=task_getenv_missing,
             args=("DEMO_KEY",),
-            env={"DEMO_KEY": "hello"},
         )
         info("env set: %s", future_set.result())
 
         # Unset an environment variable by passing None
-        future_unset = jobserver.submit(
+        future_unset = jobserver.modify_env({"DEMO_KEY": None}).submit(
             fn=task_getenv_missing,
             args=("DEMO_KEY",),
-            env={"DEMO_KEY": None},
         )
         info("env unset: %s", future_unset.result())
 

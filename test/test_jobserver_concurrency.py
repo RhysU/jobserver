@@ -280,7 +280,7 @@ class TestJobserverConcurrency(unittest.TestCase):
                 self.fail("child did not exit")
 
             # Count select() calls the obtain-token loop performs.
-            selector = js._selector
+            selector = js._resources._selector
             original_select = selector.select
             calls = 0
 

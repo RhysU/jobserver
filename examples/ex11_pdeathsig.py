@@ -22,11 +22,10 @@ from jobserver import Jobserver
 def main() -> None:
     """Shows preexec_fn setting PR_SET_PDEATHSIG via prctl."""
     with Jobserver(context="spawn", slots=2) as jobserver:
-        # preexec_fn runs before the task function, here establishing
+        # preexec runs before the task function, here establishing
         # PR_SET_PDEATHSIG so the child receives SIGTERM if the parent dies
-        future = jobserver.submit(
+        future = jobserver.replace_preexec(set_pdeathsig).submit(
             fn=task_check_pdeathsig,
-            preexec_fn=preexec_set_pdeathsig,
         )
         info("pdeathsig active: %s", future.result())
 
@@ -42,7 +41,7 @@ def task_check_pdeathsig() -> bool:
     return sig.value != 0
 
 
-def preexec_set_pdeathsig() -> None:
+def set_pdeathsig() -> None:
     """Set PR_SET_PDEATHSIG so child receives SIGTERM when parent dies."""
     PR_SET_PDEATHSIG = 1
     libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)

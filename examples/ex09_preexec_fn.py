@@ -20,21 +20,19 @@ def main() -> None:
     """Shows preexec_fn as a callable and as a context manager factory."""
     with Jobserver(context="spawn", slots=2) as jobserver:
         # Plain callable: configure logging in the worker
-        future_plain = jobserver.submit(
-            fn=task_logger_level,
-            preexec_fn=preexec_configure_logging,
+        future_plain = jobserver.replace_preexec(configure_logging).submit(
+            fn=task_logger_level
         )
         info("plain preexec_fn: level=%s", future_plain.result())
 
         # Context manager factory: basicConfig on enter, shutdown on exit
-        future_cm = jobserver.submit(
+        future_cm = jobserver.replace_preexec(LoggingContext).submit(
             fn=task_logger_level,
-            preexec_fn=LoggingContext,
         )
         info("context manager preexec_fn: level=%s", future_cm.result())
 
 
-def preexec_configure_logging() -> None:
+def configure_logging() -> None:
     """Plain preexec_fn that configures logging in the worker."""
     logging.basicConfig(level=logging.DEBUG)
 
