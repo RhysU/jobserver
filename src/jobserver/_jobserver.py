@@ -6,7 +6,6 @@
 """Implementation of the Jobserver and related classes."""
 
 import abc
-import concurrent.futures
 import functools
 import heapq
 import os
@@ -1082,11 +1081,10 @@ class Jobserver:
         Individual args and kwargs are always collected eagerly.
 
         Timeout is given in seconds from this call; if a result is
-        not available by the deadline, the iterator raises
-        concurrent.futures.TimeoutError.  Function calls are sent to
-        workers in groups of chunksize.  Consistent with
-        concurrent.futures, all chunksize results are materialized
-        in memory at once.
+        not available by the deadline, the iterator raises Blocked.
+        Function calls are sent to workers in groups of chunksize.
+        Consistent with concurrent.futures, all chunksize results are
+        materialized in memory at once.
 
         Stopping iteration early neither cancels nor waits for running work.
         Slots are retained until next reclaim_resources() or __exit__.
@@ -1428,10 +1426,6 @@ def _map_generate(
             yield from futures.popleft().result(
                 timeout=deadline_to_timeout(deadline)
             )
-    except Blocked:
-        # concurrent.futures.TimeoutError (not builtin TimeoutError) so that
-        # callers catching either type see it on Python < 3.11.
-        raise concurrent.futures.TimeoutError() from None
     finally:
         # On teardown explicitly clear still-held Futures, then reclaim
         # finished workers' slots.  Loop since reclaim aborts on the first
