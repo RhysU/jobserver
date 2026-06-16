@@ -312,3 +312,11 @@ class TimeoutToDeadlineTest(unittest.TestCase):
             with self.assertRaises(TypeError) as cm:
                 timeout_to_deadline(bad)
             self.assertIn("timeout", str(cm.exception))
+
+    def test_negative_raises_valueerror(self) -> None:
+        """A negative timeout is rejected so caller bugs surface as
+        ValueError instead of an immediately-expired deadline (#383)."""
+        for bad in (-1, -0.001, -5.0):
+            with self.assertRaises(ValueError) as cm:
+                timeout_to_deadline(bad)
+            self.assertIn("non-negative", str(cm.exception))
