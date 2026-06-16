@@ -77,13 +77,13 @@ Examples
    `SIGTERM` to a worker via `Future.wait(signal=...)`.
  * [ex05_death](examples/ex05_death.py) - Detecting a submission whose result
    pipe closes without a result (e.g. a killed worker) via `LostResult`.
- * [ex06_sleep_fn](examples/ex06_sleep_fn.py) - Gating work acceptance on an
+ * [ex06_sleep](examples/ex06_sleep.py) - Gating work acceptance on an
    external condition using `replace_sleep()`.
  * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`
    callbacks and draining errors via `CallbackRaised`.
  * [ex08_environment](examples/ex08_environment.py) - Setting and unsetting
    environment variables in child processes via `modify_env()`.
- * [ex09_preexec_fn](examples/ex09_preexec_fn.py) - Using `replace_preexec()`
+ * [ex09_preexec](examples/ex09_preexec.py) - Using `replace_preexec()`
    with a plain callable or context manager factory for entry/exit semantics.
  * [ex10_timeouts](examples/ex10_timeouts.py) - Using non-blocking polling,
    finite deadlines, and `Blocked` from `result()` and `submit()`.
