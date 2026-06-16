@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-Example 11 shows preexec_fn setting PR_SET_PDEATHSIG via prctl.
+Example 11 shows replace_preexec setting PR_SET_PDEATHSIG via prctl.
 
 This example will not work on all operating systems.
 """
@@ -20,7 +20,7 @@ from jobserver import Jobserver
 
 
 def main() -> None:
-    """Shows preexec_fn setting PR_SET_PDEATHSIG via prctl."""
+    """Shows replace_preexec setting PR_SET_PDEATHSIG via prctl."""
     with Jobserver(context="spawn", slots=2) as jobserver:
         # preexec runs before the task function, here establishing
         # PR_SET_PDEATHSIG so the child receives SIGTERM if the parent dies

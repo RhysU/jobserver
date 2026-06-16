@@ -836,7 +836,7 @@ class Jobserver:
     Slots default to the number of CPUs available to the current process.
 
     A Jobserver is a thin handle over a shared set of slots.  The env,
-    preexec, and sleep submission controls are set via modify_env(...),
+    preexec, and sleep submission controls are adjusted via modify_env(...),
     replace_preexec(...), and replace_sleep(...), each returning a new
     Jobserver sharing this one's slots.
 
@@ -876,7 +876,7 @@ class Jobserver:
 
         Submissions default to an empty env and no-op preexec and sleep; use
         modify_env(...), replace_preexec(...), and replace_sleep(...) to
-        derive a handle that overrides those.
+        derive a handle with different submission controls.
         """
         self._resources = Resources(context, slots)
         self._env = ()
@@ -903,7 +903,7 @@ class Jobserver:
     def __copy__(self) -> "Jobserver":
         """Return a sibling handle sharing this Jobserver's slots."""
         # A copy is another handle onto the same Resources with identical
-        # submission controls; the replace_*() methods build on this.
+        # submission controls; modify_env() and replace_*() build on this.
         other = Jobserver.__new__(Jobserver)
         other._resources = self._resources
         other._env = self._env

@@ -49,7 +49,7 @@ and
 
 | Feature                           | `Jobserver` | `JobserverExecutor` | `ProcessPoolExecutor` | `Pool` |
 |-----------------------------------|:-----------:|:-------------------:|:---------------------:|:------:|
-| Nested work shares the slot pool  |     yes     |         yes         |          no           |   no   |
+| Nested work shares the slots      |     yes     |         yes         |          no           |   no   |
 | Background thread                 |     no      |         yes         |          yes          |  yes   |
 | Cancel pending work               |     no      |         yes         |          yes          |   no   |
 | Cancel running work               |     yes     |         no          |          no           |   no   |
