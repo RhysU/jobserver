@@ -35,7 +35,6 @@ from typing import (
     Optional,
     TypeVar,
     Union,
-    cast,
     final,
 )
 
@@ -52,6 +51,7 @@ from ._queue import (
     timeout_to_deadline,
 )
 
+# The entirety of the public API; everything else is an implementation detail.
 __all__ = (
     "Blocked",
     "CallbackRaised",
@@ -61,20 +61,6 @@ __all__ = (
 )
 
 T = TypeVar("T")
-
-# preexec_fn may return None (plain setup) or a context manager
-# that wraps fn execution, providing entry/exit semantics.
-PreexecFn = Callable[[], Union[None, AbstractContextManager]]
-# sleep_fn returns None when work is acceptable or a non-negative
-# number of seconds for which the process should sleep before retrying.
-SleepFn = Callable[[], Optional[float]]
-# env may be a Mapping of names to values (None unsets the name) or an
-# iterable of such pairs.  Where a submission overrides an instance default,
-# Optional[EnvItems] additionally permits None to mean "use the default".
-EnvItems = Union[
-    Mapping[str, Optional[str]],
-    Iterable[tuple[str, Optional[str]]],
-]
 
 
 @final
@@ -542,12 +528,6 @@ class Future(Generic[T]):
         return self._wrapper.unwrap()
 
 
-# Appears as a default argument in Jobserver to simplify some logic therein
-def noop(*args, **kwargs) -> None:
-    """A "do nothing" function conforming to (the rejected) PEP-559."""
-    return None
-
-
 @dataclass(frozen=True)
 class SlotsSentinel:
     """Selector data for the slots waitable; its no-op done() lets
@@ -602,23 +582,18 @@ def _deregister_connection(
 
 
 @final
-class Jobserver:
-    """A Jobserver exposing a Future interface built atop multiprocessing.
+class Resources:
+    """
+    The slots and selector shared by a Jobserver and its variants.
 
     A slot is one unit of process concurrency, roughly one running worker.
     Slots default to the number of CPUs available to the current process.
 
-    Concurrent submit() / reclaim_resources() calls on a Jobserver are not
-    thread-safe.  In contrast, returned Futures are thread-safe.
-
-    Workers are non-daemon so they can spawn children; consequently a hard
-    parent crash orphans running workers rather than terminating them.
-    OS features, like PR_SET_PDEATHSIG on Linux, can force termination.
-
-    Do not provide untrusted arguments to submit().  Under spawn/forkserver,
-    everything sent to a child is pickled: fn, args/kwargs, env values,
-    preexec_fn, and sleep_fn.  Lambdas and local closures are unpicklable and
-    so work only under fork.
+    A Jobserver is a thin handle over a Resources instance; its replace_*(...)
+    methods produce sibling handles sharing the same Resources.  Teardown is
+    reference-counted across context-manager entries.  These resources are
+    closed only when the last open with-block exits or, failing that, when the
+    final handle is finalized.
     """
 
     __slots__ = (
@@ -627,19 +602,13 @@ class Jobserver:
         "_selector",
         "_selector_pid",
         "_selector_closed",
-        "_env",
-        "_preexec_fn",
-        "_sleep_fn",
+        "_refcount",
     )
 
     def __init__(
         self,
         context: Union[None, str, BaseContext] = None,
         slots: Optional[int] = None,
-        *,
-        env: EnvItems = (),
-        preexec_fn: Optional[PreexecFn] = None,
-        sleep_fn: Optional[SleepFn] = None,
     ) -> None:
         """
         Wrap some multiprocessing context and allow some number of slots.
@@ -647,9 +616,6 @@ class Jobserver:
         When not provided, context defaults to multiprocessing.get_context().
         When not provided, slots defaults to len(os.sched_getaffinity(0))
         which reports the number of usable CPUs for the current process.
-
-        The env, preexec_fn, and sleep_fn parameters set instance-level
-        defaults for submit(...).  See submit() for preexec_fn semantics.
         """
         # Validate arguments before allocating OS resources so that
         # invalid inputs cannot leave pipes or semaphores behind.
@@ -673,23 +639,38 @@ class Jobserver:
         self._slots.put(b"J" * slots)
 
         # Tracks outstanding Futures via their process sentinels.  Built
-        # lazily by _lazy_selector(); None means "not yet built" and
+        # lazily by lazy_selector(); None means "not yet built" and
         # _selector_pid stamps the building process so forks rebuild it.
         self._selector: Optional[DefaultSelector] = None
         self._selector_pid: Optional[int] = None
         self._selector_closed = False
 
-        # Instance-level defaults for submit(...)
-        # Defensive copy: consume any one-shot iterable and guard against
-        # mutation of the caller's container after __init__ returns.
-        # Mappings expose .items(); plain iterables are already pairs.
-        items = env.items() if isinstance(env, Mapping) else env
-        self._env = tuple(items)
-        self._preexec_fn = preexec_fn
-        self._sleep_fn = sleep_fn
+        # Number of open with-blocks across handles sharing these resources.
+        self._refcount = 0
 
-    def _tracked(self) -> int:
-        """Futures in the selector, excluding any slots entry.
+    def __getstate__(self) -> tuple:
+        """
+        Get Resources state without exposing in-flight Futures.
+
+        Only capture the context and slots so an instance can travel to a
+        sub-Process; Futures can be neither copied nor pickled.
+        """
+        return (self._context, self._slots)
+
+    def __setstate__(self, state: tuple) -> None:
+        """
+        Set Resources state, deferring selector construction to first use.
+        """
+        assert isinstance(state, tuple) and len(state) == 2
+        self._context, self._slots = state
+        self._selector = None
+        self._selector_pid = None
+        self._selector_closed = False
+        self._refcount = 0
+
+    def tracked(self) -> int:
+        """
+        Futures in the selector, excluding any slots entry.
 
         Tolerates partial construction (returns 0 when __init__ raised
         before _selector was assigned) and a closed selector (get_map()
@@ -708,18 +689,18 @@ class Jobserver:
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
-        tracked = self._tracked()
-        return f"Jobserver({method!r}, tracked={tracked})"
+        return f"Resources({method!r}, tracked={self.tracked()})"
 
     def __del__(self) -> None:
-        """Emit ResourceWarning if any Futures are still running.
-
-        A Jobserver with no undone Futures is implicitly closed upon
-        finalization; one with running Futures emits a ResourceWarning.
         """
-        # _tracked() tolerates partial construction; hasattr guards
+        Emit ResourceWarning if any Futures are still running.
+
+        With no undone Futures these resources are implicitly closed upon
+        finalization; with running Futures a ResourceWarning is emitted.
+        """
+        # tracked() tolerates partial construction; hasattr guards
         # the remaining resource accesses.
-        if (tracked := self._tracked()) > 0:
+        if (tracked := self.tracked()) > 0:
             warnings.warn(
                 f"Finalizing {self!r} with {tracked} running Futures",
                 ResourceWarning,
@@ -729,14 +710,14 @@ class Jobserver:
         if hasattr(self, "_slots"):
             self._slots.close_put()
             self._slots.close_get()
-        # Matches the cleanup in __exit__, tolerating partial construction.
+        # Matches the cleanup in _teardown(), tolerating partial construction.
         self._selector_close()
 
     def _selector_close(self) -> None:
         # Record closure on _selector_closed because a closed selector
         # cannot be detected after the fact: its get_map() can spuriously
         # report open in a forked child under garbage collection.  Forks
-        # inherit the flag, so _lazy_selector checks it before its fork
+        # inherit the flag, so lazy_selector checks it before its fork
         # rebuild and a closed fork raises a clean RuntimeError rather than
         # tripping self._slots.waitable().
         selector = getattr(self, "_selector", None)
@@ -744,29 +725,39 @@ class Jobserver:
             selector.close()
             self._selector_closed = True
 
-    def __enter__(self) -> "Jobserver":
-        # Preparing the selector confirms the instance is not closed.
-        self._lazy_selector()
+    def __enter__(self) -> "Resources":
+        # Preparing the selector confirms these resources are not closed.
+        # Counting the entry lets a nested with-block on a sibling handle exit
+        # without closing resources the outer block still needs.
+        self.lazy_selector()
+        self._refcount += 1
         return self
 
     def __exit__(self, *exc: Any) -> None:
-        """Clean up slots and drain ready callbacks.
+        # Balance one __enter__(); tear down only once the last scope exits.
+        self._refcount -= 1
+        if self._refcount <= 0:
+            self._teardown()
 
-        Never raises CallbackRaised.  Calls reclaim_resources()
-        repeatedly until every ready callback has been attempted.
-        Each suppressed CallbackRaised emits a RuntimeWarning.
+    def _teardown(self) -> None:
         """
-        # Idempotent: once closed, reclaim_resources() below would raise.
+        Clean up slots and drain ready callbacks.
+
+        Never raises CallbackRaised.  Calls reclaim() repeatedly until
+        every ready callback has been attempted.  Each suppressed
+        CallbackRaised emits a RuntimeWarning.
+        """
+        # Idempotent: once closed, reclaim() below would raise.
         if self._selector_closed:
             return
         # Each call drains at most one CallbackRaised per future
         while True:
             try:
-                self.reclaim_resources()
+                self.reclaim()
                 break
             except CallbackRaised as e:
                 warnings.warn(
-                    "Jobserver.__exit__ suppressed"
+                    "Jobserver teardown suppressed"
                     f" CallbackRaised with cause: {e.__cause__!r}",
                     RuntimeWarning,
                     stacklevel=2,
@@ -777,70 +768,15 @@ class Jobserver:
         self._slots.close_get()
         self._selector_close()
 
-    def __getstate__(self) -> tuple:
-        """Get instance state without exposing in-flight Futures.
-
-        Only capture configuration and slots to allow nesting.
+    def lazy_selector(self) -> DefaultSelector:
         """
-        # Required because Futures can be neither copied nor pickled
-        # Without custom handling of Futures, submit(...) would fail
-        # whenever an instance is part of an argument to a sub-Process
-        return (
-            self._context,
-            self._slots,
-            self._env,
-            self._preexec_fn,
-            self._sleep_fn,
-        )
-
-    def __setstate__(self, state: tuple) -> None:
-        """Set instance state."""
-        assert isinstance(state, tuple) and len(state) == 5
-        (
-            self._context,
-            self._slots,
-            self._env,
-            self._preexec_fn,
-            self._sleep_fn,
-        ) = state
-        # Defer selector construction to first use, exactly like __init__.
-        # A pickled child thus takes the same lazy path as a forked child.
-        self._selector = None
-        self._selector_pid = None
-        self._selector_closed = False
-
-    # Use typing.Self once Python 3.11 is the minimum version
-    def __copy__(self) -> "Jobserver":
-        """Shallow copies return the original Jobserver unchanged."""
-        # Because any "copy" should and can only mutate same slots/sentinels
-        return self
-
-    def __deepcopy__(self, _: Any) -> "Jobserver":
-        """Deep copies return the original Jobserver unchanged."""
-        # Because any "copy" should and can only mutate same slots/sentinels
-        return self
-
-    def __call__(self, fn: Callable[..., T], *args, **kwargs) -> Future[T]:
-        """Submit running fn(*args, **kwargs) to this Jobserver.
-
-        Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
-        with all submission semantics per that method's default arguments.
-        """
-        return self.submit(fn=fn, args=args, kwargs=kwargs)
-
-    @property
-    def context(self) -> BaseContext:
-        """Return the multiprocessing context used by this Jobserver."""
-        return self._context
-
-    def _lazy_selector(self) -> DefaultSelector:
-        """Create-or-return the selector for the current process.
+        Create-or-return the selector for the current process.
 
         Built on first use (None), rebuilt after a fork (pid change): a
         child reusing an ancestor's selector would join()/is_alive() the
         ancestor's Futures and share its epoll set, so it is discarded.
         """
-        # Closed via __exit__/__del__ here or in an ancestor before this fork.
+        # Closed via _teardown()/__del__ here or in an ancestor before fork.
         if self._selector_closed:
             raise RuntimeError("Jobserver is closed")
         # Build on first use, or rebuild after a fork (pid change) to discard
@@ -859,13 +795,9 @@ class Jobserver:
             self._selector_pid = os.getpid()
         return self._selector
 
-    def reclaim_resources(self) -> None:
+    def reclaim(self) -> None:
         """
-        Reclaim resources for any completed submissions and issue callbacks.
-
-        Method exposed for when explicit resource reclamation is desired.
-        For example, when work requires locking more than just a slot and
-        the paired unlock is accomplished via Future-registered callbacks.
+        Reclaim resources for completed submissions and issue callbacks.
 
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
@@ -879,10 +811,230 @@ class Jobserver:
         # A Future's two fds (connection and sentinel) share one data and
         # are often ready together; the set collapses them so done() runs
         # once, and it materializes before any done() mutates the selector.
-        ready = self._lazy_selector().select(timeout=0)
+        ready = self.lazy_selector().select(timeout=0)
         for data in {key.data for key, _ in ready}:
             assert hasattr(data, "done"), type(data)
             data.done()
+
+    @property
+    def context(self) -> BaseContext:
+        return self._context
+
+
+# Serves as the default preexec and sleep so Jobserver need not special-case
+def noop(*args, **kwargs) -> None:
+    """A "do nothing" function conforming to (the rejected) PEP-559."""
+    return None
+
+
+@final
+class Jobserver:
+    """
+    A Jobserver exposing a Future interface built atop multiprocessing.
+
+    A slot is one unit of process concurrency, roughly one running worker.
+    Slots default to the number of CPUs available to the current process.
+
+    A Jobserver is a thin handle over a shared set of slots.  The env,
+    preexec, and sleep submission controls are set via modify_env(...),
+    replace_preexec(...), and replace_sleep(...), each returning a new
+    Jobserver sharing this one's slots.
+
+    Concurrent submit() / reclaim_resources() calls on a Jobserver are not
+    thread-safe.  In contrast, returned Futures are thread-safe.  Sibling
+    handles are not independent.  They reach the same slots and selector, so
+    the same constraint spans every one.
+
+    Workers are non-daemon so they can spawn children; consequently a hard
+    parent crash orphans running workers rather than terminating them.
+    OS features, like PR_SET_PDEATHSIG on Linux, can force termination.
+
+    Do not provide untrusted arguments to submit().  Under spawn/forkserver,
+    everything sent to a child is pickled: fn, args/kwargs, env values, and
+    preexec.  Lambdas and local closures are unpicklable and so work only
+    under fork.
+    """
+
+    __slots__ = ("_resources", "_env", "_preexec", "_sleep")
+
+    _resources: Resources
+    _env: tuple[tuple[str, Optional[str]], ...]
+    _preexec: Callable
+    _sleep: Callable
+
+    def __init__(
+        self,
+        context: Union[None, str, BaseContext] = None,
+        slots: Optional[int] = None,
+    ) -> None:
+        """
+        Wrap some multiprocessing context and allow some number of slots.
+
+        When not provided, context defaults to multiprocessing.get_context().
+        When not provided, slots defaults to len(os.sched_getaffinity(0))
+        which reports the number of usable CPUs for the current process.
+
+        Submissions default to an empty env and no-op preexec and sleep; use
+        modify_env(...), replace_preexec(...), and replace_sleep(...) to
+        derive a handle that overrides those.
+        """
+        self._resources = Resources(context, slots)
+        self._env = ()
+        self._preexec = noop
+        self._sleep = noop
+
+    def __getstate__(self) -> tuple:
+        """
+        Get instance state without exposing in-flight Futures.
+
+        Only capture the shared Resources and controls to allow nesting.
+        """
+        # Required because Futures can be neither copied nor pickled
+        # Without custom handling of Futures, submit(...) would fail
+        # whenever an instance is part of an argument to a sub-Process
+        return (self._resources, self._env, self._preexec, self._sleep)
+
+    def __setstate__(self, state: tuple) -> None:
+        """Set instance state."""
+        assert isinstance(state, tuple) and len(state) == 4
+        self._resources, self._env, self._preexec, self._sleep = state
+
+    # Use typing.Self once Python 3.11 is the minimum version
+    def __copy__(self) -> "Jobserver":
+        """Return a sibling handle sharing this Jobserver's slots."""
+        # A copy is another handle onto the same Resources with identical
+        # submission controls; the replace_*() methods build on this.
+        other = Jobserver.__new__(Jobserver)
+        other._resources = self._resources
+        other._env = self._env
+        other._preexec = self._preexec
+        other._sleep = self._sleep
+        return other
+
+    def __deepcopy__(self, _: Any) -> "Jobserver":
+        """Return a sibling handle sharing this Jobserver's slots."""
+        # The shared Resources cannot be duplicated, so a deep copy shares
+        # it exactly as a shallow copy does.
+        return self.__copy__()
+
+    def modify_env(
+        self,
+        additions: Union[
+            Mapping[str, Optional[str]],
+            Iterable[tuple[str, Optional[str]]],
+        ],
+        /,
+    ) -> "Jobserver":
+        """
+        Return a Jobserver whose child also applies additions to os.environ.
+
+        Additions is a Mapping of names to values or an iterable of such
+        pairs.  They stack onto any env already set on this Jobserver and
+        apply in order, so a later pair overrides an earlier one for the same
+        key; a None value unsets the name, including one set by an earlier
+        modify_env(...).  Shares this Jobserver's slots.
+        """
+        items = (
+            additions.items() if isinstance(additions, Mapping) else additions
+        )
+        env = []
+        for key, value in items:
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"env key {key!r}: must be str, got {type(key).__name__}"
+                )
+            if value is not None and not isinstance(value, str):
+                raise TypeError(
+                    f"env key {key!r}: value must be str"
+                    f" or None, got {type(value).__name__}"
+                )
+            env.append((key, value))
+
+        other = self.__copy__()
+        other._env = self._env + tuple(env)  # Extend prior tuple
+        return other
+
+    def replace_preexec(
+        self,
+        replacement: Callable[[], Union[None, AbstractContextManager]],
+        /,
+    ) -> "Jobserver":
+        """
+        Return a Jobserver invoking replacement in the child just before fn.
+
+        replacement() may return None (a plain pre-execution hook) or a
+        context manager that wraps fn execution with entry/exit semantics, so
+        fn runs inside it.  A context manager's __exit__ may suppress
+        exceptions from fn, in which case the result is None.  Shares this
+        Jobserver's slots.
+        """
+        if callable(replacement):
+            other = self.__copy__()
+            other._preexec = replacement
+            return other
+        raise TypeError(
+            f"preexec must be callable, got {type(replacement).__name__}"
+        )
+
+    def replace_sleep(
+        self,
+        replacement: Callable[[], Optional[float]],
+        /,
+    ) -> "Jobserver":
+        """
+        Return a Jobserver gating work acceptance via replacement.
+
+        replacement() returns None when work is acceptable or a non-negative
+        number of seconds for which this process should sleep before retrying.
+        Shares this Jobserver's slots.
+        """
+        if callable(replacement):
+            other = self.__copy__()
+            other._sleep = replacement
+            return other
+        raise TypeError(
+            f"sleep must be callable, got {type(replacement).__name__}"
+        )
+
+    def __repr__(self) -> str:
+        method = self._resources.context.get_start_method()
+        tracked = self._resources.tracked()
+        return f"Jobserver({method!r}, tracked={tracked})"
+
+    def __enter__(self) -> "Jobserver":
+        # Entering the shared Resources confirms it is open, counts the scope.
+        self._resources.__enter__()
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self._resources.__exit__(*exc)
+
+    def __call__(self, fn: Callable[..., T], *args, **kwargs) -> Future[T]:
+        """
+        Submit running fn(*args, **kwargs) to this Jobserver.
+
+        Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
+        with all submission semantics per that method's default arguments.
+        """
+        return self.submit(fn=fn, args=args, kwargs=kwargs)
+
+    @property
+    def context(self) -> BaseContext:
+        """Return the multiprocessing context used by this Jobserver."""
+        return self._resources.context
+
+    def reclaim_resources(self) -> None:
+        """
+        Reclaim resources for any completed submissions and issue callbacks.
+
+        Method exposed for when explicit resource reclamation is desired.
+        For example, when work requires locking more than just a slot and
+        the paired unlock is accomplished via Future-registered callbacks.
+
+        May raise CallbackRaised from at most one registered callback.
+        See CallbackRaised documentation for callback error semantics.
+        """
+        self._resources.reclaim()
 
     def submit(
         self,
@@ -891,34 +1043,19 @@ class Jobserver:
         args: Iterable = (),
         kwargs: Mapping[str, Any] = types.MappingProxyType({}),
         consume: int = 1,
-        env: Optional[EnvItems] = None,
-        preexec_fn: Optional[PreexecFn] = None,  # None: use default
-        sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
     ) -> Future[T]:
-        """Submit running fn(*args, **kwargs) to this Jobserver.
+        """
+        Submit running fn(*args, **kwargs) to this Jobserver.
 
         Raises Blocked when insufficient resources available to accept work.
         Timeout is given in seconds with None meaning block indefinitely.
 
         When consume == 0, no job slot is consumed by the submission.
         Only consume == 0 or consume == 1 is permitted by the implementation.
-        When env provided, child updates os.environ unsetting None-valued keys.
 
-        The preexec_fn callable is invoked in the child just before fn.
-        If preexec_fn() returns a context manager, fn runs inside it;
-        if it returns None, it acts as a plain pre-execution hook.
-        A context manager's __exit__ may suppress exceptions from fn,
-        in which case the result is None.
-
-        Optional sleep_fn() permits injecting additional logic as
-        to when any work may be accepted.  For example, one can accept work
-        only when sufficient RAM is available.  Function sleep_fn()
-        should either return None when work is acceptable or return the
-        non-negative number of seconds for which this process should sleep.
-
-        For env, preexec_fn, and sleep_fn non-None values override any
-        instance defaults.
+        The env, preexec, and sleep submission controls are taken from this
+        Jobserver; see modify_env(), replace_preexec(), and replace_sleep().
 
         May raise CallbackRaised from at most one registered callback
         due to a prior Future's completion.  The caller may resubmit.
@@ -932,27 +1069,16 @@ class Jobserver:
         if not isinstance(kwargs, Mapping):
             raise TypeError(f"kwargs: Mapping, got {type(kwargs).__name__}")
 
-        # Resolve None to the instance-level default for each optional param
-        env = self._env if env is None else env
-        preexec_fn = self._preexec_fn if preexec_fn is None else preexec_fn
-        sleep_fn = self._sleep_fn if sleep_fn is None else sleep_fn
-
-        # Fall back to noop when neither caller nor __init__ supplied one.
-        if preexec_fn is None:
-            preexec_fn = cast(PreexecFn, noop)
-        if sleep_fn is None:
-            sleep_fn = cast(SleepFn, noop)
-
-        # Eagerly convert env and args before acquiring tokens so that
-        # malformed inputs fail fast without consuming resources.
-        env = _env_coerce(env)
+        # Eagerly convert args before acquiring tokens so that malformed
+        # inputs fail fast without consuming resources.  The env, preexec,
+        # and sleep controls were validated when this handle was derived.
         args = tuple(args)
         # Some Mapping subclasses are not picklable so coerce if needed.
         kwargs = kwargs if isinstance(kwargs, dict) else dict(kwargs)
 
         # Next, either obtain requested tokens or else raise Blocked
         #
-        # Choosing "reclaim_tokens_fn=self.reclaim_resources"
+        # Choosing "reclaim=resources.reclaim"
         # may cause submit(...) to raise due to Future callbacks that raise.
         # Design-wise, these other alternatives were CONSIDERED and REJECTED:
         #
@@ -969,17 +1095,18 @@ class Jobserver:
         #       If the client wants to avoid CallbackRaised the client
         #       is free to never let Exception escape from a callback.
         #
-        # ASIDE: If another design is desired, instead of reclaim_resources
+        # ASIDE: If another design is desired, instead of reclaim
         # any other method could be injected below.  Notice that the
         # callback priority mechanism does permit issuing callback subsets.
-        selector = self._lazy_selector()
+        resources = self._resources
+        selector = resources.lazy_selector()
         token = _maybe_obtain_token(
             consume=consume,
             deadline=timeout_to_deadline(timeout),
-            reclaim_tokens_fn=self.reclaim_resources,
+            reclaim=resources.reclaim,
             selector=selector,
-            sleep_fn=sleep_fn,
-            slots=self._slots,
+            sleep=self._sleep,
+            slots=resources._slots,
         )
 
         # Then, with required slots consumed, begin consuming resources:
@@ -987,15 +1114,15 @@ class Jobserver:
         try:
             # Grab resources for processing the submitted work
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
-            recv, send = self._context.Pipe(duplex=False)
-            process = self._context.Process(  # type: ignore
+            recv, send = resources.context.Pipe(duplex=False)
+            process = resources.context.Process(  # type: ignore
                 target=_worker_entrypoint,
-                args=(send, env, preexec_fn, fn, args, kwargs),
+                args=(send, self._env, self._preexec, fn, args, kwargs),
                 daemon=False,
                 name="Jobserver-worker",
             )
             future: Future[T] = Future(process, recv)
-            # TODO: better report pickling problems (e.g. preexec_fn)
+            # TODO: better report pickling problems (e.g. preexec)
             process.start()
             send.close()
 
@@ -1021,7 +1148,7 @@ class Jobserver:
                 recv.close()
             # Unwind any consumed slot on unexpected errors
             if token is not None:
-                self._slots.put(token)
+                resources._slots.put(token)
             raise
 
         # Unregister and close the result connection before user callbacks
@@ -1036,7 +1163,7 @@ class Jobserver:
         # As above process.start() succeeded, now Future must restore token
         future._when_done(
             fn=_restore_token,
-            args=(self._slots, token),
+            args=(resources._slots, token),
             priority=_PRIORITY_BEFORE,
         )
 
@@ -1062,14 +1189,12 @@ class Jobserver:
         argses: Optional[Iterable[Iterable]] = None,
         kwargses: Optional[Iterable[Mapping[str, Any]]] = None,
         *,
-        env: Optional[EnvItems] = None,
-        preexec_fn: Optional[PreexecFn] = None,  # None: use default
-        sleep_fn: Optional[SleepFn] = None,  # None: use default
         timeout: Optional[float] = None,
         chunksize: int = 1,
         buffersize: Optional[int] = None,
     ) -> Iterator[T]:
-        """Map fn over argses and kwargses, yielding results in order.
+        """
+        Map fn over argses and kwargses, yielding results in order.
 
         Each element of argses provides positional arguments and each
         element of kwargses provides keyword arguments for one call
@@ -1089,14 +1214,8 @@ class Jobserver:
         Stopping iteration early neither cancels nor waits for running work.
         Slots are retained until next reclaim_resources() or __exit__.
 
-        When env provided, child updates os.environ unsetting None-valued keys.
-        See submit() for preexec_fn semantics.
-
-        Optional sleep_fn() permits injecting additional logic as
-        to when a slot may be consumed.
-
-        For env, preexec_fn, and sleep_fn non-None values override any
-        instance defaults.
+        The env, preexec, and sleep submission controls are taken from this
+        Jobserver; see modify_env(), replace_preexec(), and replace_sleep().
         """
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
@@ -1148,14 +1267,16 @@ class Jobserver:
                 else buffersize
             ),
             deadline=deadline,
-            env=env,
-            preexec_fn=preexec_fn,
-            sleep_fn=sleep_fn,
         )
 
 
-def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
-    """Entry point for workers to run fn(...) due to some submit(...)."""
+def _worker_entrypoint(send, env, preexec, fn, args, kwargs) -> None:
+    """
+    Entry point for workers to run fn(...) due to some submit(...).
+
+    The env is a tuple of (str, Optional[str]) pairs already validated by
+    modify_env; pairs apply in order so a later one overrides an earlier.
+    """
     ignore_sigpipe()
 
     # Enforce close-on-exec so exec()'d grandchildren don't inherit the pipe.
@@ -1166,17 +1287,17 @@ def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
     result: Optional[Wrapper[Any]] = None
     try:
         # None invalid in os.environ so interpret as sentinel for popping
-        for key, value in env.items():
+        for key, value in env:
             if value is None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
-        # preexec_fn() may return a context manager wrapping fn execution.
+        # preexec() may return a context manager wrapping fn execution.
         # If __exit__ suppresses an exception from fn, raw keeps its
         # pre-call value of None so the result becomes ResultWrapper(None).
         raw = None
         with ExitStack() as stack:
-            cm = preexec_fn()
+            cm = preexec()
             if cm is not None:
                 stack.enter_context(cm)
             raw = fn(*args, **kwargs)
@@ -1223,40 +1344,22 @@ def _worker_entrypoint(send, env, preexec_fn, fn, args, kwargs) -> None:
             pass
 
 
-def _env_coerce(
-    env: EnvItems,
-) -> dict[str, Optional[str]]:
-    """Convert env to a dict, validating key/value types."""
-    result = dict(env.items() if isinstance(env, Mapping) else env)
-    for key, value in result.items():
-        if not isinstance(key, str):
-            raise TypeError(
-                f"env key {key!r}: must be str," f" got {type(key).__name__}"
-            )
-        if value is not None and not isinstance(value, str):
-            raise TypeError(
-                f"env key {key!r}: value must be str"
-                f" or None, got {type(value).__name__}"
-            )
-    return result
-
-
 _RESOLUTION = 1.0e-2
 
 
 def _maybe_obtain_token(
     consume: int,
     deadline: float,
-    reclaim_tokens_fn: Callable[[], Any],
+    reclaim: Callable[[], Any],
     selector: DefaultSelector,
-    sleep_fn: SleepFn,
+    sleep: Callable[[], Optional[float]],
     slots: FixedBytesQueue,
 ) -> Optional[bytes]:
     """
     Either retrieve a requested token or raise Blocked while trying.
 
     Returns the token when consume == 1, or None when consume == 0.
-    May raise CallbackRaised via reclaim_tokens_fn so raising.
+    May raise CallbackRaised via reclaim so raising.
     """
     # Defensively check arguments
     if type(consume) is not int or consume not in (0, 1):
@@ -1268,28 +1371,28 @@ def _maybe_obtain_token(
     stall_fds: set[int] = set()
     while True:
         # (1) Eagerly clean up any completed work to avoid deadlocks
-        reclaim_tokens_fn()
+        reclaim()
 
         # (2) Exit once a consume == 1 submission already holds its slot.
         if token is not None:
             break
 
-        # (3) When sleep_fn() vetoes new work proceed to sleep.
+        # (3) When sleep() vetoes new work proceed to sleep.
         # Bound the sleep by the remaining deadline so that
-        # sleep_fn() duration is properly accounted for.
-        sleep = sleep_fn()
-        if sleep is not None:
+        # sleep() duration is properly accounted for.
+        seconds = sleep()
+        if seconds is not None:
             if (
-                isinstance(sleep, bool)
-                or not isinstance(sleep, (int, float))
-                or not sleep >= 0.0
+                isinstance(seconds, bool)
+                or not isinstance(seconds, (int, float))
+                or not seconds >= 0.0
             ):
                 raise ValueError(
-                    "sleep_fn must return None or non-negative "
-                    f"seconds, got {sleep!r}"
+                    "sleep must return None or non-negative "
+                    f"seconds, got {seconds!r}"
                 )
             remaining = deadline_to_timeout(deadline)
-            time.sleep(max(_RESOLUTION, min(sleep, remaining)))
+            time.sleep(max(_RESOLUTION, min(seconds, remaining)))
             if time.monotonic() >= deadline:
                 raise Blocked()
             continue
@@ -1308,13 +1411,13 @@ def _maybe_obtain_token(
                 raise Blocked() from None
 
             # (7) ...then block until some interesting event.
-            # O(k) via the persistent selector: _lazy_selector() places
+            # O(k) via the persistent selector: lazy_selector() places
             # slots.waitable() once so only one epoll_wait is needed here.
             # No rebuilding of the interest set.
             keys_events = selector.select(timeout=deadline - monotonic)
 
             # (8) A sentinel wakeup normally means a child exited and the next
-            # reclaim_tokens_fn() pass will restore its slot, so loop at once.
+            # reclaim() pass will restore its slot, so loop at once.
             # But if its pipe stays open or its lock is held, reclaim cannot
             # complete it and its sentinel stays ready, so re-select()ing would
             # peg a CPU.  Back off only when a sentinel-only wakeup repeats
@@ -1393,9 +1496,6 @@ def _map_generate(
     chunksize: int,
     buffersize: int,
     deadline: float,
-    env: Optional[EnvItems] = None,
-    preexec_fn: Optional[PreexecFn] = None,
-    sleep_fn: Optional[SleepFn] = None,
 ) -> Iterator[T]:
     """Generator backing Jobserver.map() which yields results in order."""
     futures: deque[Future] = deque()  # Future[list[T]] in practice
@@ -1405,9 +1505,6 @@ def _map_generate(
             submit(
                 fn=_map_chunk,
                 args=(fn, chunk),
-                env=env,
-                preexec_fn=preexec_fn,
-                sleep_fn=sleep_fn,
                 timeout=deadline_to_timeout(deadline),
             )
         )

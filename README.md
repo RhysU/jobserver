@@ -78,17 +78,18 @@ Examples
  * [ex05_death](examples/ex05_death.py) - Detecting a submission whose result
    pipe closes without a result (e.g. a killed worker) via `LostResult`.
  * [ex06_sleep_fn](examples/ex06_sleep_fn.py) - Gating work acceptance on an
-   external condition using `sleep_fn`.
+   external condition using `replace_sleep()`.
  * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`
    callbacks and draining errors via `CallbackRaised`.
  * [ex08_environment](examples/ex08_environment.py) - Setting and unsetting
-   environment variables in child processes via `env=`.
- * [ex09_preexec_fn](examples/ex09_preexec_fn.py) - Using `preexec_fn` as
-   a plain callable or context manager factory for entry/exit semantics.
+   environment variables in child processes via `modify_env()`.
+ * [ex09_preexec_fn](examples/ex09_preexec_fn.py) - Using `replace_preexec()`
+   with a plain callable or context manager factory for entry/exit semantics.
  * [ex10_timeouts](examples/ex10_timeouts.py) - Using non-blocking polling,
    finite deadlines, and `Blocked` from `result()` and `submit()`.
- * [ex11_pdeathsig](examples/ex11_pdeathsig.py) - On Linux, using `preexec_fn`
-   to call `prctl(PR_SET_PDEATHSIG)` so a child dies when its parent does.
+ * [ex11_pdeathsig](examples/ex11_pdeathsig.py) - On Linux, using
+   `replace_preexec()` to call `prctl(PR_SET_PDEATHSIG)` so a child dies when
+   its parent does.
  * [ex12_executor](examples/ex12_executor.py) - Using `JobserverExecutor` as
    a context manager supporting `map()` and `c.f.Future` cancellation.
 

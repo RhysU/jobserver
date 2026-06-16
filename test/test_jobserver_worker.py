@@ -6,8 +6,8 @@
 """Jobserver worker process behavior.
 
 Covers the per-submission child process: abnormal exits and signal
-delivery, environment customization via env and preexec_fn, sleep_fn
-scheduling control, and propagation of __init__ defaults to submit().
+delivery, environment customization via modify_env and replace_preexec,
+replace_sleep scheduling control, and how derived handles apply in submit().
 """
 
 import errno
@@ -289,38 +289,41 @@ class TestJobserverWorker(unittest.TestCase):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # Notice f sets, g confirms unset, and h re-sets they key.
-                    f = js.submit(
-                        fn=os.getenv, args=(key, "SENTINEL"), env={key: "5678"}
+                    f = js.modify_env({key: "5678"}).submit(
+                        fn=os.getenv, args=(key, "SENTINEL")
                     )
-                    g = js.submit(fn=os.getenv, args=(key, "SENTINEL"), env={})
-                    h = js.submit(
-                        fn=os.getenv, args=(key, "SENTINEL"), env={key: "1234"}
+                    g = js.modify_env({}).submit(
+                        fn=os.getenv, args=(key, "SENTINEL")
                     )
-                    # i uses preexec_fn, not env, to set the key.
-                    i = js.submit(
+                    h = js.modify_env({key: "1234"}).submit(
+                        fn=os.getenv, args=(key, "SENTINEL")
+                    )
+                    # i uses replace_preexec, not env, to set the key.
+                    i = js.replace_preexec(helper_preexec_fn).submit(
                         fn=os.getenv,
                         args=(key, "SENTINEL"),
-                        preexec_fn=helper_preexec_fn,
                     )
-                    # j uses both to confirm env updated before preexec_fn.
-                    j = js.submit(
-                        fn=os.getenv,
-                        args=(key, "SENTINEL"),
-                        preexec_fn=helper_preexec_fn,
-                        env={key: "OVERWRITTEN"},
+                    # j uses both to confirm env updated before preexec.
+                    j = (
+                        js.modify_env({key: "OVERWRITTEN"})
+                        .replace_preexec(helper_preexec_fn)
+                        .submit(
+                            fn=os.getenv,
+                            args=(key, "SENTINEL"),
+                        )
                     )
                     # k sets then unsets to check unsetting and Iterables.
-                    k = js.submit(
+                    k = js.modify_env(
+                        ((key, "OVERWRITTEN"), (key, None))
+                    ).submit(
                         fn=os.getenv,
                         args=(key, "SENTINEL"),
-                        env=((key, "OVERWRITTEN"), (key, None)),
                     )
                     # Variable l is skipped because flake8 complains otherwise
                     # Lastly, m confirms removal of a possibly pre-existing key
-                    m = js.submit(
+                    m = js.modify_env(((key, None),)).submit(
                         fn=os.getenv,
                         args=(key, "SENTINEL"),
-                        env=((key, None),),
                     )
                     # Checking the various results in an arbitrary order
                     self.assertEqual("PREEXEC_FN", j.result())
@@ -330,6 +333,26 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual("SENTINEL", g.result())
                     self.assertEqual("5678", f.result())
                     self.assertEqual("SENTINEL", k.result())
+
+    def test_modify_env_stacks(self) -> None:
+        """Successive modify_env(...) calls accumulate; None unsets a prior."""
+        a = "JOBSERVER_TEST_ENVIRON_A"
+        b = "JOBSERVER_TEST_ENVIRON_B"
+        self.assertIsNone(os.environ.get(a, None))
+        self.assertIsNone(os.environ.get(b, None))
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # Two stacked modify_env calls both take effect.
+                    both = js.modify_env({a: "1"}).modify_env({b: "2"})
+                    f = both.submit(fn=os.getenv, args=(a, "SENTINEL"))
+                    g = both.submit(fn=os.getenv, args=(b, "SENTINEL"))
+                    # A later None unsets an entry set by an earlier call.
+                    undo = js.modify_env({a: "1"}).modify_env({a: None})
+                    h = undo.submit(fn=os.getenv, args=(a, "SENTINEL"))
+                    self.assertEqual("1", f.result())
+                    self.assertEqual("2", g.result())
+                    self.assertEqual("SENTINEL", h.result())
 
     def test_worker_process_name(self) -> None:
         """Worker process name is 'Jobserver-worker'."""
@@ -344,12 +367,13 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
-                    f = js.submit(
+                    f = js.replace_preexec(
+                        functools.partial(
+                            helper_raise, RuntimeError, "preexec failed"
+                        )
+                    ).submit(
                         fn=helper_return,
                         args=(1,),
-                        preexec_fn=functools.partial(
-                            helper_raise, RuntimeError, "preexec failed"
-                        ),
                         timeout=5,
                     )
                     with self.assertRaises(RuntimeError):
@@ -362,18 +386,18 @@ class TestJobserverWorker(unittest.TestCase):
                 with Jobserver(context=method, slots=1) as js:
                     # Confirm negative/nan sleep raises ValueError, fn uncalled
                     with self.assertRaises(ValueError) as c:
-                        js.submit(fn=len, sleep_fn=lambda: -1.0)
+                        js.replace_sleep(lambda: -1.0).submit(fn=len)
                     self.assertIn("-1.0", str(c.exception))
                     with self.assertRaises(ValueError):
-                        js.submit(fn=len, sleep_fn=lambda: float("nan"))
+                        js.replace_sleep(lambda: float("nan")).submit(fn=len)
                     # A non-numeric return is a clean ValueError, not a raw
                     # TypeError from the `>= 0.0` comparison (#333).
                     with self.assertRaises(ValueError) as c:
-                        js.submit(fn=len, sleep_fn=lambda: "soon")
+                        js.replace_sleep(lambda: "soon").submit(fn=len)
                     self.assertIn("'soon'", str(c.exception))
                     # bool is ruled out even though it is an int subclass.
                     with self.assertRaises(ValueError):
-                        js.submit(fn=len, sleep_fn=lambda: True)
+                        js.replace_sleep(lambda: True).submit(fn=len)
 
                     # Confirm sleep_fn(...) returning zero can proceed
                     zs = iter(itertools.cycle((0, None)))
@@ -381,7 +405,7 @@ class TestJobserverWorker(unittest.TestCase):
                     def sfn_zs(zs=zs):
                         return next(zs)
 
-                    f = js.submit(fn=len, args=((1,),), sleep_fn=sfn_zs)
+                    f = js.replace_sleep(sfn_zs).submit(fn=len, args=((1,),))
 
                     # Confirm sleep_fn(...) returning finite sleep can proceed
                     gs = iter(itertools.cycle((0.05, 0.02, None)))
@@ -389,7 +413,7 @@ class TestJobserverWorker(unittest.TestCase):
                     def sfn_gs(gs=gs):
                         return next(gs)
 
-                    g = js.submit(fn=len, args=((),), sleep_fn=sfn_gs)
+                    g = js.replace_sleep(sfn_gs).submit(fn=len, args=((),))
 
                     # Confirm repeated sleeping can cause a timeout to occur.
                     # fn is never called as sleep_fn vetoes the invocation.
@@ -399,7 +423,7 @@ class TestJobserverWorker(unittest.TestCase):
                         return next(hs)
 
                     with self.assertRaises(Blocked):
-                        js.submit(fn=len, sleep_fn=sfn_hs, timeout=0.1)
+                        js.replace_sleep(sfn_hs).submit(fn=len, timeout=0.1)
 
                     # Confirm as expected.  Importantly, results not previously
                     # retrieved implying above submissions finalized results.
@@ -425,11 +449,10 @@ class TestJobserverWorker(unittest.TestCase):
                         return 0.05
 
                     with self.assertRaises(Blocked):
-                        js.submit(
+                        js.replace_sleep(veto).submit(
                             fn=len,
                             args=((),),
                             consume=0,
-                            sleep_fn=veto,
                             timeout=0.1,
                         )
                     self.assertGreater(
@@ -446,8 +469,8 @@ class TestJobserverWorker(unittest.TestCase):
                         allow_calls[0] += 1
                         return None
 
-                    f = js.submit(
-                        fn=len, args=((1, 2),), consume=0, sleep_fn=allow
+                    f = js.replace_sleep(allow).submit(
+                        fn=len, args=((1, 2),), consume=0
                     )
                     self.assertEqual(2, f.result(timeout=5))
                     self.assertGreater(
@@ -485,10 +508,9 @@ class TestJobserverWorker(unittest.TestCase):
             f.result(timeout=5)
 
             with self.assertRaises(Blocked):
-                js.submit(
+                js.replace_sleep(sleep_fn).submit(
                     fn=len,
                     args=((),),
-                    sleep_fn=sleep_fn,
                     timeout=timeout,
                 )
 
@@ -511,79 +533,72 @@ class TestJobserverWorker(unittest.TestCase):
                         raise RuntimeError("sleep_fn failed")
 
                     with self.assertRaises(RuntimeError) as c:
-                        js.submit(
+                        js.replace_sleep(raises_error).submit(
                             fn=len,
                             args=((),),
-                            sleep_fn=raises_error,
                             timeout=5,
                         )
                     self.assertIn("sleep_fn failed", str(c.exception))
                     f.wait(timeout=5)
 
     def test_init_defaults_used_by_submit(self) -> None:
-        """Defaults set in __init__ apply in submit."""
+        """Controls set via replace_*() apply in submit."""
         key = "JOBSERVER_TEST_ENVIRON"
         self.assertIsNone(os.environ.get(key, None))
         for method in start_methods():
             with self.subTest(method=method):
                 # env: child sees key without submit() specifying it
-                with Jobserver(
-                    context=method, slots=1, env={key: "FROM_INIT"}
+                with Jobserver(context=method, slots=1).modify_env(
+                    {key: "FROM_INIT"}
                 ) as js:
                     f = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                     self.assertEqual("FROM_INIT", f.result())
 
-                # preexec_fn: helper sets key; no repeat needed
-                with Jobserver(
-                    context=method,
-                    slots=1,
-                    preexec_fn=helper_preexec_fn,
+                # preexec: helper sets key; no repeat needed
+                with Jobserver(context=method, slots=1).replace_preexec(
+                    helper_preexec_fn
                 ) as js:
                     g = js.submit(fn=os.getenv, args=(key, "SENTINEL"))
                     self.assertEqual("PREEXEC_FN", g.result())
 
-                # sleep_fn: a vetoing fn blocks every submit()
-                with Jobserver(
-                    context=method, slots=1, sleep_fn=lambda: 99.0
+                # sleep: a vetoing fn blocks every submit()
+                with Jobserver(context=method, slots=1).replace_sleep(
+                    lambda: 99.0
                 ) as js:
                     with self.assertRaises(Blocked):
                         js.submit(fn=len, timeout=0.0)
 
     def test_submit_overrides_init_defaults(self) -> None:
-        """submit() kwargs override the instance defaults set in __init__."""
+        """A later replace_*() overrides an earlier one, sharing the pool."""
         key = "JOBSERVER_TEST_ENVIRON"
         self.assertIsNone(os.environ.get(key, None))
         for method in start_methods():
             with self.subTest(method=method):
-                # env override: submit-level value replaces the init default
-                with Jobserver(
-                    context=method, slots=1, env={key: "FROM_INIT"}
+                # env override: later value replaces the base handle's
+                with Jobserver(context=method, slots=1).modify_env(
+                    {key: "FROM_INIT"}
                 ) as js:
-                    f = js.submit(
-                        fn=os.getenv,
-                        args=(key, "SENTINEL"),
-                        env={key: "FROM_SUBMIT"},
+                    f = js.modify_env({key: "FROM_SUBMIT"}).submit(
+                        fn=os.getenv, args=(key, "SENTINEL")
                     )
                     self.assertEqual("FROM_SUBMIT", f.result())
 
-                # preexec_fn override: submit-level noop suppresses the helper
-                with Jobserver(
-                    context=method,
-                    slots=1,
-                    preexec_fn=helper_preexec_fn,
+                # preexec override: later noop suppresses the helper
+                with Jobserver(context=method, slots=1).replace_preexec(
+                    helper_preexec_fn
                 ) as js:
-                    g = js.submit(
-                        fn=os.getenv,
-                        args=(key, "SENTINEL"),
-                        preexec_fn=helper_noop,
+                    g = js.replace_preexec(helper_noop).submit(
+                        fn=os.getenv, args=(key, "SENTINEL")
                     )
                     self.assertEqual("SENTINEL", g.result())
 
-                # sleep_fn override: submit-level permissive fn unblocks work
-                with Jobserver(
-                    context=method, slots=1, sleep_fn=lambda: 99.0
+                # sleep override: later permissive fn unblocks work
+                with Jobserver(context=method, slots=1).replace_sleep(
+                    lambda: 99.0
                 ) as js:
-                    h = js.submit(fn=len, args=((1,),), sleep_fn=lambda: None)
+                    h = js.replace_sleep(lambda: None).submit(
+                        fn=len, args=((1,),)
+                    )
                     self.assertEqual(1, h.result())
 
     def test_preexec_fn_context_manager(self) -> None:
@@ -594,10 +609,9 @@ class TestJobserverWorker(unittest.TestCase):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     # fn reads the env var set by __enter__
-                    f = js.submit(
+                    f = js.replace_preexec(helper_preexec_cm).submit(
                         fn=os.getenv,
                         args=(key, "SENTINEL"),
-                        preexec_fn=helper_preexec_cm,
                         timeout=5,
                     )
                     self.assertEqual("ENTERED", f.result(timeout=5))
@@ -607,10 +621,9 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
-                    f = js.submit(
+                    f = js.replace_preexec(helper_preexec_cm).submit(
                         fn=helper_raise,
                         args=(RuntimeError, "boom"),
-                        preexec_fn=helper_preexec_cm,
                         timeout=5,
                     )
                     with self.assertRaises(RuntimeError):
@@ -621,10 +634,11 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
-                    f = js.submit(
+                    f = js.replace_preexec(
+                        helper_preexec_suppressing_cm
+                    ).submit(
                         fn=helper_raise,
                         args=(RuntimeError, "suppressed"),
-                        preexec_fn=helper_preexec_suppressing_cm,
                         timeout=5,
                     )
                     self.assertIsNone(f.result(timeout=5))
@@ -634,8 +648,8 @@ class TestJobserverWorker(unittest.TestCase):
         key = "JOBSERVER_TEST_CM"
         for method in start_methods():
             with self.subTest(method=method):
-                with Jobserver(
-                    context=method, slots=1, preexec_fn=helper_preexec_cm
+                with Jobserver(context=method, slots=1).replace_preexec(
+                    helper_preexec_cm
                 ) as js:
                     f = js.submit(
                         fn=os.getenv, args=(key, "SENTINEL"), timeout=5
@@ -648,13 +662,12 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 # Init sets context manager; submit overrides with callable
-                with Jobserver(
-                    context=method, slots=1, preexec_fn=helper_preexec_cm
+                with Jobserver(context=method, slots=1).replace_preexec(
+                    helper_preexec_cm
                 ) as js:
-                    f = js.submit(
+                    f = js.replace_preexec(helper_noop).submit(
                         fn=os.getenv,
                         args=(key, "SENTINEL"),
-                        preexec_fn=helper_noop,
                         timeout=5,
                     )
                     self.assertEqual("SENTINEL", f.result(timeout=5))

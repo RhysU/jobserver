@@ -24,24 +24,22 @@ def main() -> None:
             gate_path = tmp.name
             info("Gate file: %s", gate_path)
 
-            # sleep_fn returns None (proceed) when gate exists, 0.1 otherwise
-            def sleep_fn_gate() -> Optional[float]:
+            # sleep_gate returns None (proceed) when gate exists, 0.1 otherwise
+            def sleep_gate() -> Optional[float]:
                 if os.path.exists(gate_path):
                     return None
                 return 0.1
 
             # Submission proceeds because the gate file exists
-            future = jobserver.submit(
-                fn=sorted, args=([3, 1, 2],), sleep_fn=sleep_fn_gate
-            )
+            gated = jobserver.replace_sleep(sleep_gate)
+            future = gated.submit(fn=sorted, args=([3, 1, 2],))
             info("With gate file: %s", future.result())
 
         # Gate file is now removed; sleep_fn keeps returning 0.1 until timeout
         try:
-            jobserver.submit(
+            gated.submit(
                 fn=sorted,
                 args=([3, 1, 2],),
-                sleep_fn=sleep_fn_gate,
                 timeout=0.35,
             )
             raise RuntimeError("Expected Blocked was not raised")

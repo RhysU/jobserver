@@ -504,10 +504,9 @@ def _dispatch_pending(
     """
     # Close response writer for methods with workers inheriting open fds,
     # allowing dispatcher death to be detected quickly despite live workers.
+    # A derived handle carries the preexec while sharing the same slots.
     if jobserver.context.get_start_method() == "fork":
-        preexec_fn = responses.close_put
-    else:
-        preexec_fn = None
+        jobserver = jobserver.replace_preexec(responses.close_put)
 
     pending = state.pending
     while pending:
@@ -519,7 +518,6 @@ def _dispatch_pending(
                 args=item.args,
                 kwargs=item.kwargs,
                 timeout=0,
-                preexec_fn=preexec_fn,
             )
         except Blocked:
             return

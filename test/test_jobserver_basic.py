@@ -408,10 +408,12 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual(5, h.result())
                     self.assertEqual(4, g.result())
                     self.assertEqual(3, f.result())
-                    # Though copying is allowed, it is degenerate in
-                    # that copy/deepcopy return the original.
-                    self.assertIs(js1, js2)
-                    self.assertIs(js1, js3)
+                    # Copies are sibling handles onto the same slot pool, so
+                    # they are distinct objects sharing one set of resources.
+                    self.assertIsNot(js1, js2)
+                    self.assertIsNot(js1, js3)
+                    self.assertIs(js1._resources, js2._resources)
+                    self.assertIs(js1._resources, js3._resources)
                     # Round-trip through __getstate__/__setstate__
                     # (bare pickle.dumps fails because Semaphores only
                     # allow pickling during process spawning)

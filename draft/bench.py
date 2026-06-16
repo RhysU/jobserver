@@ -262,14 +262,13 @@ def scenario_callbacks(w: Workload) -> list:
 
 
 def scenario_sleepfn(w: Workload) -> list:
-    """Overhead of an always-admitting sleep_fn admission gate."""
+    """Overhead of an always-admitting sleep admission gate."""
     rows = []
-    for sleep_fn, label in ((None, "no gate"), (admit_always, "sleep_fn")):
+    for gated, label in ((False, "no gate"), (True, "sleep")):
         with w.jobserver() as js:
+            runner = js.replace_sleep(admit_always) if gated else js
             elapsed = timer()
-            total = sum(
-                js.map(fn=count_primes, argses=w.ranges, sleep_fn=sleep_fn)
-            )
+            total = sum(runner.map(fn=count_primes, argses=w.ranges))
             wall = elapsed()
         assert total == w.serial_total, (total, w.serial_total)
         rows.append(

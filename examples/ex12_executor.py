@@ -35,7 +35,7 @@ def main() -> None:
         info("lengths via map (owned jobserver): %s", lengths)
 
     # Pattern B: caller owns the Jobserver and passes it to the executor.
-    js = Jobserver(context="spawn", slots=1, preexec_fn=process_start)
+    js = Jobserver(context="spawn", slots=1).replace_preexec(process_start)
     with js, JobserverExecutor(js) as executor:
         # map() applies fn to every item, yielding results in order
         lengths = list(executor.map(len, ["a", "bb", "ccc", "dddd", "eeeee"]))
