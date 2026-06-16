@@ -9,14 +9,13 @@ Exercises the map API covering argument handling, chunking, buffering,
 timeout semantics, and error propagation.
 """
 
-import concurrent.futures
 import gc
 import os
 import tempfile
 import time
 import unittest
 
-from jobserver import Jobserver
+from jobserver import Blocked, Jobserver
 
 from .helpers import (
     FAST,
@@ -264,10 +263,8 @@ class TestJobserverMap(unittest.TestCase):
                     )
                     self.assertEqual(results, list(range(4)))
 
-    # concurrent.futures.TimeoutError differs from builtin TimeoutError
-    # before Python 3.11.
     def test_timeout_expired_raises(self) -> None:
-        """Expired deadline raises TimeoutError."""
+        """Expired deadline raises Blocked."""
         with Jobserver(context=FAST, slots=1) as js:
             for timeout in [0, 0.2]:
                 with self.subTest(timeout=timeout):
@@ -275,17 +272,15 @@ class TestJobserverMap(unittest.TestCase):
                     it = js.map(
                         fn=_slow_identity, argses=argses, timeout=timeout
                     )
-                    with self.assertRaises(concurrent.futures.TimeoutError):
+                    with self.assertRaises(Blocked):
                         list(it)
 
-    # concurrent.futures.TimeoutError differs from builtin TimeoutError
-    # before Python 3.11.
     def test_timeout_is_from_map_call(self) -> None:
         """Timeout counts from the map() call, not from __next__."""
         with Jobserver(context=FAST, slots=2) as js:
             argses = [(i, 0.3) for i in range(5)]
             it = js.map(fn=_slow_identity, argses=argses, timeout=0.5)
-            with self.assertRaises(concurrent.futures.TimeoutError):
+            with self.assertRaises(Blocked):
                 list(it)
 
     def test_exception_propagates(self) -> None:

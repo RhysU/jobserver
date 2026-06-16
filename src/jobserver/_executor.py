@@ -210,13 +210,27 @@ class JobserverExecutor(concurrent.futures.Executor):
         buffersize: Optional[int] = None,
     ) -> Iterator[T]:
         """Return an iterator of fn applied to each iterables entry."""
-        return self._jobserver.map(
+        # Jobserver.map() validates its arguments eagerly and returns a
+        # generator that raises Blocked on deadline overrun.  The stdlib
+        # Executor.map() contract requires concurrent.futures.TimeoutError.
+        inner = self._jobserver.map(
             fn=fn,
             argses=zip(*iterables),
             timeout=timeout,
             chunksize=chunksize,
             buffersize=buffersize,
         )
+        return self._translate_blocked(inner)
+
+    @staticmethod
+    def _translate_blocked(inner: Iterator[T]) -> Iterator[T]:
+        """Yield from inner, re-raising the first Blocked as TimeoutError."""
+        try:
+            yield from inner
+        except Blocked:
+            # concurrent.futures.TimeoutError (not builtin TimeoutError) so
+            # that callers catching either type see it on Python < 3.11.
+            raise concurrent.futures.TimeoutError() from None
 
     def shutdown(
         self, wait: bool = True, *, cancel_futures: bool = False
