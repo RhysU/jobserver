@@ -3,11 +3,11 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 9 shows preexec_fn as a plain callable and context manager factory.
+"""Example 9 shows replace_preexec with a callable and a context manager.
 
-preexec_fn is called in the worker before the task function.  If it returns
-None, it acts as a plain pre-execution hook.  If it returns a context manager,
-the task function runs inside it, gaining entry/exit semantics.
+The replace_preexec callable runs in the worker before the task function.  If
+it returns None, it acts as a plain pre-execution hook; if it returns a context
+manager, the task function runs inside it, gaining entry/exit semantics.
 """
 
 import logging
@@ -17,23 +17,23 @@ from jobserver import Jobserver
 
 
 def main() -> None:
-    """Shows preexec_fn as a callable and as a context manager factory."""
+    """Shows replace_preexec with a callable and a context manager factory."""
     with Jobserver(context="spawn", slots=2) as jobserver:
         # Plain callable: configure logging in the worker
         future_plain = jobserver.replace_preexec(configure_logging).submit(
             fn=task_logger_level
         )
-        info("plain preexec_fn: level=%s", future_plain.result())
+        info("plain preexec: level=%s", future_plain.result())
 
         # Context manager factory: basicConfig on enter, shutdown on exit
         future_cm = jobserver.replace_preexec(LoggingContext).submit(
             fn=task_logger_level,
         )
-        info("context manager preexec_fn: level=%s", future_cm.result())
+        info("context manager preexec: level=%s", future_cm.result())
 
 
 def configure_logging() -> None:
-    """Plain preexec_fn that configures logging in the worker."""
+    """A preexec callable that configures logging in the worker."""
     logging.basicConfig(level=logging.DEBUG)
 
 

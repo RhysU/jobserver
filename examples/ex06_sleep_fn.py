@@ -35,7 +35,7 @@ def main() -> None:
             future = gated.submit(fn=sorted, args=([3, 1, 2],))
             info("With gate file: %s", future.result())
 
-        # Gate file is now removed; sleep_fn keeps returning 0.1 until timeout
+        # Gate file is now removed; sleep_gate keeps returning 0.1 to timeout
         try:
             gated.submit(
                 fn=sorted,
