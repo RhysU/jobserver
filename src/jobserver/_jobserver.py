@@ -76,6 +76,13 @@ EnvItems = Union[
     Mapping[str, Optional[str]],
     Iterable[tuple[str, Optional[str]]],
 ]
+# Worker payload: (preexec_fn, fn, args, kwargs) delivered to a worker.
+Payload = tuple[
+    PreexecFn,
+    Callable[..., Any],
+    tuple[Any, ...],
+    dict[str, Any],
+]
 
 
 @final
@@ -989,9 +996,9 @@ class Jobserver:
             # Why use a Pipe instead of a Queue?  Pipes can detect EOFError!
             recv, send = self._context.Pipe(duplex=False)
             # Pre-pickle under spawn/forkserver so the worker, not the
-            # bootstrap, unpickles fn/args inside its try/except (#351).
+            # bootstrap, unpickles fn/args inside its try/except.
             # Fork inherits memory, so pass live objects (keeps lambdas).
-            payload: Union[tuple, bytes] = (preexec_fn, fn, args, kwargs)
+            payload: Union[Payload, bytes] = (preexec_fn, fn, args, kwargs)
             if self._context.get_start_method() != "fork":
                 payload = bytes(ForkingPickler.dumps(payload))
             process = self._context.Process(  # type: ignore
@@ -1161,7 +1168,7 @@ class Jobserver:
         )
 
 
-def _worker_entrypoint(send, env, payload) -> None:
+def _worker_entrypoint(send, env, payload: Union[Payload, bytes]) -> None:
     """Entry point for workers to run fn(...) due to some submit(...)."""
     ignore_sigpipe()
 
@@ -1172,11 +1179,14 @@ def _worker_entrypoint(send, env, payload) -> None:
     # in degenerate case where client code returns an Exception
     result: Optional[Wrapper[Any]] = None
     try:
-        # Unpickle a blob inside the try so an inbound reconstruction failure
-        # is reported, not crashed into a bare LostResult (#351).
-        if isinstance(payload, bytes):
-            payload = ForkingPickler.loads(payload)
-        preexec_fn, fn, args, kwargs = payload
+        # Unpickle a blob inside the try so unpickling errors do not crash
+        # the worker but are reported like any other failure.
+        resolved: Payload = (
+            ForkingPickler.loads(payload)
+            if isinstance(payload, bytes)
+            else payload
+        )
+        preexec_fn, fn, args, kwargs = resolved
         # None invalid in os.environ so interpret as sentinel for popping
         for key, value in env.items():
             if value is None:
