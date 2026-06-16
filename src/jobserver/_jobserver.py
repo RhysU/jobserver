@@ -836,7 +836,7 @@ class Jobserver:
     Slots default to the number of CPUs available to the current process.
 
     A Jobserver is a thin handle over a shared set of slots.  The env,
-    preexec, and sleep submission controls are adjusted via modify_env(...),
+    preexec, and sleep submission controls are adjusted via revise_env(...),
     replace_preexec(...), and replace_sleep(...), each returning a new
     Jobserver sharing this one's slots.
 
@@ -875,7 +875,7 @@ class Jobserver:
         which reports the number of usable CPUs for the current process.
 
         Submissions default to an empty env and no-op preexec and sleep; use
-        modify_env(...), replace_preexec(...), and replace_sleep(...) to
+        revise_env(...), replace_preexec(...), and replace_sleep(...) to
         derive a handle with different submission controls.
         """
         self._resources = Resources(context, slots)
@@ -903,7 +903,7 @@ class Jobserver:
     def __copy__(self) -> "Jobserver":
         """Return a sibling handle sharing this Jobserver's slots."""
         # A copy is another handle onto the same Resources with identical
-        # submission controls; modify_env() and replace_*() build on this.
+        # submission controls; revise_env() and replace_*() build on this.
         other = Jobserver.__new__(Jobserver)
         other._resources = self._resources
         other._env = self._env
@@ -917,7 +917,7 @@ class Jobserver:
         # it exactly as a shallow copy does.
         return self.__copy__()
 
-    def modify_env(
+    def revise_env(
         self,
         additions: Union[
             Mapping[str, Optional[str]],
@@ -931,7 +931,7 @@ class Jobserver:
         Additions is a Mapping of names to values or an iterable of such
         pairs.  They merge onto any env already set on this Jobserver,
         overriding entries for the same key; a None value unsets the name,
-        including one set by an earlier modify_env(...).  Shares this
+        including one set by an earlier revise_env(...).  Shares this
         Jobserver's slots.
         """
         items = (
@@ -1055,7 +1055,7 @@ class Jobserver:
         Only consume == 0 or consume == 1 is permitted by the implementation.
 
         The env, preexec, and sleep submission controls are taken from this
-        Jobserver; see modify_env(), replace_preexec(), and replace_sleep().
+        Jobserver; see revise_env(), replace_preexec(), and replace_sleep().
 
         May raise CallbackRaised from at most one registered callback
         due to a prior Future's completion.  The caller may resubmit.
@@ -1215,7 +1215,7 @@ class Jobserver:
         Slots are retained until next reclaim_resources() or __exit__.
 
         The env, preexec, and sleep submission controls are taken from this
-        Jobserver; see modify_env(), replace_preexec(), and replace_sleep().
+        Jobserver; see revise_env(), replace_preexec(), and replace_sleep().
         """
         if chunksize < 1:
             raise ValueError("chunksize must be >= 1")
@@ -1275,7 +1275,7 @@ def _worker_entrypoint(send, env, preexec, fn, args, kwargs) -> None:
     Entry point for workers to run fn(...) due to some submit(...).
 
     The env is a dict of str to Optional[str] already validated by
-    modify_env; a None value unsets the name in os.environ.
+    revise_env; a None value unsets the name in os.environ.
     """
     ignore_sigpipe()
 
