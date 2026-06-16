@@ -40,6 +40,7 @@ from .helpers import (
     barrier_wait,
     create_marker,
     helper_return,
+    helper_sleep_with_pid,
     silence_forkserver,
     wait_until,
 )
@@ -463,24 +464,38 @@ class TestResourceLeaks(unittest.TestCase):
         Without the fix EOF never arrives until the worker exits.
         With the fix the worker closes the fd via preexec_fn promptly.
         """
-        with Jobserver(context=FAST, slots=1) as js:
-            exe = JobserverExecutor(js)
-            try:
-                # Long sleep so the worker outlives the prompt-fail window.
-                f = exe.submit(time.sleep, 60)
-                # Wait until the future is RUNNING (worker is live, dispatcher
-                # has dispatched and is still alive).
-                wait_until(lambda: f.running(), timeout=TIMEOUT)
-                self.assertTrue(f.running())
-                pid = exe._dispatcher.pid
-                os.kill(pid, signal.SIGKILL)
-                # Must raise BrokenExecutor well before the 60 s worker exits.
-                with self.assertRaises(
-                    (concurrent.futures.BrokenExecutor, RuntimeError)
-                ):
-                    f.result(timeout=10)
-            finally:
-                exe.shutdown(wait=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_path = os.path.join(tmp, "worker.pid")
+            with Jobserver(context=FAST, slots=1) as js:
+                exe = JobserverExecutor(js)
+                try:
+                    # Long sleep so the worker outlives the prompt-fail
+                    # window.  The helper writes its PID so cleanup can
+                    # kill the orphaned worker (which otherwise holds
+                    # inherited pipe FDs open until the sleep expires).
+                    f = exe.submit(helper_sleep_with_pid, pid_path)
+                    # Wait until the future is RUNNING (worker is live,
+                    # dispatcher has dispatched and is still alive).
+                    wait_until(lambda: f.running(), timeout=TIMEOUT)
+                    self.assertTrue(f.running())
+                    wait_until(
+                        lambda: os.path.exists(pid_path), timeout=TIMEOUT
+                    )
+                    worker_pid = int(open(pid_path).read())
+                    os.kill(exe._dispatcher.pid, signal.SIGKILL)
+                    # Must raise BrokenExecutor well before the 60 s
+                    # worker exits.
+                    with self.assertRaises(
+                        (concurrent.futures.BrokenExecutor, RuntimeError)
+                    ):
+                        f.result(timeout=10)
+                finally:
+                    exe.shutdown(wait=False)
+                    try:
+                        os.kill(worker_pid, signal.SIGKILL)
+                        os.waitpid(worker_pid, 0)
+                    except (OSError, NameError):
+                        pass
 
     def test_submit_after_dispatcher_death(self) -> None:
         """submit() after dispatcher death raises RuntimeError."""

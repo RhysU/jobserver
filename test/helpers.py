@@ -228,6 +228,13 @@ def helper_exec_grandchild_then_die(q: SPSCQueue[int]) -> typing.NoReturn:
     os._exit(0)  # worker dies WITHOUT sending a result
 
 
+def helper_sleep_with_pid(pid_path: str, duration: float = 60) -> None:
+    """Write own PID to a file and sleep, so the caller can kill us."""
+    with open(pid_path, "w") as f:
+        f.write(str(os.getpid()))
+    time.sleep(duration)
+
+
 def helper_preexec_fn() -> None:
     """Mutates os.environ so that the change can be observed."""
     os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
