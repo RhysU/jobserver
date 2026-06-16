@@ -355,6 +355,10 @@ class Future(Generic[T]):
 
         Returns a seqno identifying this registration.  Should fn raise,
         the resulting CallbackRaised reports it via CallbackRaised.seqno.
+
+        Callbacks must not raise BaseException (e.g. KeyboardInterrupt,
+        SystemExit); only Exception subclasses are wrapped in
+        CallbackRaised -- a BaseException propagates uncaught.
         """
         # _when_done assigns and returns the seqno under the same lock.
         # self._callbacks_seqno is an int, so the partial curries a copy.
