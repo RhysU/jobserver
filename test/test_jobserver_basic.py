@@ -422,6 +422,27 @@ class TestJobserverBasic(unittest.TestCase):
                     i = js4.submit(fn=len, args=((1, 2),))
                     self.assertEqual(2, i.result())
 
+    def test_nested_sibling_with_keeps_pool_open(self) -> None:
+        """An inner with on a sibling handle must not close the shared pool.
+
+        The shared Resources reference-counts context-manager entries, so the
+        inner block exiting only decrements; teardown waits for the last open
+        with.  A regression that closed on any exit would fail the final
+        submit() against the still-open outer handle.
+        """
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=2) as js:
+                    sibling = js.revise_env({})  # shares js's slots
+                    with sibling:
+                        self.assertEqual(
+                            2, sibling.submit(fn=len, args=((1, 2),)).result()
+                        )
+                    # sibling.__exit__ must not have torn down the pool.
+                    self.assertEqual(
+                        3, js.submit(fn=len, args=((1, 2, 3),)).result()
+                    )
+
     def test_jobserver_as_submit_argument(self) -> None:
         """Ensure instances with in-flight Futures passable as arguments."""
         for method in start_methods():

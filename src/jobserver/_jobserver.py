@@ -603,6 +603,7 @@ class Resources:
         "_selector_pid",
         "_selector_closed",
         "_refcount",
+        "_reflock",
     )
 
     def __init__(
@@ -645,8 +646,10 @@ class Resources:
         self._selector_pid: Optional[int] = None
         self._selector_closed = False
 
-        # Number of open with-blocks across handles sharing these resources.
+        # Number of open with-blocks across handles sharing these resources,
+        # guarded by a lock since sibling handles may be entered from threads.
         self._refcount = 0
+        self._reflock = threading.Lock()
 
     def __getstate__(self) -> tuple:
         """
@@ -666,7 +669,9 @@ class Resources:
         self._selector = None
         self._selector_pid = None
         self._selector_closed = False
+        # A Lock cannot be pickled, so __getstate__ omits it; make a fresh one.
         self._refcount = 0
+        self._reflock = threading.Lock()
 
     def tracked(self) -> int:
         """
@@ -730,13 +735,16 @@ class Resources:
         # Counting the entry lets a nested with-block on a sibling handle exit
         # without closing resources the outer block still needs.
         self.lazy_selector()
-        self._refcount += 1
+        with self._reflock:
+            self._refcount += 1
         return self
 
     def __exit__(self, *exc: Any) -> None:
         # Balance one __enter__(); tear down only once the last scope exits.
-        self._refcount -= 1
-        if self._refcount <= 0:
+        with self._reflock:
+            self._refcount -= 1
+            teardown = self._refcount <= 0
+        if teardown:
             self._teardown()
 
     def _teardown(self) -> None:
@@ -855,10 +863,12 @@ class Jobserver:
     under fork.
     """
 
-    __slots__ = ("_resources", "_env", "_preexec", "_sleep")
+    __slots__ = ("_resources", "_envdiff", "_preexec", "_sleep")
 
     _resources: Resources
-    _env: dict[str, Optional[str]]
+    # A read-only diff applied to the child's os.environ (None unsets a name).
+    # Stored as a MappingProxyType so a shared sibling handle cannot mutate it.
+    _envdiff: types.MappingProxyType[str, Optional[str]]
     _preexec: Callable
     _sleep: Callable
 
@@ -879,7 +889,7 @@ class Jobserver:
         derive a handle with different submission controls.
         """
         self._resources = Resources(context, slots)
-        self._env = {}
+        self._envdiff = types.MappingProxyType({})
         self._preexec = noop
         self._sleep = noop
 
@@ -891,31 +901,48 @@ class Jobserver:
         """
         # Required because Futures can be neither copied nor pickled
         # Without custom handling of Futures, submit(...) would fail
-        # whenever an instance is part of an argument to a sub-Process
-        return (self._resources, self._env, self._preexec, self._sleep)
+        # whenever an instance is part of an argument to a sub-Process.
+        # A MappingProxyType is unpicklable before 3.12, so ship a plain dict.
+        return (
+            self._resources,
+            dict(self._envdiff),
+            self._preexec,
+            self._sleep,
+        )
 
     def __setstate__(self, state: tuple) -> None:
         """Set instance state."""
         assert isinstance(state, tuple) and len(state) == 4
-        self._resources, self._env, self._preexec, self._sleep = state
+        resources, envdiff, preexec, sleep = state
+        self._resources = resources
+        self._envdiff = types.MappingProxyType(dict(envdiff))
+        self._preexec = preexec
+        self._sleep = sleep
 
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
         """Return a sibling handle sharing this Jobserver's slots."""
         # A copy is another handle onto the same Resources with identical
         # submission controls; revise_env() and replace_*() build on this.
+        # _envdiff is a read-only MappingProxyType, so sharing it is safe.
         other = Jobserver.__new__(Jobserver)
         other._resources = self._resources
-        other._env = self._env
+        other._envdiff = self._envdiff
         other._preexec = self._preexec
         other._sleep = self._sleep
         return other
 
-    def __deepcopy__(self, _: Any) -> "Jobserver":
+    def __deepcopy__(self, memo: dict) -> "Jobserver":
         """Return a sibling handle sharing this Jobserver's slots."""
-        # The shared Resources cannot be duplicated, so a deep copy shares
-        # it exactly as a shallow copy does.
-        return self.__copy__()
+        # The shared Resources cannot be duplicated, so a deep copy shares it
+        # exactly as a shallow copy does.  Honor memo so repeated references to
+        # one Jobserver within a deepcopy collapse to a single sibling handle.
+        existing = memo.get(id(self))
+        if existing is not None:
+            return existing
+        other = self.__copy__()
+        memo[id(self)] = other
+        return other
 
     def revise_env(
         self,
@@ -937,7 +964,7 @@ class Jobserver:
         items = (
             additions.items() if isinstance(additions, Mapping) else additions
         )
-        env = dict(self._env)  # Merge onto a copy of the prior env
+        envdiff = dict(self._envdiff)  # Merge onto a copy of the prior diff
         for key, value in items:
             if not isinstance(key, str):
                 raise TypeError(
@@ -948,10 +975,10 @@ class Jobserver:
                     f"env key {key!r}: value must be str"
                     f" or None, got {type(value).__name__}"
                 )
-            env[key] = value
+            envdiff[key] = value
 
         other = self.__copy__()
-        other._env = env
+        other._envdiff = types.MappingProxyType(envdiff)
         return other
 
     def replace_preexec(
@@ -1117,7 +1144,15 @@ class Jobserver:
             recv, send = resources.context.Pipe(duplex=False)
             process = resources.context.Process(  # type: ignore
                 target=_worker_entrypoint,
-                args=(send, self._env, self._preexec, fn, args, kwargs),
+                # Ship a plain dict: MappingProxyType is unpicklable < 3.12.
+                args=(
+                    send,
+                    dict(self._envdiff),
+                    self._preexec,
+                    fn,
+                    args,
+                    kwargs,
+                ),
                 daemon=False,
                 name="Jobserver-worker",
             )
@@ -1270,11 +1305,11 @@ class Jobserver:
         )
 
 
-def _worker_entrypoint(send, env, preexec, fn, args, kwargs) -> None:
+def _worker_entrypoint(send, envdiff, preexec, fn, args, kwargs) -> None:
     """
     Entry point for workers to run fn(...) due to some submit(...).
 
-    The env is a dict of str to Optional[str] already validated by
+    The envdiff is a dict of str to Optional[str] already validated by
     revise_env; a None value unsets the name in os.environ.
     """
     ignore_sigpipe()
@@ -1287,7 +1322,7 @@ def _worker_entrypoint(send, env, preexec, fn, args, kwargs) -> None:
     result: Optional[Wrapper[Any]] = None
     try:
         # None invalid in os.environ so interpret as sentinel for popping
-        for key, value in env.items():
+        for key, value in envdiff.items():
             if value is None:
                 os.environ.pop(key, None)
             else:
