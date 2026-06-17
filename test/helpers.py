@@ -254,9 +254,15 @@ def helper_exec_grandchild_then_die(q: SPSCQueue[int]) -> typing.NoReturn:
 
 
 def helper_sleep_with_pid(pid_path: str, duration: float = 60) -> None:
-    """Write own PID to a file and sleep, so the caller can kill us."""
-    with open(pid_path, "w") as f:
+    """Write own PID to a file and sleep, so the caller can kill us.
+
+    The PID is written atomically via a temp file plus os.replace() so a
+    caller polling on existence never observes a half-written (empty) file.
+    """
+    tmp_path = f"{pid_path}.{os.getpid()}.tmp"
+    with open(tmp_path, "w") as f:
         f.write(str(os.getpid()))
+    os.replace(tmp_path, pid_path)
     time.sleep(duration)
 
 
