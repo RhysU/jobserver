@@ -51,7 +51,7 @@ class TestJobserverBasic(unittest.TestCase):
     """Core Jobserver submit/result behavior."""
 
     def test_defaults(self) -> None:
-        """Default construction and __call__ shorthand ok?"""
+        """Default construction and the __call__ shorthand work."""
         with Jobserver() as js:
             f = js(len, (1, 2, 3))
             g = js(str, object=2)
@@ -64,7 +64,7 @@ class TestJobserverBasic(unittest.TestCase):
             self.assertEqual(3, f.result())
 
     def test_basic(self) -> None:
-        """Basic submission up to slot limit along with callbacks firing?"""
+        """Basic submission up to the slot limit fires callbacks."""
         for method, check_done in itertools.product(
             start_methods(), (True, False)
         ):
@@ -177,7 +177,7 @@ class TestJobserverBasic(unittest.TestCase):
 
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_none(self) -> None:
-        """None can be returned from a Future?"""
+        """None can be returned from a Future."""
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=3) as js:
@@ -202,7 +202,7 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual("42", f.result())
 
     def test_unpicklable_fn_wrapped(self) -> None:
-        """Pickling failures from process.start() raise a clear TypeError?"""
+        """Pickling failures from process.start() raise a clear TypeError."""
         for method in start_methods():
             if method == "fork":
                 continue  # fork pickles nothing, so lambdas run fine
@@ -220,7 +220,7 @@ class TestJobserverBasic(unittest.TestCase):
 
     # Explicitly tested because of handling woes observed in other designs
     def test_returns_not_raises_exception(self) -> None:
-        """An Exception can be returned, not raised, from a Future?"""
+        """An Exception can be returned, not raised, from a Future."""
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=3) as js:
@@ -230,7 +230,7 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual(e.args, f.result().args)
 
     def test_raises(self) -> None:
-        """Future.result() raises Exceptions thrown while processing work?"""
+        """Future.result() raises exceptions thrown while processing work."""
         from .helpers import helper_raise
 
         for method in start_methods():
@@ -272,7 +272,7 @@ class TestJobserverBasic(unittest.TestCase):
         self.assertGreaterEqual(elapsed, minimum, "Not enough seconds elapsed")
 
     def test_nonblocking(self) -> None:
-        """Ensure non-blocking wait() and submit() logic honors timeouts."""
+        """Non-blocking wait() and submit() logic honors timeouts."""
         for method, check_done in itertools.product(
             start_methods(), (True, False)
         ):
@@ -356,8 +356,8 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual(f1.result(timeout=0), payload)
                     self.assertEqual(f2.result(timeout=0), payload)
 
-    def test_heavyusage(self) -> None:
-        """Workload saturating the configured slots does not deadlock?"""
+    def test_heavy_usage(self) -> None:
+        """A workload saturating the configured slots does not deadlock."""
         for method in start_methods():
             with self.subTest(method=method):
                 # Prepare workload based on number of available slots
@@ -379,7 +379,7 @@ class TestJobserverBasic(unittest.TestCase):
 
     # Motivated by multiprocessing.Connection mentioning a possible 32MB limit
     def test_large_objects(self) -> None:
-        """Confirm increasingly large objects can be processed."""
+        """Increasingly large objects can be processed."""
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
@@ -463,7 +463,7 @@ class TestJobserverBasic(unittest.TestCase):
                     )
 
     def test_jobserver_as_submit_argument(self) -> None:
-        """Ensure instances with in-flight Futures passable as arguments."""
+        """Instances with in-flight Futures are passable as arguments."""
         for method in start_methods():
             with self.subTest(method=method):
                 # Submit work so an in-flight Future is being tracked

@@ -61,7 +61,7 @@ class TestJobserverWorker(unittest.TestCase):
     """Jobserver worker process behavior."""
 
     def test_submission_died(self) -> None:
-        """Signal receipt by worker can be detected via Future?"""
+        """Signal receipt by a worker is detectable via the Future."""
         for method in start_methods():
             with self.subTest(method=method):
                 # Permit observing callback side-effects
@@ -282,7 +282,7 @@ class TestJobserverWorker(unittest.TestCase):
                         f.result()
 
     def test_environ(self) -> None:
-        """Confirm sub-process environment is modifiable via submit(...)."""
+        """The sub-process environment is modifiable via submit(...)."""
         # Precondition: key must not be in environment
         key = "JOBSERVER_TEST_ENVIRON"
         self.assertIsNone(os.environ.get(key, None))
@@ -416,7 +416,7 @@ class TestJobserverWorker(unittest.TestCase):
                         f.result(timeout=5)
 
     def test_sleep_fn(self) -> None:
-        """Confirm sleep_fn(...) invoked and handled per documentation."""
+        """sleep_fn(...) is invoked and handled per documentation."""
         for method in start_methods():
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:

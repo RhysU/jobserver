@@ -43,7 +43,7 @@ def setUpModule() -> None:
 
 
 class TestConcurrencyStress(unittest.TestCase):
-    """Concurrency Stress."""
+    """Concurrency stress."""
 
     def test_heavy_submission(self) -> None:
         """Heavy submission exceeding slot count."""
@@ -121,7 +121,7 @@ class TestConcurrencyStress(unittest.TestCase):
 
 
 class TestWaitAndAsCompleted(unittest.TestCase):
-    """wait() and as_completed()."""
+    """wait() and as_completed() behavior."""
 
     def test_wait_all_completed(self) -> None:
         """wait(ALL_COMPLETED) returns all in done."""

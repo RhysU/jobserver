@@ -51,7 +51,7 @@ def setUpModule() -> None:
 
 
 class TestCancellation(unittest.TestCase):
-    """Cancellation."""
+    """Future cancellation."""
 
     def test_cancel_pending(self) -> None:
         """A PENDING future can be cancelled."""
@@ -194,7 +194,7 @@ class TestSelectiveCancel(unittest.TestCase):
 
 
 class TestShutdown(unittest.TestCase):
-    """Shutdown Semantics."""
+    """Shutdown semantics."""
 
     def test_wait_true_blocks(self) -> None:
         """shutdown(wait=True) blocks until all complete."""
@@ -338,7 +338,7 @@ class TestShutdown(unittest.TestCase):
 
 
 class TestResourceLeaks(unittest.TestCase):
-    """Resource Leak Detection."""
+    """Resource leak detection."""
 
     @staticmethod
     def _fd_count() -> int:
