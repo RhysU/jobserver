@@ -320,3 +320,12 @@ class TimeoutToDeadlineTest(unittest.TestCase):
             with self.assertRaises(ValueError) as cm:
                 timeout_to_deadline(bad)
             self.assertIn("non-negative", str(cm.exception))
+
+    def test_non_finite_raises_valueerror(self) -> None:
+        """NaN/Inf timeouts are rejected: NaN silently disables every
+        deadline check and busy-spins, while Inf is an undocumented alias
+        for None.  Use None to block indefinitely (#389)."""
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError) as cm:
+                timeout_to_deadline(bad)
+            self.assertIn("finite", str(cm.exception))
