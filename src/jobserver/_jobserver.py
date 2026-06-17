@@ -39,7 +39,6 @@ from typing import (
 )
 
 from ._compat import (
-    PICKLE_DUMP_ERRORS,
     ignore_sigpipe,
     pipe_buf,
     sched_getaffinity0,
@@ -1368,7 +1367,8 @@ def _worker_entrypoint(send, envdiff, preexec, fn, args, kwargs) -> None:
             if result is not None:
                 try:
                     payload = ForkingPickler.dumps(result)
-                except PICKLE_DUMP_ERRORS as pe:
+                except Exception as pe:
+                    # Pickling user types can produce arbitrary exceptions.
                     payload = ForkingPickler.dumps(
                         ExceptionWrapper(
                             RuntimeError(
