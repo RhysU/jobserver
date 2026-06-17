@@ -27,7 +27,7 @@ from .helpers import helper_noop, helper_raise, wait_until
 class TestJobserverConcurrency(unittest.TestCase):
     """Threading races and concurrent Future access."""
 
-    def test_concurrent_done_no_crash(self) -> None:
+    def test_concurrent_wait_no_crash(self) -> None:
         """Concurrent wait() on the same Future must not crash.
 
         Two threads calling wait() on the same Future concurrently must not
@@ -64,7 +64,7 @@ class TestJobserverConcurrency(unittest.TestCase):
                 errors, [], f"Concurrent wait() crashed: {errors}"
             )
 
-    def test_concurrent_done_both_threads_see_true(self) -> None:
+    def test_concurrent_wait_both_threads_see_true(self) -> None:
         """Both threads calling wait() concurrently must see True.
 
         The losing thread must take the fast-path (_connection is None)
@@ -97,7 +97,7 @@ class TestJobserverConcurrency(unittest.TestCase):
                     "Background thread must see wait() == True",
                 )
 
-    def test_concurrent_done_timeout_budget(self) -> None:
+    def test_concurrent_wait_timeout_budget(self) -> None:
         """Lock acquisition time is deducted from the timeout budget.
 
         A wait(timeout=T) call must not block for longer than

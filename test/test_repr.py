@@ -20,6 +20,7 @@ class TestFutureRepr(unittest.TestCase):
     """Future __repr__ reports state."""
 
     def test_pending_future(self) -> None:
+        """A pending Future renders as running with its pid."""
         with Jobserver(slots=1) as js:
             f = js.submit(fn=helper_return, args=(42,))
             r = repr(f)
@@ -29,6 +30,7 @@ class TestFutureRepr(unittest.TestCase):
             f.result()
 
     def test_done_future(self) -> None:
+        """A completed Future renders as done with pid=None."""
         with Jobserver(slots=1) as js:
             f = js.submit(fn=helper_return, args=(42,))
             f.result()
@@ -41,12 +43,14 @@ class TestJobserverRepr(unittest.TestCase):
     """Jobserver __repr__ reports state."""
 
     def test_idle(self) -> None:
+        """An idle Jobserver renders with tracked=0."""
         with Jobserver(slots=2) as js:
             r = repr(js)
             self.assertTrue(r.startswith("Jobserver('"))
             self.assertIn("tracked=0", r)
 
     def test_with_tracked(self) -> None:
+        """An outstanding Future is reported as tracked."""
         with Jobserver(slots=2) as js:
             f = js.submit(fn=helper_return, args=(1,))
             self.assertIn("tracked=", repr(js))
@@ -57,6 +61,7 @@ class TestJobserverExecutorRepr(unittest.TestCase):
     """JobserverExecutor __repr__ reports state."""
 
     def test_active(self) -> None:
+        """An active executor renders pending and jobserver detail."""
         with Jobserver(slots=1) as js:
             ex = JobserverExecutor(js)
             r = repr(ex)
@@ -68,6 +73,7 @@ class TestJobserverExecutorRepr(unittest.TestCase):
             ex.shutdown(wait=True)
 
     def test_shutdown(self) -> None:
+        """A shutdown executor renders as shutdown."""
         with Jobserver(slots=1) as js:
             ex = JobserverExecutor(js)
             ex.shutdown(wait=True)
@@ -80,6 +86,7 @@ class TestSPSCQueueRepr(unittest.TestCase):
     """SPSCQueue __repr__ reports pipe state."""
 
     def test_open(self) -> None:
+        """An open SPSCQueue renders both ends as open."""
         with SPSCQueue() as mq:
             r = repr(mq)
             self.assertIn("reader=open", r)
@@ -87,12 +94,14 @@ class TestSPSCQueueRepr(unittest.TestCase):
             self.assertIn("fd=", r)
 
     def test_closed_reader(self) -> None:
+        """A closed read end renders as reader=closed."""
         with SPSCQueue() as mq:
             mq.close_get()
             self.assertIn("reader=closed", repr(mq))
             self.assertIn("writer=open", repr(mq))
 
     def test_closed_writer(self) -> None:
+        """A closed write end renders as writer=closed."""
         with SPSCQueue() as mq:
             mq.close_put()
             self.assertIn("reader=open", repr(mq))

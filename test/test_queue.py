@@ -42,10 +42,10 @@ def _fbq_echo(inq: FixedBytesQueue, outq: FixedBytesQueue) -> None:
     outq.put(inq.get(timeout=30))
 
 
-class SPSCQueueTest(unittest.TestCase):
-    """Unit tests for SPSCQueue."""
+class TestSPSCQueue(unittest.TestCase):
+    """SPSCQueue behavior."""
 
-    def test_duplication_minimalqueue(self) -> None:
+    def test_duplication_spscqueue(self) -> None:
         """Copying of SPSCQueue is explicitly allowed."""
         for method in start_methods():
             with self.subTest(method=method):
@@ -96,8 +96,8 @@ class SPSCQueueTest(unittest.TestCase):
             mq.get(timeout=0)
 
 
-class MPMCQueueTest(unittest.TestCase):
-    """Unit tests for MPMCQueue."""
+class TestMPMCQueue(unittest.TestCase):
+    """MPMCQueue behavior."""
 
     def test_context_manager_roundtrip(self) -> None:
         """Context manager closes both ends; put/get raise after exit."""
@@ -195,8 +195,8 @@ class MPMCQueueTest(unittest.TestCase):
             self.assertEqual(combined, list(range(total)))
 
 
-class FixedBytesQueueTest(unittest.TestCase):
-    """Unit tests for FixedBytesQueue.
+class TestFixedBytesQueue(unittest.TestCase):
+    """FixedBytesQueue behavior.
 
     The headline property is that, restricted to fixedlen-byte payloads,
     FixedBytesQueue is observationally indistinguishable from MPMCQueue
@@ -308,8 +308,8 @@ class FixedBytesQueueTest(unittest.TestCase):
                     self.assertEqual(0, proc.exitcode)
 
 
-class ResolveContextTest(unittest.TestCase):
-    """Unit tests for resolve_context."""
+class TestResolveContext(unittest.TestCase):
+    """resolve_context behavior."""
 
     def test_none_returns_default_context(self) -> None:
         """None resolves to the default multiprocessing context."""
@@ -331,8 +331,8 @@ class ResolveContextTest(unittest.TestCase):
                 self.assertIs(resolve_context(original), original)
 
 
-class TimeoutToDeadlineTest(unittest.TestCase):
-    """Unit tests for timeout_to_deadline."""
+class TestTimeoutToDeadline(unittest.TestCase):
+    """timeout_to_deadline behavior."""
 
     def test_none_yields_large_deadline(self) -> None:
         """None timeout produces a deadline far in the future."""

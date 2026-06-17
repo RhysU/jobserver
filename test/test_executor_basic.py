@@ -48,7 +48,7 @@ def setUpModule() -> None:
 
 
 class TestSubmitAndResult(unittest.TestCase):
-    """Submit and Result."""
+    """Executor submit() and result() behavior."""
 
     def test_successful_call(self) -> None:
         """Successful call returns correct result."""
@@ -89,7 +89,7 @@ class TestSubmitAndResult(unittest.TestCase):
 
 
 class TestExceptionPropagation(unittest.TestCase):
-    """Exception Propagation."""
+    """Exception propagation through the executor."""
 
     def test_exception_via_result(self) -> None:
         """Exception raised in callable surfaces via result()."""
@@ -193,7 +193,7 @@ class TestExceptionPropagation(unittest.TestCase):
 
 
 class TestFutureStateQueries(unittest.TestCase):
-    """Future State Queries."""
+    """Future state queries."""
 
     def test_pending_when_slots_full(self) -> None:
         """A newly submitted future is PENDING when slots full."""
@@ -246,7 +246,7 @@ class TestFutureStateQueries(unittest.TestCase):
 
 
 class TestCallbacks(unittest.TestCase):
-    """Callbacks."""
+    """Executor future callbacks."""
 
     def test_callback_on_success(self) -> None:
         """add_done_callback fires on success."""
@@ -404,7 +404,7 @@ class TestCallbacks(unittest.TestCase):
 
 
 class TestMap(unittest.TestCase):
-    """map()."""
+    """Executor map() behavior."""
 
     def test_basic(self) -> None:
         """Basic correctness."""
