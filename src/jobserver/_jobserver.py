@@ -474,7 +474,10 @@ class Future(Generic[T]):
                 self._wrapper = self._connection.recv()
             except EOFError:
                 self._wrapper = ExceptionWrapper(LostResult())
-            except Exception as e:
+            except KeyboardInterrupt:
+                # A Ctrl-C may be local or may sneak in from the recv() itself.
+                raise
+            except BaseException as e:
                 # A value can pickle in the child yet fail to reconstitute
                 # in the parent (e.g. a returned Connection raises
                 # FileNotFoundError deep in recv()).
