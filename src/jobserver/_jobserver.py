@@ -963,6 +963,10 @@ class Jobserver:
         overriding entries for the same key; a None value unsets the name,
         including one set by an earlier revise_env(...).  Shares this
         Jobserver's slots.
+
+        Eagerly checks what os.environ[key] = value enforces.  Keys and
+        values must have types str and Optional[str], respectively.  Keys
+        cannot be empty or contain '='.  Neither can contain null bytes.
         """
         items = (
             additions.items() if isinstance(additions, Mapping) else additions
@@ -978,6 +982,15 @@ class Jobserver:
                     f"env key {key!r}: value must be str"
                     f" or None, got {type(value).__name__}"
                 )
+            # Eagerly check what 'os.environ[key] = value' rejects.
+            if not key:
+                raise ValueError(f"env key {key!r}: cannot be empty")
+            if "=" in key:
+                raise ValueError(f"env key {key!r}: cannot have '='")
+            if "\0" in key:
+                raise ValueError(f"env key {key!r}: cannot have NUL")
+            if value is not None and "\0" in value:
+                raise ValueError(f"env key {key!r}: value cannot have NUL")
             envdiff[key] = value
 
         other = self.__copy__()
