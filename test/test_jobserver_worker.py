@@ -50,6 +50,7 @@ from .helpers import (
     helper_return,
     helper_return_connection,
     helper_return_kwargs,
+    helper_return_raise_on_unpickle,
     start_methods,
 )
 
@@ -909,3 +910,42 @@ class TestResultNotReconstructable(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 future.result(timeout=10)
         self.assertIn("not reconstructable", str(ctx.exception))
+
+
+class TestUnpickleInterruptSelfHeals(unittest.TestCase):
+    """A KeyboardInterrupt raised by a result's __setstate__ still escapes
+    Future.wait() by design: the #396 fix re-raises KeyboardInterrupt to
+    preserve interactive Ctrl-C, so it cannot tell a real Ctrl-C apart from
+    one smuggled in by a malicious __setstate__.  The escape orphans the
+    Future and leaks its slot, but the leak must be transient: the next
+    submit() reclaims the slot, leaving the Jobserver fully usable."""
+
+    def test_slot_reclaimed_after_unpickle_keyboardinterrupt(self) -> None:
+        """The single leaked slot is recovered by the following submit()."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    # The lone slot's worker returns a value whose
+                    # __setstate__ raises KeyboardInterrupt in the parent.
+                    evil = js.submit(
+                        fn=helper_return_raise_on_unpickle,
+                        args=(KeyboardInterrupt,),
+                    )
+                    with self.assertRaises(KeyboardInterrupt):
+                        evil.result(timeout=TIMEOUT)
+
+                    # The escape consumed the slot without restoring it and
+                    # left evil orphaned.  Acquiring the lone slot for fresh
+                    # work is only possible if submit()'s reclaim() pass
+                    # self-heals the orphan (EOFError -> LostResult), firing
+                    # its token-restore callback.
+                    healed = js.submit(
+                        fn=helper_return, args=(42,), timeout=TIMEOUT
+                    )
+                    self.assertEqual(42, healed.result(timeout=TIMEOUT))
+
+                    # The orphan converges to LostResult once its drained
+                    # pipe reports EOF; it never re-raises KeyboardInterrupt.
+                    self.assertTrue(evil.done(timeout=TIMEOUT))
+                    with self.assertRaises(LostResult):
+                        evil.result(timeout=0)

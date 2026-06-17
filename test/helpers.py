@@ -186,6 +186,31 @@ def helper_return_connection(context):
     return recv
 
 
+class HelperRaiseOnUnpickle:
+    """A value that pickles cleanly in the child but raises in the parent.
+
+    Pickling calls __getstate__ (which succeeds), so the worker sends the
+    value normally.  Unpickling in the parent calls __setstate__, which
+    raises the carried BaseException from deep inside recv() (see #396).
+    The class carries its exception type in state so spawn/forkserver can
+    rebuild it by reference.
+    """
+
+    def __init__(self, klass: type) -> None:
+        self._klass = klass
+
+    def __getstate__(self) -> dict:
+        return {"klass": self._klass}
+
+    def __setstate__(self, state: dict) -> typing.NoReturn:
+        raise state["klass"]()
+
+
+def helper_return_raise_on_unpickle(klass: type) -> HelperRaiseOnUnpickle:
+    """Return a value whose __setstate__ raises klass() in the parent."""
+    return HelperRaiseOnUnpickle(klass)
+
+
 def helper_raise(klass: type, *args) -> typing.NoReturn:
     """Helper raising the requested Exception class."""
     raise klass(*args)
