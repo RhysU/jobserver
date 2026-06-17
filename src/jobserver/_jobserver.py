@@ -39,6 +39,7 @@ from typing import (
 )
 
 from ._compat import (
+    PICKLE_DUMP_ERRORS,
     ignore_sigpipe,
     pipe_buf,
     sched_getaffinity0,
