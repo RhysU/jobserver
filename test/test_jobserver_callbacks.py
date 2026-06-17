@@ -23,6 +23,7 @@ from .helpers import (
     FAST,
     helper_callback,
     helper_raise,
+    helper_return,
     wait_until,
 )
 
@@ -327,3 +328,36 @@ class TestJobserverCallbacks(unittest.TestCase):
             self.await_exit(a, b, c, d)
         # __exit__ ran without raising; all callbacks were drained
         self.assertEqual(order, ["ok"])
+
+    def test_callback_calls_result_reentrantly(self) -> None:
+        """A callback calling result() on the same future works via RLock."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=helper_return, args=(99,), timeout=5)
+            inner_result = []
+            f.when_done(lambda: inner_result.append(f.result()))
+            self.assertEqual(99, f.result(timeout=5))
+            self.assertEqual([99], inner_result)
+
+    def test_callback_base_exception_propagates_raw(self) -> None:
+        """BaseException from a callback propagates unwrapped."""
+        for exc_type in (SystemExit, KeyboardInterrupt):
+            with self.subTest(exc_type=exc_type.__name__):
+                with Jobserver(context=FAST, slots=1) as js:
+                    f = js.submit(fn=helper_return, args=(1,), timeout=5)
+                    f.when_done(helper_raise, exc_type)
+                    with self.assertRaises(exc_type):
+                        f.result(timeout=5)
+
+    def test_callback_submits_new_work(self) -> None:
+        """A callback can submit new work to the same Jobserver."""
+        with Jobserver(context=FAST, slots=1) as js:
+            results = []
+
+            def on_done():
+                g = js.submit(fn=helper_return, args=(42,), timeout=5)
+                results.append(g.result(timeout=5))
+
+            f = js.submit(fn=helper_return, args=(1,), timeout=5)
+            f.when_done(on_done)
+            self.assertEqual(1, f.result(timeout=5))
+            self.assertEqual([42], results)

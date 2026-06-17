@@ -379,6 +379,21 @@ class TestJobserverMap(unittest.TestCase):
                     )
                     self.assertEqual(results, list(range(30)))
 
+    def test_maximally_lazy_buffersize_one_chunksize_one(self) -> None:
+        """buffersize=1, chunksize=1 produces correct results one at a time."""
+        with Jobserver(context=FAST, slots=1) as js:
+            argses = [(i,) for i in range(10)]
+            results = list(
+                js.map(
+                    fn=helper_return,
+                    argses=argses,
+                    buffersize=1,
+                    chunksize=1,
+                    timeout=TIMEOUT,
+                )
+            )
+            self.assertEqual(results, list(range(10)))
+
 
 class TestJobserverMapAbandonment(unittest.TestCase):
     """map() reclaims slots when its generator is abandoned (issue #176).

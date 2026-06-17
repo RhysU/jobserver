@@ -13,6 +13,7 @@ and the resolve_context / timeout_to_deadline helpers.
 import copy
 import os
 import queue
+import threading
 import time
 import unittest
 from multiprocessing import get_context
@@ -142,6 +143,56 @@ class MPMCQueueTest(unittest.TestCase):
                     self.assertEqual(42, outq.get(timeout=30))
                     proc.join(30)
                     self.assertEqual(0, proc.exitcode)
+
+    def test_concurrent_puts_from_threads(self) -> None:
+        """Multiple threads putting concurrently produce no lost items."""
+        n_threads = 4
+        per_thread = 50
+        with MPMCQueue() as mq:
+
+            def writer(start: int) -> None:
+                for i in range(start, start + per_thread):
+                    mq.put(i)
+
+            threads = [
+                threading.Thread(target=writer, args=(t * per_thread,))
+                for t in range(n_threads)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            got = set()
+            for _ in range(n_threads * per_thread):
+                got.add(mq.get(timeout=5))
+            self.assertEqual(got, set(range(n_threads * per_thread)))
+
+    def test_concurrent_gets_from_threads(self) -> None:
+        """Multiple threads getting concurrently collect all items."""
+        n_threads = 4
+        total = 200
+        with MPMCQueue() as mq:
+            for i in range(total):
+                mq.put(i)
+            results: list[list[int]] = [[] for _ in range(n_threads)]
+
+            def reader(idx: int) -> None:
+                while True:
+                    try:
+                        results[idx].append(mq.get(timeout=0.1))
+                    except queue.Empty:
+                        return
+
+            threads = [
+                threading.Thread(target=reader, args=(i,))
+                for i in range(n_threads)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            combined = sorted(v for r in results for v in r)
+            self.assertEqual(combined, list(range(total)))
 
 
 class FixedBytesQueueTest(unittest.TestCase):

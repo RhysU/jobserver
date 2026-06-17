@@ -21,7 +21,12 @@ from jobserver._jobserver import (
     ResultWrapper,
 )
 
-from .helpers import helper_raise, start_methods
+from .helpers import (
+    FAST,
+    helper_raise,
+    helper_raise_custom_init,
+    start_methods,
+)
 
 
 class CustomChildError(Exception):
@@ -314,3 +319,14 @@ class TestExceptionWrapperPickle(unittest.TestCase):
             w.unwrap()
         self.assertIsInstance(ctx.exception.__cause__, RemoteTraceback)
         self.assertIn("KeyboardInterrupt", str(ctx.exception.__cause__))
+
+    def test_custom_init_exception_reconstruct_failure(self) -> None:
+        """An exception whose __init__ has a non-standard signature
+        still surfaces usefully after pickle round-trip."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=helper_raise_custom_init, timeout=5)
+            with self.assertRaises(Exception) as ctx:
+                f.result(timeout=5)
+            msg = str(ctx.exception).lower()
+            self.assertIn("not reconstructable", msg)
+            self.assertIn("__init__", msg)
