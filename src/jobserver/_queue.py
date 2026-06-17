@@ -6,6 +6,7 @@
 """FixedBytesQueue, MPMCQueue, SPSCQueue, and related utility functions."""
 
 import abc
+import math
 import os
 import queue
 import threading
@@ -55,6 +56,8 @@ def timeout_to_deadline(timeout: Optional[float]) -> float:
     if timeout is None:
         return _MAX_TIMEOUT_SECS + time.monotonic()
     if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+        if not math.isfinite(timeout):
+            raise ValueError(f"timeout must be finite, got {timeout!r}")
         if timeout < 0:
             raise ValueError(f"timeout must be non-negative, got {timeout!r}")
         return timeout + time.monotonic()
