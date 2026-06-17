@@ -694,6 +694,18 @@ def _make_deep_result() -> object:
     return x
 
 
+class _ReduceRaisesRuntimeError(Exception):
+    """An exception whose __reduce__ raises RuntimeError when pickled."""
+
+    def __reduce__(self) -> typing.Any:
+        raise RuntimeError("__reduce__ refuses to pickle")
+
+
+def _raise_reduce_runtimeerror() -> object:
+    """Raise an exception whose __reduce__ raises RuntimeError."""
+    raise _ReduceRaisesRuntimeError()
+
+
 class _RecordingSend:
     """Stand-in for a worker's pipe end recording send_bytes payloads.
 
@@ -773,6 +785,20 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         than crashing the worker into a misleading LostResult (#343)."""
         send = _RecordingSend()
         _worker_entrypoint(send, {}, lambda: None, _make_deep_result, (), {})
+        self.assertEqual(1, len(send.payloads))
+        wrapper = ForkingPickler.loads(send.payloads[0])
+        self.assertIsInstance(wrapper, ExceptionWrapper)
+        with self.assertRaises(RuntimeError) as ctx:
+            wrapper.unwrap()
+        self.assertIn("not picklable", str(ctx.exception))
+        self.assertTrue(send.closed)
+
+    def test_reduce_raising_runtimeerror_uses_fallback(self) -> None:
+        """A __reduce__ raising RuntimeError uses the fallback (#390)."""
+        send = _RecordingSend()
+        _worker_entrypoint(
+            send, {}, lambda: None, _raise_reduce_runtimeerror, (), {}
+        )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ExceptionWrapper)
