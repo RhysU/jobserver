@@ -84,6 +84,40 @@ class TestDesignConsume(unittest.TestCase):
                     f = js.submit(fn=_recurse, args=(js, 6, 0), timeout=5)
                     self.assertEqual(f.result(timeout=30), 6)
 
+    def test_consume_zero_succeeds_when_slots_exhausted(self) -> None:
+        """consume=0 submit succeeds even with all slots held."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=self.SLOTS) as js:
+                    held = []
+                    for _ in range(self.SLOTS):
+                        held.append(
+                            js.submit(fn=time.sleep, args=(10.0,), timeout=5)
+                        )
+                    f = js.submit(fn=len, args=((1, 2),), consume=0, timeout=0)
+                    self.assertEqual(2, f.result(timeout=10))
+                    for h in held:
+                        h.wait(signal=signal.SIGKILL)
+
+    def test_alternating_consume_zero_and_one(self) -> None:
+        """Alternating consume=0 and consume=1 submits all complete."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=self.SLOTS) as js:
+                    futures = []
+                    for i in range(6):
+                        consume = 0 if i % 2 == 0 else 1
+                        futures.append(
+                            js.submit(
+                                fn=len,
+                                args=((1,) * (i + 1),),
+                                consume=consume,
+                                timeout=10,
+                            )
+                        )
+                    results = [f.result(timeout=10) for f in futures]
+                    self.assertEqual(results, [1, 2, 3, 4, 5, 6])
+
     def test_top_level_backpressure_preserved(self) -> None:
         """consume=0 is for interiors; the top level still obeys slots."""
         for method in start_methods():

@@ -38,9 +38,11 @@ from jobserver._queue import SPSCQueue
 from .helpers import (
     TIMEOUT,
     helper_callback,
+    helper_close_own_pipe,
     helper_current_process_name,
     helper_exec_grandchild_then_die,
     helper_fork_orphan_then_die,
+    helper_make_circular,
     helper_nonblocking,
     helper_noop,
     helper_preexec_cm,
@@ -910,6 +912,26 @@ class TestResultNotReconstructable(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 future.result(timeout=10)
         self.assertIn("not reconstructable", str(ctx.exception))
+
+    def test_worker_closes_send_pipe_yields_lost_result(self) -> None:
+        """A worker that sabotages its result pipe produces LostResult."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.submit(fn=helper_close_own_pipe, timeout=5)
+                    with self.assertRaises(LostResult):
+                        f.result(timeout=5)
+
+    def test_circular_reference_round_trips(self) -> None:
+        """A result with circular references round-trips via pickle."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.submit(fn=helper_make_circular, timeout=5)
+                    result = f.result(timeout=TIMEOUT)
+                    self.assertEqual(result[0], 1)
+                    self.assertEqual(result[1], 2)
+                    self.assertIs(result[2], result)
 
 
 class TestUnpickleInterruptSelfHeals(unittest.TestCase):

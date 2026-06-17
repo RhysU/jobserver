@@ -313,3 +313,34 @@ def helper_recurse(js: Jobserver, max_depth: int) -> int:
     except Blocked:
         return 0
     return 1 + f.result(timeout=None)
+
+
+def helper_close_own_pipe() -> None:
+    """Worker closes its own result pipe fd, causing LostResult."""
+    # The send Connection is already closed by the parent after start();
+    # the worker's copy is the only writer.  Closing the underlying fd
+    # makes send_bytes fail with OSError so the finally block swallows it
+    # and the parent sees EOFError -> LostResult.
+    os.close(1)
+    os._exit(0)
+
+
+def helper_make_circular() -> list:
+    """Return a list with a circular reference."""
+    a: list = [1, 2]
+    a.append(a)
+    return a
+
+
+class _CustomInitError(Exception):
+    """Exception with a non-standard __init__ signature."""
+
+    def __init__(self, code: int, detail: str) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code = code
+        self.detail = detail
+
+
+def helper_raise_custom_init() -> T:
+    """Raise an exception with a custom __init__ signature."""
+    raise _CustomInitError(42, "bad thing")

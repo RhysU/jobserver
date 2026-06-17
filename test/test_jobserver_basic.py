@@ -29,9 +29,11 @@ from jobserver import (
 from jobserver._queue import SPSCQueue
 
 from .helpers import (
+    FAST,
     barrier_wait,
     helper_callback,
     helper_nonblocking,
+    helper_noop,
     helper_recurse,
     helper_return,
     start_methods,
@@ -577,3 +579,40 @@ class TestJobserverBasic(unittest.TestCase):
         # __exit__ closed the selector; result() fires all callbacks
         # including the _deregister_sentinel cleanup callback
         self.assertIsNone(f.result(timeout=5))
+
+    def test_token_restored_after_unpicklable_submit(self) -> None:
+        """Slot token is restored when submit() fails with TypeError."""
+        for method in start_methods():
+            if method == "fork":
+                continue
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    with self.assertRaises(TypeError):
+                        js.submit(fn=lambda: 42, timeout=5)
+                    f = js.submit(fn=helper_return, args=(7,), timeout=5)
+                    self.assertEqual(7, f.result(timeout=5))
+
+    def test_orphan_future_recovered_by_reclaim(self) -> None:
+        """A Future dropped without collecting is recovered by reclaim."""
+        with Jobserver(context=FAST, slots=1) as js:
+            js.submit(fn=helper_return, args=(1,), timeout=5)
+            # Future ref dropped; reclaim must recover the slot.
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                js.reclaim_resources()
+                if "tracked=0" in repr(js):
+                    break
+                time.sleep(0.01)
+            self.assertIn("tracked=0", repr(js))
+            f = js.submit(fn=helper_return, args=(2,), timeout=5)
+            self.assertEqual(2, f.result(timeout=5))
+
+    def test_sleep_inf_bounded_by_deadline(self) -> None:
+        """sleep() returning inf is clamped by the submission deadline."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=helper_noop, timeout=5)
+            f.result(timeout=5)
+            with self.assertRaises(Blocked):
+                js.replace_sleep(lambda: float("inf")).submit(
+                    fn=helper_noop, timeout=0.1
+                )

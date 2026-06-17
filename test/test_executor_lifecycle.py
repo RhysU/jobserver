@@ -730,3 +730,12 @@ class TestOwnedJobserver(unittest.TestCase):
             f = exe.submit(len, "hello")
             self.assertEqual(5, f.result(timeout=TIMEOUT))
         self.assertFalse(exe._own_jobserver)
+
+    def test_two_executors_sharing_one_jobserver(self) -> None:
+        """Two executors sharing a Jobserver both complete work."""
+        with Jobserver(context=FAST, slots=4) as js:
+            with JobserverExecutor(js) as ex1, JobserverExecutor(js) as ex2:
+                f1 = ex1.submit(len, (1, 2, 3))
+                f2 = ex2.submit(len, (4, 5))
+                self.assertEqual(3, f1.result(timeout=TIMEOUT))
+                self.assertEqual(2, f2.result(timeout=TIMEOUT))
