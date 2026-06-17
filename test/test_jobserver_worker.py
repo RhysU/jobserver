@@ -357,6 +357,36 @@ class TestJobserverWorker(unittest.TestCase):
                     self.assertEqual({a: "1", b: "2"}, both._envdiff)
                     self.assertEqual({a: None}, undo._envdiff)
 
+    def test_revise_env_validates_content(self) -> None:
+        """revise_env(...) rejects empty, '=', and null keys/values (#391)."""
+        with Jobserver(slots=1) as js:
+            # Keys and values must be str or None, respectively.
+            with self.assertRaises(TypeError):
+                js.revise_env({1: "value"})  # type: ignore[dict-item]
+            with self.assertRaises(TypeError):
+                js.revise_env({"KEY": 1})  # type: ignore[dict-item]
+            # Reject exactly the content the worker's os.environ assignment
+            # rejects: confirm each pair fails there before requiring it of
+            # revise_env(), so we promise no behavior the worker would not.
+            for key, value in (
+                ("", "value"),
+                ("A=B", "value"),
+                ("A\0B", "value"),
+                ("KEY", "va\0lue"),
+            ):
+                with self.assertRaises((OSError, ValueError)):
+                    os.environ[key] = value  # what the worker would attempt
+                with self.assertRaises(ValueError):
+                    js.revise_env({key: value})
+            # A None value sidesteps the value check entirely.
+            self.assertEqual(
+                {"KEY": None}, js.revise_env({"KEY": None})._envdiff
+            )
+            # An ordinary key/value pair is accepted unchanged.
+            self.assertEqual(
+                {"KEY": "value"}, js.revise_env({"KEY": "value"})._envdiff
+            )
+
     def test_worker_process_name(self) -> None:
         """Worker process name is 'Jobserver-worker'."""
         for method in start_methods():
