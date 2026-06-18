@@ -1046,7 +1046,7 @@ class Jobserver:
     def __exit__(self, *exc: Any) -> None:
         self._resources.__exit__(*exc)
 
-    def __call__(self, fn: Callable[..., T], *args, **kwargs) -> Future[T]:
+    def __call__(self, fn: Callable[..., T], /, *args, **kwargs) -> Future[T]:
         """
         Submit running fn(*args, **kwargs) to this Jobserver.
 

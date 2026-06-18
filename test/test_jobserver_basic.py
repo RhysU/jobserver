@@ -36,6 +36,7 @@ from .helpers import (
     helper_noop,
     helper_recurse,
     helper_return,
+    helper_return_kwargs,
     start_methods,
 )
 
@@ -62,6 +63,12 @@ class TestJobserverBasic(unittest.TestCase):
             self.assertEqual(4, h.result())
             self.assertEqual("2", g.result())
             self.assertEqual(3, f.result())
+
+    def test_call_kwarg_named_fn(self) -> None:
+        """__call__ forwards a kwarg named 'fn' without collision."""
+        with Jobserver() as js:
+            f = js(helper_return_kwargs, fn="sentinel")
+            self.assertEqual({"fn": "sentinel"}, f.result())
 
     def test_basic(self) -> None:
         """Basic submission up to the slot limit fires callbacks."""
