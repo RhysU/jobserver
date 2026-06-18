@@ -487,15 +487,10 @@ class Future(Generic[T]):
             else:
                 assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
 
-            # Now join() and set to None reclaiming OS/Python resources
+            # Now set to None to (a) later allow reclaiming Python resources
+            # and (b) prevent any callback from observing non-None members
             assert self._process is not None
-            self._process.join()
             self._process = None
-
-            # Drop our reference so _issue_callbacks's invariant holds
-            # and __del__ will not warn.  The actual close() is deferred
-            # to a _PRIORITY_BEFORE callback (see _deregister_connection)
-            # so the fd is unregistered from the selector before reuse.
             self._connection = None
             self._issue_callbacks()
             return True
@@ -546,6 +541,22 @@ class SlotsSentinel:
         return None
 
 
+def _cleanup_before_user_callbacks(
+    selector: DefaultSelector,
+    process: BaseProcess,
+    connection: Connection,
+) -> None:
+    """Join process, deregister connection from selector, and then close it."""
+    # Reclaim OS resources from the worker which can be particularly slow
+    process.join()
+
+    try:
+        selector.unregister(connection)
+    except KeyError:
+        pass  # Already unregistered or selector closed
+    connection.close()
+
+
 def _restore_token(slots: FixedBytesQueue, token: Optional[bytes]) -> None:
     """Restore token to slots, tolerating a closed queue."""
     if token is not None:
@@ -555,37 +566,17 @@ def _restore_token(slots: FixedBytesQueue, token: Optional[bytes]) -> None:
             pass  # Queue closed; Jobserver is shutting down
 
 
-def _deregister_sentinel(
+def _cleanup_after_user_callbacks(
     selector: DefaultSelector,
-    sentinel: int,
-    _process: BaseProcess,
+    process: BaseProcess,
 ) -> None:
-    """Unregister sentinel from selector, tolerating prior close."""
-    # Argument _process is unused but required to prevent garbage
-    # collection of the Process until after this callback fires.
+    """Deregister process sentinel from selector, tolerating prior close."""
+    # The process is the argument, not just process.sentinel, to prevent
+    # garbage collection of the Process until after this callback fires.
     try:
-        selector.unregister(sentinel)
+        selector.unregister(process.sentinel)
     except KeyError:
         pass  # Already unregistered or selector closed
-
-
-def _deregister_connection(
-    selector: DefaultSelector,
-    connection: Connection,
-) -> None:
-    """Unregister connection from selector then close it.
-
-    Mirrors the sentinel discipline: the connection fd is kept open (this
-    callback holds the only remaining reference) until after unregister so
-    its integer cannot be reused by a concurrent submit()'s new Pipe, which
-    would otherwise collide as an already-registered fd.  Future.wait()
-    therefore defers the close here rather than closing inline.
-    """
-    try:
-        selector.unregister(connection)
-    except KeyError:
-        pass  # Already unregistered or selector closed
-    connection.close()
 
 
 @final
@@ -1211,12 +1202,10 @@ class Jobserver:
                 resources._slots.put(token)
             raise
 
-        # Unregister and close the result connection before user callbacks
-        # so a raising user callback cannot leak the connection fd.
-        # Holding recv keeps its fd open until unregister.
+        # One internal callback joins the process and closes the pipe
         future._when_done(
-            fn=_deregister_connection,
-            args=(selector, recv),
+            fn=_cleanup_before_user_callbacks,
+            args=(selector, process, recv),
             priority=_PRIORITY_BEFORE,
         )
 
@@ -1227,16 +1216,13 @@ class Jobserver:
             priority=_PRIORITY_BEFORE,
         )
 
-        # The sentinel stays registered so the Future remains discoverable
-        # if a raising user callback aborts the drain.  Prevent premature
-        # GC of process (closing the sentinel fd) by holding a reference.
-        #
-        # Because _PRIORITY_AFTER is best-effort, unregistering the
-        # sentinel additionally happens implicitly in __exit__ and
-        # __del__ when the selector is closed.
+        # One internal callback delays deregistering the sentinel until
+        # all callbacks complete should a user happen to raise.  Because
+        # _PRIORITY_AFTER is best-effort, deregistering the sentinel is also
+        # attempted in __exit__ and __del__ when the selector is closed.
         future._when_done(
-            fn=_deregister_sentinel,
-            args=(selector, process.sentinel, process),
+            fn=_cleanup_after_user_callbacks,
+            args=(selector, process),
             priority=_PRIORITY_AFTER,
         )
 
