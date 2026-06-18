@@ -38,6 +38,22 @@ is not, on its own, the fastest option.
    which deadlocks the executor. This is what forces the *blocking* join
    rather than a deferred, sentinel-driven completion.
 
+   The executor splits work across two process contexts sharing one
+   `slots` pipe: `map()` runs `js.map()` synchronously in the **caller**
+   process, while `submit()` dispatches through the long-lived
+   **dispatcher** process. A slot consumed by a map worker in the caller
+   must become available to a submit worker spawned by the dispatcher, and
+   vice versa -- but neither process can reap the other's children. This
+   only works because `js.map()` honors a contract: **by the time it
+   returns, its workers are fully reaped and their slots are back in the
+   pipe.** Master satisfies this for free via the blocking `join()`; a
+   deferred reap that lets `map()` return with a recv'd-but-unexited worker
+   strands that worker's slot across the process boundary and hangs the
+   executor. The fix for such a completion-path change therefore belongs in
+   the Jobserver (restore the synchronous "slots back before `map()`
+   returns" contract), not in the executor: there is no isolatable executor
+   bug, only an implicit dependency on this Jobserver guarantee.
+
 ## Supporting constraints
 
 - **No background threads** -- the exit wait cannot be offloaded to a
