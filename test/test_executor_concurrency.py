@@ -54,6 +54,38 @@ class TestConcurrencyStress(unittest.TestCase):
                 results = [f.result(timeout=TIMEOUT) for f in futures]
             self.assertEqual(list(range(n)), results)
 
+    def test_drains_saturating_work_to_completion(self) -> None:
+        """Executor makes forward progress by recycling a saturated slot.
+
+        On a single-slot executor, run map() (recycling the lone slot
+        across several workers), then hold that slot with one task while a
+        second queues PENDING behind it, and block on the second's result,
+        the holder's result, and a wait=True shutdown at exit.  Forward
+        progress requires the dispatcher to reap the finished holder and
+        recycle its slot -- the end-to-end path examples/ex12 exercises but
+        the unit suite otherwise covers only piecewise: saturation that
+        shuts down without waiting, and result-waiting with slack slots.  A
+        regression that breaks the reap deadlocks here, not merely fails a
+        state check.  Exercised across every start method.
+        """
+        for method in start_methods(threaded=True):
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    with JobserverExecutor(js) as exe:
+                        # map() recycles the lone slot across workers, priming
+                        # the dispatcher's state for the reuse that follows.
+                        self.assertEqual(
+                            list(exe.map(len, ["a", "bb", "ccc"])),
+                            [1, 2, 3],
+                        )
+                        # holder occupies the lone slot; follow queues behind.
+                        holder = exe.submit(time.sleep, 0.1)
+                        follow = exe.submit(len, (1, 2, 3))
+                        # follow runs only once holder's slot recycles.
+                        self.assertEqual(follow.result(timeout=TIMEOUT), 3)
+                        self.assertIsNone(holder.result(timeout=TIMEOUT))
+                    # with-exit -> shutdown(wait=True) returns, no hang.
+
     def test_mixed_workload(self) -> None:
         """Mixed workload: success, exception, cancel, death."""
         with Jobserver(context=FAST, slots=4) as js:
