@@ -361,3 +361,16 @@ class TestJobserverCallbacks(unittest.TestCase):
             f.when_done(on_done)
             self.assertEqual(1, f.result(timeout=5))
             self.assertEqual([42], results)
+
+    def test_when_done_kwarg_named_fn(self) -> None:
+        """when_done() forwards a kwarg named 'fn' without collision."""
+        result: dict = {}
+
+        def capture(**kwargs: object) -> None:
+            result.update(kwargs)
+
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=helper_return, args=(1,))
+            f.when_done(capture, fn="sentinel")
+            self.assertEqual(1, f.result())
+            self.assertEqual({"fn": "sentinel"}, result)

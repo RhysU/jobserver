@@ -231,7 +231,7 @@ _PRIORITY_USER = 1
 _PRIORITY_AFTER = 2
 
 
-def _callback_wrapper(seqno: int, fn, *args, **kwargs) -> None:
+def _callback_wrapper(seqno: int, fn, /, *args, **kwargs) -> None:
     """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised.
 
     The seqno is the when_done(...) sequence number from registering fn
@@ -339,7 +339,7 @@ class Future(Generic[T]):
                 source=self,
             )
 
-    def when_done(self, fn: Callable, *args: Any, **kwargs: Any) -> int:
+    def when_done(self, fn: Callable, /, *args: Any, **kwargs: Any) -> int:
         """
         Register fn(*args, **kwargs) for execution after Future.done(...).
 
