@@ -295,10 +295,10 @@ class Future(Generic[T]):
         # Flag should only be observed/manipulated within _issue_callbacks()
         self._callbacks_issuing = False
 
-        # Monotonic seqno needed due to reentrancy.  Starting at -3 lets the
-        # three internal registrations submit() makes (token restoration plus
-        # sentinel and connection cleanup) consume -3, -2, -1 so user 0-based.
-        self._callbacks_seqno = -3
+        # Monotonic seqno needed due to reentrancy.  Starting at -2 lets the
+        # two internal registrations submit() makes (pre-user cleanup and
+        # post-user sentinel cleanup) consume -2, -1 so user 0-based.
+        self._callbacks_seqno = -2
 
     def __repr__(self) -> str:
         with self._rlock:
@@ -545,8 +545,10 @@ def _cleanup_before_user_callbacks(
     selector: DefaultSelector,
     process: BaseProcess,
     connection: Connection,
+    slots: FixedBytesQueue,
+    token: Optional[bytes],
 ) -> None:
-    """Join process, deregister connection from selector, and then close it."""
+    """Join process, deregister+close connection, and restore the job token."""
     # Reclaim OS resources from the worker which can be particularly slow
     process.join()
 
@@ -556,9 +558,6 @@ def _cleanup_before_user_callbacks(
         pass  # Already unregistered or selector closed
     connection.close()
 
-
-def _restore_token(slots: FixedBytesQueue, token: Optional[bytes]) -> None:
-    """Restore token to slots, tolerating a closed queue."""
     if token is not None:
         try:
             slots.put(token)
@@ -1202,17 +1201,11 @@ class Jobserver:
                 resources._slots.put(token)
             raise
 
-        # One internal callback joins the process and closes the pipe
+        # One internal callback joins the process, closes the pipe,
+        # and restores the consumed job token
         future._when_done(
             fn=_cleanup_before_user_callbacks,
-            args=(selector, process, recv),
-            priority=_PRIORITY_BEFORE,
-        )
-
-        # As above process.start() succeeded, now Future must restore token
-        future._when_done(
-            fn=_restore_token,
-            args=(resources._slots, token),
+            args=(selector, process, recv, resources._slots, token),
             priority=_PRIORITY_BEFORE,
         )
 
