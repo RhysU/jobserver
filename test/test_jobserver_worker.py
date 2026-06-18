@@ -21,6 +21,7 @@ import time
 import typing
 import unittest
 from multiprocessing import get_context
+from multiprocessing.connection import Connection
 from multiprocessing.reduction import ForkingPickler
 
 from jobserver import (
@@ -901,17 +902,36 @@ class TestResultNotReconstructable(unittest.TestCase):
         "fork" in start_methods(), "requires fork start method"
     )
     def test_returned_connection_does_not_leak_filenotfounderror(self) -> None:
-        """Returning a live Connection pickles in the child but fails to
-        rebuild in the parent; report it via RuntimeError rather than
-        leaking FileNotFoundError from recv()."""
+        """Returning a live Connection races the child's resource-sharer
+        thread (which serves the FD over a Unix socket) against the child's
+        exit, so the parent's rebuild has three timing-dependent outcomes,
+        all legitimate (#303, #410):
+
+          * the rebuild raises FileNotFoundError, reported as
+            RuntimeError("Result not reconstructable: ...");
+          * the resource sharer dies mid-handshake, the result pipe closes
+            with EOF, reported as LostResult; or
+          * the FD handshake wins and a live Connection rebuilds.
+
+        The invariant under test is that every outcome is a clean library
+        result; a raw OS error (e.g. FileNotFoundError) must never leak out
+        of result().  Any such leak is not caught below and fails the test.
+        """
         # Keep the context object: it is handed to the worker to build a
         # Connection, so it cannot collapse to a bare start-method string.
         context = get_context("fork")
         with Jobserver(context=context, slots=2) as js:
             future = js.submit(fn=helper_return_connection, args=(context,))
-            with self.assertRaises(RuntimeError) as ctx:
-                future.result(timeout=10)
-        self.assertIn("not reconstructable", str(ctx.exception))
+            try:
+                result = future.result(timeout=10)
+            except RuntimeError as e:
+                self.assertIn("not reconstructable", str(e))
+            except LostResult:
+                pass  # resource sharer lost the race; pipe closed with EOF
+            else:
+                # The FD handshake won: a usable Connection rebuilt cleanly.
+                self.assertIsInstance(result, Connection)
+                result.close()
 
     def test_worker_closes_send_pipe_yields_lost_result(self) -> None:
         """A worker that sabotages its result pipe produces LostResult."""
