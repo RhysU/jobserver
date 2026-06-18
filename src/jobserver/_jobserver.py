@@ -1205,7 +1205,13 @@ class Jobserver:
         # and restores the consumed job token
         future._when_done(
             fn=_cleanup_before_user_callbacks,
-            args=(selector, process, recv, resources._slots, token),
+            kwargs=dict(
+                selector=selector,
+                process=process,
+                connection=recv,
+                slots=resources._slots,
+                token=token,
+            ),
             priority=_PRIORITY_BEFORE,
         )
 
@@ -1215,7 +1221,10 @@ class Jobserver:
         # attempted in __exit__ and __del__ when the selector is closed.
         future._when_done(
             fn=_cleanup_after_user_callbacks,
-            args=(selector, process),
+            kwargs=dict(
+                selector=selector,
+                process=process,
+            ),
             priority=_PRIORITY_AFTER,
         )
 
