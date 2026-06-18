@@ -128,6 +128,34 @@ def create_marker(path: str) -> str:
     return "ran"
 
 
+def helper_concurrency_peak(
+    arrive_dir: str, slots: int, dwell: float = 0.05
+) -> int:
+    """Return the peak number of workers seen concurrently inside fn.
+
+    Each worker drops a per-pid marker on entry and removes it before
+    returning, so the directory's file count reflects only workers
+    currently executing.  A worker waits (bounded) until it observes at
+    least slots peers, then dwells briefly so the peak is jointly visible.
+    The caller takes the max of every worker's return value to recover the
+    true peak; with a correct slot promise it equals slots and never more.
+    """
+    marker = os.path.join(arrive_dir, str(os.getpid()))
+    create_marker(marker)
+    try:
+        deadline = time.monotonic() + 10.0
+        peak = 0
+        while time.monotonic() < deadline:
+            peak = max(peak, len(os.listdir(arrive_dir)))
+            if peak >= slots:
+                break
+            time.sleep(0.005)
+        time.sleep(dwell)
+        return max(peak, len(os.listdir(arrive_dir)))
+    finally:
+        os.remove(marker)
+
+
 def raising_at_position(i: int, fail_at: int) -> int:
     if i == fail_at:
         raise ValueError(f"fail at {fail_at}")

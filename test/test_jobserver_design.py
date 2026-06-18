@@ -12,12 +12,13 @@ in detail above their respective classes below.
 
 import os
 import signal
+import tempfile
 import time
 import unittest
 
 from jobserver import Blocked, Jobserver, LostResult
 
-from .helpers import start_methods
+from .helpers import TIMEOUT, helper_concurrency_peak, start_methods
 
 # ---------------------------------------------------------------------------
 # Recursive submission deadlocks without consume=0 (GitHub issue #17).
@@ -73,6 +74,42 @@ class TestDesignConsume(unittest.TestCase):
                     f = js.submit(fn=_recurse, args=(js, 2), timeout=5)
                     with self.assertRaises(Blocked):
                         f.result(timeout=10)
+
+    def test_at_most_slots_workers_run_concurrently(self) -> None:
+        """At most slots workers execute fn at once -- the slot promise.
+
+        Existing tests cover the admission gate (the over-budget submit
+        raises Blocked); this observes execution directly.  With more work
+        than slots, the peak number of workers simultaneously inside fn
+        equals slots and never exceeds it.  A slot is held across fn (it is
+        returned only once the result is received, after fn returns), so a
+        finished-but-still-exiting worker never lets an extra fn run.
+        """
+        slots = 3
+        for method in start_methods():
+            with self.subTest(method=method):
+                with tempfile.TemporaryDirectory() as arrive_dir:
+                    with Jobserver(context=method, slots=slots) as js:
+                        futures = [
+                            js.submit(
+                                fn=helper_concurrency_peak,
+                                args=(arrive_dir, slots),
+                                timeout=TIMEOUT,
+                            )
+                            for _ in range(3 * slots)
+                        ]
+                        peaks = [f.result(timeout=TIMEOUT) for f in futures]
+                observed = max(peaks)
+                self.assertLessEqual(
+                    observed,
+                    slots,
+                    f"{observed} workers ran at once; slots={slots}",
+                )
+                self.assertEqual(
+                    observed,
+                    slots,
+                    f"slots under-utilized: peak {observed} < {slots}",
+                )
 
     def test_consume_0_permits_arbitrary_depth(self) -> None:
         """consume=0 is the implicit free token, avoiding deadlock."""
