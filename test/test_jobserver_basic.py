@@ -419,7 +419,8 @@ class TestJobserverBasic(unittest.TestCase):
                     if method != "fork":
                         with self.assertRaises(TypeError):
                             js.submit(fn=type, args=(f,))
-                    f.result(timeout=10)
+                    if not f.done(timeout=10):
+                        self.fail("Future not done within timeout")
 
     # No behavioral assertions made around pickling, however.
     def test_duplication_jobserver(self) -> None:
