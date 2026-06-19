@@ -50,10 +50,15 @@ class TestResourceWarning(unittest.TestCase):
             warnings.simplefilter("always")
             del js
             gc.collect()
+            del _f
+            gc.collect()
         rw = [w for w in caught if issubclass(w.category, ResourceWarning)]
-        self.assertEqual(len(rw), 1)
-        self.assertRegex(str(rw[0].message), r"Finalizing .* running Future")
-        self.assertIsNotNone(rw[0].source)
+        js_rw = [w for w in rw if "running Future" in str(w.message)]
+        self.assertEqual(len(js_rw), 1)
+        self.assertRegex(
+            str(js_rw[0].message), r"Finalizing .* running Future"
+        )
+        self.assertIsNotNone(js_rw[0].source)
 
     def test_no_warning_when_properly_closed(self) -> None:
         """__del__ is silent after the context manager cleans up."""
