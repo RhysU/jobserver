@@ -16,6 +16,7 @@ import concurrent.futures
 import gc
 import multiprocessing
 import os
+import pathlib
 import signal
 import tempfile
 import threading
@@ -481,7 +482,7 @@ class TestResourceLeaks(unittest.TestCase):
                     wait_until(
                         lambda: os.path.exists(pid_path), timeout=TIMEOUT
                     )
-                    worker_pid = int(open(pid_path).read())
+                    worker_pid = int(pathlib.Path(pid_path).read_text())
                     os.kill(exe._dispatcher.pid, signal.SIGKILL)
                     # Must raise BrokenExecutor well before the 60 s
                     # worker exits.
