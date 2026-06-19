@@ -721,9 +721,7 @@ class TestJobserverWorker(unittest.TestCase):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.replace_preexec(
                         helper_setenv, key, "VIA_ARGS"
-                    ).submit(
-                        fn=os.getenv, args=(key, "SENTINEL"), timeout=5
-                    )
+                    ).submit(fn=os.getenv, args=(key, "SENTINEL"), timeout=5)
                     self.assertEqual("VIA_ARGS", f.result(timeout=5))
 
     def test_preexec_fn_cm_with_kwargs(self) -> None:
@@ -735,9 +733,7 @@ class TestJobserverWorker(unittest.TestCase):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.replace_preexec(
                         HelperContextManager, key=key
-                    ).submit(
-                        fn=os.getenv, args=(key, "SENTINEL"), timeout=5
-                    )
+                    ).submit(fn=os.getenv, args=(key, "SENTINEL"), timeout=5)
                     self.assertEqual("ENTERED", f.result(timeout=5))
 
 
@@ -816,8 +812,14 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         send = _RecordingSend(fail_with=boom)
         with self.assertRaises(AttributeError) as ctx:
             _worker_entrypoint(
-                send, {}, lambda: None, (), {},
-                len, ((1, 2, 3),), {},
+                send,
+                {},
+                lambda: None,
+                (),
+                {},
+                len,
+                ((1, 2, 3),),
+                {},
             )
         self.assertIs(boom, ctx.exception)
         # No "not picklable" rewrap was sent in place of the real error.
@@ -827,8 +829,14 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         """A picklable result rides the happy path to a single send."""
         send = _RecordingSend()
         _worker_entrypoint(
-            send, {}, lambda: None, (), {},
-            len, ((1, 2, 3),), {},
+            send,
+            {},
+            lambda: None,
+            (),
+            {},
+            len,
+            ((1, 2, 3),),
+            {},
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -856,8 +864,14 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         than crashing the worker into a misleading LostResult (#343)."""
         send = _RecordingSend()
         _worker_entrypoint(
-            send, {}, lambda: None, (), {},
-            _make_deep_result, (), {},
+            send,
+            {},
+            lambda: None,
+            (),
+            {},
+            _make_deep_result,
+            (),
+            {},
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -894,8 +908,14 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         boom = OSError(errno.EBADF, "Bad file descriptor")
         send = _RecordingSend(fail_with=boom)
         _worker_entrypoint(
-            send, {}, lambda: None, (), {},
-            len, ((1, 2, 3),), {},
+            send,
+            {},
+            lambda: None,
+            (),
+            {},
+            len,
+            ((1, 2, 3),),
+            {},
         )
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
@@ -904,8 +924,14 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         """The original BrokenPipeError handling is preserved."""
         send = _RecordingSend(fail_with=BrokenPipeError())
         _worker_entrypoint(
-            send, {}, lambda: None, (), {},
-            len, ((1, 2, 3),), {},
+            send,
+            {},
+            lambda: None,
+            (),
+            {},
+            len,
+            ((1, 2, 3),),
+            {},
         )
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
