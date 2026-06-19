@@ -434,6 +434,11 @@ class TestMap(unittest.TestCase):
                 it = exe.map(time.sleep, [1.0], timeout=0.1)
                 with self.assertRaises(concurrent.futures.TimeoutError):
                     next(it)
+            # The timed-out future is still running; drain it so its
+            # connection is closed before the Jobserver tears down.
+            fence = js.submit(fn=int, args=(0,))
+            if not fence.done(timeout=30):
+                self.fail("Timed-out future did not complete")
 
     def test_empty_iterables(self) -> None:
         """Empty iterables."""
