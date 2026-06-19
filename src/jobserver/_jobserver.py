@@ -399,11 +399,12 @@ class Future(Generic[T]):
 
     def done(self, timeout: Optional[float] = 0) -> bool:
         """
-        Never raising Blocked, returns True if result(timeout=0) must succeed.
+        Never raising Blocked, returns True if result(timeout=0) won't block.
 
         Returns whether completion can be confirmed within the timeout.
-        Timeout is given in seconds with None meaning to block indefinitely.
-        Never raises Blocked but instead returns False on unavailable result.
+        True means result() will not raise Blocked. Timeout is given in
+        seconds with None meaning to block indefinitely. Never raises
+        Blocked but instead returns False on unavailable result.
 
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
@@ -421,7 +422,7 @@ class Future(Generic[T]):
         signal: Union[None, int, signal.Signals] = None,
     ) -> bool:
         """
-        Waiting at most timeout, return True if result(timeout=0) must succeed.
+        Waiting at most timeout, return True if result(timeout=0) won't block.
 
         First, sends any provided signal to any underlying, running process.
         Second, returns True once the result pipe yields a result or closes

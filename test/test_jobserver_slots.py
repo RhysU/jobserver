@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -72,7 +72,3 @@ class TestLargeSlots(unittest.TestCase):
         for bad in ("2", 2.0):
             with self.assertRaises(TypeError):
                 Jobserver(context=FAST, slots=bad)
-
-
-if __name__ == "__main__":
-    unittest.main()

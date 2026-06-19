@@ -39,6 +39,8 @@ Implementation passes both PEP 8 (per ruff) and type-hinting (per mypy).
 Refer to https://github.com/RhysU/jobserver for the upstream project.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from ._executor import JobserverExecutor
 from ._jobserver import (
     Blocked,
@@ -47,6 +49,12 @@ from ._jobserver import (
     Jobserver,
     LostResult,
 )
+
+try:
+    __version__ = version("jobserver")
+except PackageNotFoundError:  # pragma: no cover
+    # An uninstalled source tree has no distribution metadata to query.
+    __version__ = "0.0.0+unknown"
 
 __all__ = (
     "Blocked",
