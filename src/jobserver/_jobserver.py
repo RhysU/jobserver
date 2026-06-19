@@ -860,13 +860,22 @@ class Jobserver:
     under fork.
     """
 
-    __slots__ = ("_resources", "_envdiff", "_preexec", "_sleep")
+    __slots__ = (
+        "_resources",
+        "_envdiff",
+        "_preexec_fn",
+        "_preexec_args",
+        "_preexec_kwargs",
+        "_sleep",
+    )
 
     _resources: Resources
     # A read-only diff applied to the child's os.environ (None unsets a name).
     # Stored as a MappingProxyType so a shared sibling handle cannot mutate it.
     _envdiff: types.MappingProxyType[str, Optional[str]]
-    _preexec: Callable
+    _preexec_fn: Callable
+    _preexec_args: tuple[Any, ...]
+    _preexec_kwargs: types.MappingProxyType[str, Any]
     _sleep: Callable
 
     def __init__(
@@ -887,7 +896,9 @@ class Jobserver:
         """
         self._resources = Resources(context, slots)
         self._envdiff = types.MappingProxyType({})
-        self._preexec = noop
+        self._preexec_fn = noop
+        self._preexec_args = ()
+        self._preexec_kwargs = types.MappingProxyType({})
         self._sleep = noop
 
     def __getstate__(self) -> tuple:
@@ -903,17 +914,23 @@ class Jobserver:
         return (
             self._resources,
             dict(self._envdiff),
-            self._preexec,
+            self._preexec_fn,
+            self._preexec_args,
+            dict(self._preexec_kwargs),
             self._sleep,
         )
 
     def __setstate__(self, state: tuple) -> None:
         """Set instance state."""
-        assert isinstance(state, tuple) and len(state) == 4
-        resources, envdiff, preexec, sleep = state
+        assert isinstance(state, tuple) and len(state) == 6
+        resources, envdiff, preexec_fn, preexec_args, preexec_kwargs, sleep = (
+            state
+        )
         self._resources = resources
         self._envdiff = types.MappingProxyType(dict(envdiff))
-        self._preexec = preexec
+        self._preexec_fn = preexec_fn
+        self._preexec_args = tuple(preexec_args)
+        self._preexec_kwargs = types.MappingProxyType(dict(preexec_kwargs))
         self._sleep = sleep
 
     # Use typing.Self once Python 3.11 is the minimum version
@@ -925,7 +942,9 @@ class Jobserver:
         other = Jobserver.__new__(Jobserver)
         other._resources = self._resources
         other._envdiff = self._envdiff
-        other._preexec = self._preexec
+        other._preexec_fn = self._preexec_fn
+        other._preexec_args = self._preexec_args
+        other._preexec_kwargs = self._preexec_kwargs
         other._sleep = self._sleep
         return other
 
@@ -993,21 +1012,25 @@ class Jobserver:
 
     def replace_preexec(
         self,
-        replacement: Callable[[], Union[None, AbstractContextManager]],
+        replacement: Callable[..., Union[None, AbstractContextManager]],
         /,
+        *args: Any,
+        **kwargs: Any,
     ) -> "Jobserver":
         """
         Return a Jobserver invoking replacement in the child just before fn.
 
-        replacement() may return None (a plain pre-execution hook) or a
-        context manager that wraps fn execution with entry/exit semantics, so
-        fn runs inside it.  A context manager's __exit__ may suppress
-        exceptions from fn, in which case the result is None.  Shares this
+        The replacement(*args, **kwargs) may return None or a context
+        manager that wraps fn execution with entry/exit semantics, so fn
+        runs inside it.  A context manager's __exit__ may suppress
+        exceptions, in which case the result is None.  Shares this
         Jobserver's slots.
         """
         if callable(replacement):
             other = self.__copy__()
-            other._preexec = replacement
+            other._preexec_fn = replacement
+            other._preexec_args = args
+            other._preexec_kwargs = types.MappingProxyType(kwargs)
             return other
         raise TypeError(
             f"preexec must be callable, got {type(replacement).__name__}"
@@ -1155,13 +1178,15 @@ class Jobserver:
             process = resources.context.Process(  # type: ignore
                 target=_worker_entrypoint,
                 # Ship a plain dict: MappingProxyType is unpicklable < 3.12.
-                args=(
-                    send,
-                    dict(self._envdiff),
-                    self._preexec,
-                    fn,
-                    args,
-                    kwargs,
+                kwargs=dict(
+                    send=send,
+                    envdiff=dict(self._envdiff),
+                    preexec_fn=self._preexec_fn,
+                    preexec_args=self._preexec_args,
+                    preexec_kwargs=dict(self._preexec_kwargs),
+                    fn=fn,
+                    args=args,
+                    kwargs=kwargs,
                 ),
                 daemon=False,
                 name="Jobserver-worker",
@@ -1318,7 +1343,16 @@ class Jobserver:
         )
 
 
-def _worker_entrypoint(send, envdiff, preexec, fn, args, kwargs) -> None:
+def _worker_entrypoint(
+    send: Any,
+    envdiff: dict[str, Optional[str]],
+    preexec_fn: Callable[..., Any],
+    preexec_args: tuple[Any, ...],
+    preexec_kwargs: dict[str, Any],
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> None:
     """
     Entry point for workers to run fn(...) due to some submit(...).
 
@@ -1345,7 +1379,7 @@ def _worker_entrypoint(send, envdiff, preexec, fn, args, kwargs) -> None:
         # pre-call value of None so the result becomes ResultWrapper(None).
         raw = None
         with ExitStack() as stack:
-            cm = preexec()
+            cm = preexec_fn(*preexec_args, **preexec_kwargs)
             if cm is not None:
                 stack.enter_context(cm)
             raw = fn(*args, **kwargs)
