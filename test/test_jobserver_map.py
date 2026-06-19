@@ -14,6 +14,7 @@ import os
 import tempfile
 import time
 import unittest
+import warnings
 
 from jobserver import Blocked, Jobserver
 
@@ -265,39 +266,45 @@ class TestJobserverMap(unittest.TestCase):
 
     def test_timeout_expired_raises(self) -> None:
         """Expired deadline raises Blocked."""
-        with Jobserver(context=FAST, slots=1) as js:
-            for timeout in [0, 0.2]:
-                with self.subTest(timeout=timeout):
-                    argses = [(i, 0.5) for i in range(10)]
-                    it = js.map(
-                        fn=_slow_identity, argses=argses, timeout=timeout
-                    )
-                    with self.assertRaises(Blocked):
-                        list(it)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ResourceWarning)
+            with Jobserver(context=FAST, slots=1) as js:
+                for timeout in [0, 0.2]:
+                    with self.subTest(timeout=timeout):
+                        argses = [(i, 0.5) for i in range(10)]
+                        it = js.map(
+                            fn=_slow_identity, argses=argses, timeout=timeout
+                        )
+                        with self.assertRaises(Blocked):
+                            list(it)
 
     def test_timeout_is_from_map_call(self) -> None:
         """Timeout counts from the map() call, not from __next__."""
-        with Jobserver(context=FAST, slots=2) as js:
-            argses = [(i, 0.3) for i in range(5)]
-            it = js.map(fn=_slow_identity, argses=argses, timeout=0.5)
-            with self.assertRaises(Blocked):
-                list(it)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ResourceWarning)
+            with Jobserver(context=FAST, slots=2) as js:
+                argses = [(i, 0.3) for i in range(5)]
+                it = js.map(fn=_slow_identity, argses=argses, timeout=0.5)
+                with self.assertRaises(Blocked):
+                    list(it)
 
     def test_exception_propagates(self) -> None:
         """Exception raised by fn surfaces from __next__, all start methods."""
-        for method in start_methods():
-            with self.subTest(method=method):
-                with Jobserver(context=method, slots=2) as js:
-                    argses = [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]
-                    it = js.map(
-                        fn=raising_at_position,
-                        argses=argses,
-                        timeout=TIMEOUT,
-                    )
-                    self.assertEqual(next(it), 0)
-                    self.assertEqual(next(it), 1)
-                    with self.assertRaises(ValueError):
-                        next(it)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ResourceWarning)
+            for method in start_methods():
+                with self.subTest(method=method):
+                    with Jobserver(context=method, slots=2) as js:
+                        argses = [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]
+                        it = js.map(
+                            fn=raising_at_position,
+                            argses=argses,
+                            timeout=TIMEOUT,
+                        )
+                        self.assertEqual(next(it), 0)
+                        self.assertEqual(next(it), 1)
+                        with self.assertRaises(ValueError):
+                            next(it)
 
     def test_exception_midstream(self) -> None:
         """Exception propagates at the right position (first or mid-stream)."""
@@ -306,18 +313,20 @@ class TestJobserverMap(unittest.TestCase):
             (0, [(0, 0), (1, 0), (2, 0)], []),
             (2, [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)], [0, 1]),
         ]
-        with Jobserver(context=FAST, slots=2) as js:
-            for fail_at, argses, before in cases:
-                with self.subTest(fail_at=fail_at):
-                    it = js.map(
-                        fn=raising_at_position,
-                        argses=argses,
-                        timeout=TIMEOUT,
-                    )
-                    for expected in before:
-                        self.assertEqual(next(it), expected)
-                    with self.assertRaises(ValueError):
-                        next(it)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ResourceWarning)
+            with Jobserver(context=FAST, slots=2) as js:
+                for fail_at, argses, before in cases:
+                    with self.subTest(fail_at=fail_at):
+                        it = js.map(
+                            fn=raising_at_position,
+                            argses=argses,
+                            timeout=TIMEOUT,
+                        )
+                        for expected in before:
+                            self.assertEqual(next(it), expected)
+                        with self.assertRaises(ValueError):
+                            next(it)
 
     def test_exception_with_chunksize(self) -> None:
         """Exception within a chunk fails the entire chunk."""
