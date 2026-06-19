@@ -57,6 +57,10 @@ from .helpers import (
 )
 
 
+def _suppress_worker_stderr():
+    sys.stderr = open(os.devnull, "w")
+
+
 class TestJobserverWorker(unittest.TestCase):
     """Jobserver worker process behavior."""
 
@@ -120,18 +124,11 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             for fn, args, expected in base_exceptions:
                 with self.subTest(method=method, fn=fn.__name__):
-                    old_fd = os.dup(2)
-                    try:
-                        devnull = os.open(os.devnull, os.O_WRONLY)
-                        os.dup2(devnull, 2)
-                        os.close(devnull)
-                        with Jobserver(context=method, slots=1) as js:
-                            f = js.submit(fn=fn, args=args, timeout=5)
-                            with self.assertRaises(LostResult) as ctx:
-                                f.result(timeout=5)
-                    finally:
-                        os.dup2(old_fd, 2)
-                        os.close(old_fd)
+                    with Jobserver(context=method, slots=1) as js:
+                        quiet = js.replace_preexec(_suppress_worker_stderr)
+                        f = quiet.submit(fn=fn, args=args, timeout=5)
+                        with self.assertRaises(LostResult) as ctx:
+                            f.result(timeout=5)
                     # The enriched path attaches the child's traceback as a
                     # cause; a silent death would leave __cause__ as None.
                     cause = ctx.exception.__cause__
