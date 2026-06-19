@@ -5,9 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Example 9 shows replace_preexec with a callable and a context manager.
 
-The replace_preexec callable runs in the worker before the task function.  If
-it returns None, it acts as a plain pre-execution hook; if it returns a context
-manager, the task function runs inside it, gaining entry/exit semantics.
+The replace_preexec callable runs fn(*args, **kwargs) in the worker before the
+task function.  A non-None return is assumed to be a context manager wrapping
+the task function's execution.
 """
 
 import logging
@@ -18,11 +18,11 @@ from jobserver import Jobserver
 
 def main() -> None:
     """Shows replace_preexec with a callable and a context manager factory."""
-    with Jobserver(context="spawn", slots=2) as jobserver:
-        # Plain callable: configure logging in the worker
-        future_plain = jobserver.replace_preexec(configure_logging).submit(
-            fn=task_logger_level
-        )
+    # replace_preexec(...) configures logging in all workers
+    with Jobserver(context="spawn", slots=2).replace_preexec(
+        logging.basicConfig, level=logging.DEBUG
+    ) as jobserver:
+        future_plain = jobserver.submit(fn=task_logger_level)
         info("plain preexec: level=%s", future_plain.result())
 
         # Context manager factory: basicConfig on enter, shutdown on exit
@@ -30,11 +30,6 @@ def main() -> None:
             fn=task_logger_level,
         )
         info("context manager preexec: level=%s", future_cm.result())
-
-
-def configure_logging() -> None:
-    """A preexec callable that configures logging in the worker."""
-    logging.basicConfig(level=logging.DEBUG)
 
 
 def task_logger_level() -> int:

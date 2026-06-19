@@ -11,7 +11,6 @@ replace_sleep scheduling control, and how derived handles apply in submit().
 """
 
 import errno
-import functools
 import itertools
 import os
 import signal
@@ -36,6 +35,7 @@ from jobserver._queue import SPSCQueue
 
 from .helpers import (
     TIMEOUT,
+    HelperContextManager,
     HelperReconstructOnUnpickle,
     helper_callback,
     helper_close_own_pipe,
@@ -53,6 +53,7 @@ from .helpers import (
     helper_return_kwargs,
     helper_return_raise_on_unpickle,
     helper_return_reconstruct_on_unpickle,
+    helper_setenv,
     start_methods,
 )
 
@@ -409,9 +410,7 @@ class TestJobserverWorker(unittest.TestCase):
             with self.subTest(method=method):
                 with Jobserver(context=method, slots=1) as js:
                     f = js.replace_preexec(
-                        functools.partial(
-                            helper_raise, RuntimeError, "preexec failed"
-                        )
+                        helper_raise, RuntimeError, "preexec failed"
                     ).submit(
                         fn=helper_return,
                         args=(1,),
@@ -713,6 +712,34 @@ class TestJobserverWorker(unittest.TestCase):
                     )
                     self.assertEqual("SENTINEL", f.result(timeout=5))
 
+    def test_preexec_fn_with_args_kwargs(self) -> None:
+        """replace_preexec forwards *args and **kwargs to the callable."""
+        key = "JOBSERVER_TEST_ENVIRON"
+        self.assertIsNone(os.environ.get(key, None))
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.replace_preexec(
+                        helper_setenv, key, "VIA_ARGS"
+                    ).submit(
+                        fn=os.getenv, args=(key, "SENTINEL"), timeout=5
+                    )
+                    self.assertEqual("VIA_ARGS", f.result(timeout=5))
+
+    def test_preexec_fn_cm_with_kwargs(self) -> None:
+        """replace_preexec forwards **kwargs to a context manager factory."""
+        key = "JOBSERVER_TEST_CM_KEYED"
+        self.assertIsNone(os.environ.get(key, None))
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=1) as js:
+                    f = js.replace_preexec(
+                        HelperContextManager, key=key
+                    ).submit(
+                        fn=os.getenv, args=(key, "SENTINEL"), timeout=5
+                    )
+                    self.assertEqual("ENTERED", f.result(timeout=5))
+
 
 def _make_unpicklable_result() -> object:
     """Return a locally-defined class instance that cannot be pickled."""
@@ -788,7 +815,10 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         boom = AttributeError("misbehaving connection")
         send = _RecordingSend(fail_with=boom)
         with self.assertRaises(AttributeError) as ctx:
-            _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+            _worker_entrypoint(
+                send, {}, lambda: None, (), {},
+                len, ((1, 2, 3),), {},
+            )
         self.assertIs(boom, ctx.exception)
         # No "not picklable" rewrap was sent in place of the real error.
         self.assertEqual([], send.payloads)
@@ -796,7 +826,10 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     def test_picklable_result_sent_unchanged(self) -> None:
         """A picklable result rides the happy path to a single send."""
         send = _RecordingSend()
-        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        _worker_entrypoint(
+            send, {}, lambda: None, (), {},
+            len, ((1, 2, 3),), {},
+        )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ResultWrapper)
@@ -807,7 +840,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         """A genuinely unpicklable result still degrades to the fallback."""
         send = _RecordingSend()
         _worker_entrypoint(
-            send, {}, lambda: None, _make_unpicklable_result, (), {}
+            send, {}, lambda: None, (), {}, _make_unpicklable_result, (), {}
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -822,7 +855,10 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         RecursionError that now degrades to the descriptive fallback rather
         than crashing the worker into a misleading LostResult (#343)."""
         send = _RecordingSend()
-        _worker_entrypoint(send, {}, lambda: None, _make_deep_result, (), {})
+        _worker_entrypoint(
+            send, {}, lambda: None, (), {},
+            _make_deep_result, (), {},
+        )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
         self.assertIsInstance(wrapper, ExceptionWrapper)
@@ -835,7 +871,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         """A __reduce__ raising RuntimeError uses the fallback (#390)."""
         send = _RecordingSend()
         _worker_entrypoint(
-            send, {}, lambda: None, _raise_reduce_runtimeerror, (), {}
+            send, {}, lambda: None, (), {}, _raise_reduce_runtimeerror, (), {}
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
@@ -857,14 +893,20 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         LostResult, but without a noisy child traceback."""
         boom = OSError(errno.EBADF, "Bad file descriptor")
         send = _RecordingSend(fail_with=boom)
-        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        _worker_entrypoint(
+            send, {}, lambda: None, (), {},
+            len, ((1, 2, 3),), {},
+        )
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
     def test_broken_pipe_still_swallowed(self) -> None:
         """The original BrokenPipeError handling is preserved."""
         send = _RecordingSend(fail_with=BrokenPipeError())
-        _worker_entrypoint(send, {}, lambda: None, len, ((1, 2, 3),), {})
+        _worker_entrypoint(
+            send, {}, lambda: None, (), {},
+            len, ((1, 2, 3),), {},
+        )
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
@@ -879,6 +921,8 @@ class TestKwargsNameCollisions(unittest.TestCase):
             "send",
             "env",
             "preexec_fn",
+            "preexec_args",
+            "preexec_kwargs",
             "fn",
             "args",
             "kwargs",

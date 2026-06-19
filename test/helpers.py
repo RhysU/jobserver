@@ -290,15 +290,23 @@ def helper_preexec_fn() -> None:
     os.environ["JOBSERVER_TEST_ENVIRON"] = "PREEXEC_FN"
 
 
+def helper_setenv(key: str, value: str) -> None:
+    """Set an environment variable; picklable across start methods."""
+    os.environ[key] = value
+
+
 class HelperContextManager:
     """A picklable context manager recording entry/exit via os.environ."""
 
+    def __init__(self, key: str = "JOBSERVER_TEST_CM") -> None:
+        self._key = key
+
     def __enter__(self):
-        os.environ["JOBSERVER_TEST_CM"] = "ENTERED"
+        os.environ[self._key] = "ENTERED"
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        os.environ["JOBSERVER_TEST_CM"] = "EXITED"
+        os.environ[self._key] = "EXITED"
         return False
 
 
