@@ -20,8 +20,6 @@ import threading
 import time
 import typing
 import unittest
-from multiprocessing import get_context
-from multiprocessing.connection import Connection
 from multiprocessing.reduction import ForkingPickler
 
 from jobserver import (
@@ -38,6 +36,7 @@ from jobserver._queue import SPSCQueue
 
 from .helpers import (
     TIMEOUT,
+    HelperReconstructOnUnpickle,
     helper_callback,
     helper_close_own_pipe,
     helper_current_process_name,
@@ -51,9 +50,9 @@ from .helpers import (
     helper_preexec_suppressing_cm,
     helper_raise,
     helper_return,
-    helper_return_connection,
     helper_return_kwargs,
     helper_return_raise_on_unpickle,
+    helper_return_reconstruct_on_unpickle,
     start_methods,
 )
 
@@ -896,42 +895,65 @@ class TestKwargsNameCollisions(unittest.TestCase):
 
 class TestResultNotReconstructable(unittest.TestCase):
     """A value that pickles in the child but cannot be rebuilt in the
-    parent must surface a clean library error, not a raw OS error (#303)."""
+    parent must surface a clean library error, not a raw OS error (#303).
 
-    @unittest.skipUnless(
-        "fork" in start_methods(), "requires fork start method"
-    )
-    def test_returned_connection_does_not_leak_filenotfounderror(self) -> None:
-        """Returning a live Connection races the child's resource-sharer
-        thread (which serves the FD over a Unix socket) against the child's
-        exit, so the parent's rebuild has three timing-dependent outcomes,
-        all legitimate (#303, #410):
+    Returning a live Connection was the original real-world trigger, but it
+    is inherently flaky: rebuilding the Connection in the parent races the
+    child's resource-sharer thread against the child's exit, so the same
+    submission can take any of three branches (#410).  These tests pin each
+    branch deterministically by returning a value whose __setstate__ chooses
+    the outcome -- no resource sharer, no thread, no race:
 
-          * the rebuild raises FileNotFoundError, reported as
-            RuntimeError("Result not reconstructable: ...");
-          * the resource sharer dies mid-handshake, the result pipe closes
-            with EOF, reported as LostResult; or
-          * the FD handshake wins and a live Connection rebuilds.
+      * raising a non-EOF error (e.g. FileNotFoundError) -> RuntimeError;
+      * raising EOFError, indistinguishable from an empty pipe -> LostResult;
+      * rebuilding cleanly -> the value is returned intact.
+    """
 
-        The invariant under test is that every outcome is a clean library
-        result; a raw OS error (e.g. FileNotFoundError) must never leak out
-        of result().  Any such leak is not caught below and fails the test.
-        """
-        # Keep the context object: it is handed to the worker to build a
-        # Connection, so it cannot collapse to a bare start-method string.
-        context = get_context("fork")
-        with Jobserver(context=context, slots=2) as js:
-            future = js.submit(fn=helper_return_connection, args=(context,))
-            try:
-                result = future.result(timeout=10)
-            except RuntimeError as e:
-                self.assertIn("not reconstructable", str(e))
-            except LostResult:
-                pass  # resource sharer lost the race; pipe closed with EOF
-            else:
-                # The FD handshake won: a usable Connection rebuilt cleanly.
-                self.assertIsInstance(result, Connection)
-                result.close()
+    def test_unreconstructable_result_reports_runtime_error(self) -> None:
+        """A result that pickles in the child but raises a non-EOF error
+        while rebuilding in the parent surfaces as RuntimeError rather than
+        leaking the raw OS error (#303); the deterministic analogue of a
+        returned Connection whose rebuild hits FileNotFoundError (#410)."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=2) as js:
+                    f = js.submit(
+                        fn=helper_return_raise_on_unpickle,
+                        args=(FileNotFoundError,),
+                    )
+                    with self.assertRaises(RuntimeError) as ctx:
+                        f.result(timeout=TIMEOUT)
+                    self.assertIn("not reconstructable", str(ctx.exception))
+
+    def test_unpickle_eoferror_reports_lost_result(self) -> None:
+        """An EOFError raised while rebuilding the result is indistinguishable
+        from the result pipe closing empty, so it surfaces as LostResult; the
+        deterministic analogue of a returned Connection whose resource sharer
+        dies mid-handshake (#410)."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=2) as js:
+                    f = js.submit(
+                        fn=helper_return_raise_on_unpickle,
+                        args=(EOFError,),
+                    )
+                    with self.assertRaises(LostResult):
+                        f.result(timeout=TIMEOUT)
+
+    def test_reconstructable_result_round_trips(self) -> None:
+        """A result whose __setstate__ rebuilds cleanly in the parent is
+        returned intact; the deterministic analogue of a returned Connection
+        whose FD handshake wins (#410)."""
+        for method in start_methods():
+            with self.subTest(method=method):
+                with Jobserver(context=method, slots=2) as js:
+                    f = js.submit(
+                        fn=helper_return_reconstruct_on_unpickle,
+                        args=("rebuilt",),
+                    )
+                    result = f.result(timeout=TIMEOUT)
+                    self.assertIsInstance(result, HelperReconstructOnUnpickle)
+                    self.assertEqual("rebuilt", result.payload)
 
     def test_worker_closes_send_pipe_yields_lost_result(self) -> None:
         """A worker that sabotages its result pipe produces LostResult."""

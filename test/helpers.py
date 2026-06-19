@@ -180,12 +180,6 @@ def helper_marker_return(directory: str, arg: T) -> T:
     return arg
 
 
-def helper_return_connection(context):
-    """Return a live Connection that pickles but cannot rebuild remotely."""
-    recv, _send = context.Pipe(duplex=False)
-    return recv
-
-
 class HelperRaiseOnUnpickle:
     """A value that pickles cleanly in the child but raises in the parent.
 
@@ -209,6 +203,31 @@ class HelperRaiseOnUnpickle:
 def helper_return_raise_on_unpickle(klass: type) -> HelperRaiseOnUnpickle:
     """Return a value whose __setstate__ raises klass() in the parent."""
     return HelperRaiseOnUnpickle(klass)
+
+
+class HelperReconstructOnUnpickle:
+    """A value that pickles in the child and rebuilds cleanly in the parent.
+
+    The deterministic success analogue of HelperRaiseOnUnpickle: __setstate__
+    runs in the parent and restores the carried payload rather than raising,
+    standing in for a returned resource whose remote rebuild succeeds.
+    """
+
+    def __init__(self, payload: typing.Any) -> None:
+        self.payload = payload
+
+    def __getstate__(self) -> dict:
+        return {"payload": self.payload}
+
+    def __setstate__(self, state: dict) -> None:
+        self.payload = state["payload"]
+
+
+def helper_return_reconstruct_on_unpickle(
+    payload: typing.Any,
+) -> HelperReconstructOnUnpickle:
+    """Return a value whose __setstate__ rebuilds payload in the parent."""
+    return HelperReconstructOnUnpickle(payload)
 
 
 def helper_raise(klass: type, *args) -> typing.NoReturn:
