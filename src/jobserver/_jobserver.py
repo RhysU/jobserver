@@ -746,24 +746,20 @@ class Resources:
 
     def _teardown(self) -> None:
         """
-        Wait for running Futures, drain callbacks, then close resources.
+        Clean up slots and drain ready callbacks.
 
-        Never raises CallbackRaised.  Blocks until every tracked Future
-        has completed, then closes the selector and slot queues.  Each
-        suppressed CallbackRaised emits a RuntimeWarning.
+        Never raises CallbackRaised.  Calls reclaim() repeatedly until
+        every ready callback has been attempted.  Each suppressed
+        CallbackRaised emits a RuntimeWarning.
         """
         # Idempotent: once closed, reclaim() below would raise.
         if self._selector_closed:
             return
-        # Block until every tracked Future completes, draining callbacks
-        # as they arrive.  Each reclaim() call may raise at most one
-        # CallbackRaised; suppress it and loop.
-        while self.tracked() > 0:
+        # Each call drains at most one CallbackRaised per future
+        while True:
             try:
-                ready = self.lazy_selector().select(timeout=None)
-                for data in {key.data for key, _ in ready}:
-                    assert hasattr(data, "done"), type(data)
-                    data.done()
+                self.reclaim()
+                break
             except CallbackRaised as e:
                 warnings.warn(
                     "Jobserver teardown suppressed"
