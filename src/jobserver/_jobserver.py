@@ -1,4 +1,4 @@
-# Copyright (C) 2019-2026 Rhys Ulerich <rhys.ulerich@gmail.com>
+# Copyright (C) 2019-2026 Rhys Ulerich
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -662,7 +662,14 @@ class Resources:
         """
         Set Resources state, deferring selector construction to first use.
         """
-        assert isinstance(state, tuple) and len(state) == 2
+        if not isinstance(state, tuple):
+            raise TypeError(
+                f"Resources state must be a tuple, got {type(state).__name__}"
+            )
+        if len(state) != 2:
+            raise ValueError(
+                f"Resources state must have 2 elements, got {len(state)}"
+            )
         self._context, self._slots = state
         self._selector = None
         self._selector_pid = None
@@ -923,7 +930,14 @@ class Jobserver:
 
     def __setstate__(self, state: tuple) -> None:
         """Set instance state."""
-        assert isinstance(state, tuple) and len(state) == 6
+        if not isinstance(state, tuple):
+            raise TypeError(
+                f"Jobserver state must be a tuple, got {type(state).__name__}"
+            )
+        if len(state) != 6:
+            raise ValueError(
+                f"Jobserver state must have 6 elements, got {len(state)}"
+            )
         resources, envdiff, preexec_fn, preexec_args, preexec_kwargs, sleep = (
             state
         )
