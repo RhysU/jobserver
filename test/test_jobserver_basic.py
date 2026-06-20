@@ -26,6 +26,7 @@ from jobserver import (
     Blocked,
     Jobserver,
 )
+from jobserver._jobserver import Resources
 from jobserver._queue import SPSCQueue
 
 from .helpers import (
@@ -449,6 +450,26 @@ class TestJobserverBasic(unittest.TestCase):
                     js4.__setstate__(js1.__getstate__())
                     i = js4.submit(fn=len, args=((1, 2),))
                     self.assertEqual(2, i.result())
+
+    def test_resources_setstate_rejects_malformed_state(self) -> None:
+        """Resources.__setstate__ rejects non-tuple and mis-sized state.
+
+        The shape guards are explicit raises rather than asserts, so they
+        still fire under python -O (which strips assert statements).
+        """
+        obj = Resources.__new__(Resources)
+        with self.assertRaises(TypeError):
+            obj.__setstate__(None)
+        with self.assertRaises(ValueError):
+            obj.__setstate__(("only-one-element",))
+
+    def test_jobserver_setstate_rejects_malformed_state(self) -> None:
+        """Jobserver.__setstate__ rejects non-tuple and mis-sized state."""
+        obj = Jobserver.__new__(Jobserver)
+        with self.assertRaises(TypeError):
+            obj.__setstate__(None)
+        with self.assertRaises(ValueError):
+            obj.__setstate__((1, 2, 3))
 
     def test_nested_sibling_with_keeps_pool_open(self) -> None:
         """An inner with on a sibling handle must not close the shared pool.
