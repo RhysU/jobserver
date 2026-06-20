@@ -3,7 +3,21 @@ Jobserver
 
 A nestable Jobserver with thread-safe futures, callbacks, and type-hinting
 
+Quick Start
+-----------
+
 This package is [available from PyPI](https://pypi.org/project/jobserver/): `pip install jobserver`
+
+Try it interactively, for example with `uv`:
+
+```
+$ uv run --with jobserver --with IPython python -m IPython --no-banner
+In [1]: from jobserver import Jobserver
+In [2]: jobserver = Jobserver()
+In [3]: future = jobserver(len, (0, 1, 2))
+In [4]: future.result()
+Out[4]: 3
+```
 
 Purpose
 -------
