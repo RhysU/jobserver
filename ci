@@ -18,5 +18,9 @@ uvx --from "mypy>1.18" mypy
 # Then, check for formatting issues
 uvx --from "black>=26" black --check --verbose .
 
+# Then, assemble the PyPI-flavored README before packaging
+uv run python draft/render_readme_pypi.py
+
 # Last, verify the source distribution builds correctly
+test -s README-PyPI.md
 uvx --from build python -m build --sdist

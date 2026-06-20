@@ -9,7 +9,7 @@ authors = [
     {name = "Rhys Ulerich", email = "rhys.ulerich@gmail.com"},
 ]
 description = "A nestable Jobserver with thread-safe futures, callbacks, and type-hinting"
-readme = "README.md"
+readme = "README-PyPI.md"
 license = "MPL-2.0"
 requires-python = ">=3.9"
 keywords = [
