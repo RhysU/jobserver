@@ -64,38 +64,48 @@ result is reported as `LostResult` against exactly that one `Future`.
 `ProcessPoolExecutor`, by contrast, cannot tell which submission lost its
 worker, so it fails all outstanding futures at once.
 
-Examples
---------
-
- * [ex01_basic](examples/ex01_basic.py) - Submitting jobs and collecting results
-   via shorthand, keyword args, and `submit()`.
- * [ex02_lifecycle](examples/ex02_lifecycle.py) - Polling with `done()`,
-   `wait()`, and `result()`, plus `reclaim_resources()` and cleanup.
- * [ex03_nested](examples/ex03_nested.py) - Nesting submissions so child work
-   shares slot constraints with its parent.
- * [ex04_cancel](examples/ex04_cancel.py) - Cancelling running work by sending
-   `SIGTERM` to a worker via `Future.wait(signal=...)`.
- * [ex05_death](examples/ex05_death.py) - Detecting a submission whose result
-   pipe closes without a result (e.g. a killed worker) via `LostResult`.
- * [ex06_sleep](examples/ex06_sleep.py) - Gating work acceptance on an
-   external condition using `replace_sleep()`.
- * [ex07_callbacks](examples/ex07_callbacks.py) - Registering `when_done`
-   callbacks and draining errors via `CallbackRaised`.
- * [ex08_environment](examples/ex08_environment.py) - Setting and unsetting
-   environment variables in child processes via `revise_env()`.
- * [ex09_preexec](examples/ex09_preexec.py) - Using `replace_preexec()`
-   with a plain callable or context manager factory for entry/exit semantics.
- * [ex10_timeouts](examples/ex10_timeouts.py) - Using non-blocking polling,
-   finite deadlines, and `Blocked` from `result()` and `submit()`.
- * [ex11_pdeathsig](examples/ex11_pdeathsig.py) - On Linux, using
-   `replace_preexec()` to call `prctl(PR_SET_PDEATHSIG)` so a child dies when
-   its parent does.
- * [ex12_executor](examples/ex12_executor.py) - Using `JobserverExecutor` as
-   a context manager supporting `map()` and `c.f.Future` cancellation.
-
 Testing
 -------
 
 Tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14 with [ci](ci) script.<br>
 Implementation passes both PEP 8 (per `ruff`) and type-hinting (per `mypy`).<br>
 [![Build Status](https://circleci.com/gh/RhysU/jobserver.svg?style=shield)](https://app.circleci.com/pipelines/github/RhysU/jobserver)
+
+License
+-------
+
+Copyright (C) 2019-2026 Rhys Ulerich
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+Examples
+--------
+
+ * [ex01_basic.py](examples/ex01_basic.py) - Submitting jobs and collecting results
+   via shorthand, keyword args, and `submit()`.
+ * [ex02_lifecycle.py](examples/ex02_lifecycle.py) - Polling with `done()`,
+   `wait()`, and `result()`, plus `reclaim_resources()` and cleanup.
+ * [ex03_nested.py](examples/ex03_nested.py) - Nesting submissions so child work
+   shares slot constraints with its parent.
+ * [ex04_cancel.py](examples/ex04_cancel.py) - Cancelling running work by sending
+   `SIGTERM` to a worker via `Future.wait(signal=...)`.
+ * [ex05_death.py](examples/ex05_death.py) - Detecting a submission whose result
+   pipe closes without a result (e.g. a killed worker) via `LostResult`.
+ * [ex06_sleep.py](examples/ex06_sleep.py) - Gating work acceptance on an
+   external condition using `replace_sleep()`.
+ * [ex07_callbacks.py](examples/ex07_callbacks.py) - Registering `when_done`
+   callbacks and draining errors via `CallbackRaised`.
+ * [ex08_environment.py](examples/ex08_environment.py) - Setting and unsetting
+   environment variables in child processes via `revise_env()`.
+ * [ex09_preexec.py](examples/ex09_preexec.py) - Using `replace_preexec()`
+   with a plain callable or context manager factory for entry/exit semantics.
+ * [ex10_timeouts.py](examples/ex10_timeouts.py) - Using non-blocking polling,
+   finite deadlines, and `Blocked` from `result()` and `submit()`.
+ * [ex11_pdeathsig.py](examples/ex11_pdeathsig.py) - On Linux, using
+   `replace_preexec()` to call `prctl(PR_SET_PDEATHSIG)` so a child dies when
+   its parent does.
+ * [ex12_executor.py](examples/ex12_executor.py) - Using `JobserverExecutor` as
+   a context manager supporting `map()` and `c.f.Future` cancellation.
+
