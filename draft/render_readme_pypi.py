@@ -18,6 +18,8 @@ OUTPUT = ROOT / "README-PyPI.md"
 # Inline markdown link [label](url); the lookbehind skips image links (![...]).
 _LINK = re.compile(r"(?<!!)\[([^\]]+)\]\(([^)]+)\)")
 _ABSOLUTE = re.compile(r"(https?://|mailto:|#)")
+# The README's "available from PyPI" line is redundant on the PyPI page itself.
+_PYPI = re.compile(r"pypi\.org/project/jobserver")
 
 
 def main() -> None:
@@ -41,14 +43,26 @@ def main() -> None:
 
 
 def flatten_relative_links(text: str) -> str:
-    """Replace [label](relative) with label, keeping absolute links intact."""
+    """
+    Replace [label](relative) with label, keeping absolute links intact.
+
+    Also drops "Build Status" and "Available from PyPI" lines.
+    """
 
     def replace(match: "re.Match[str]") -> str:
         label, url = match.group(1), match.group(2)
         return match.group(0) if _ABSOLUTE.match(url) else label
 
     lines = []
+    skip_blank = False
     for line in text.splitlines():
+        if _PYPI.search(line):
+            skip_blank = True
+            continue
+        if skip_blank:
+            skip_blank = False
+            if not line.strip():
+                continue
         if "![" in line:
             if "Build Status" in line:
                 # Drop the CircleCI badge and the <br> the prior line left
