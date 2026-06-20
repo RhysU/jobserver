@@ -50,9 +50,13 @@ def flatten_relative_links(text: str) -> str:
     lines = []
     for line in text.splitlines():
         if "![" in line:
-            # Drop the CircleCI build-status badge; keep other image lines.
-            if "Build Status" not in line:
-                lines.append(line)
+            if "Build Status" in line:
+                # Drop the CircleCI badge and the <br> the prior line left
+                # dangling now that nothing follows it.
+                if lines and lines[-1].endswith("<br>"):
+                    lines[-1] = lines[-1][: -len("<br>")]
+                continue
+            lines.append(line)  # keep any other image line
         else:
             lines.append(_LINK.sub(replace, line))
     return "\n".join(lines)

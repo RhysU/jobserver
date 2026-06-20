@@ -70,7 +70,7 @@ Testing
 -------
 
 Tested with CPython 3.9, 3.10, 3.11, 3.12, 3.13, and 3.14 with ci script.<br>
-Implementation passes both PEP 8 (per `ruff`) and type-hinting (per `mypy`).<br>
+Implementation passes both PEP 8 (per `ruff`) and type-hinting (per `mypy`).
 
 License
 -------
