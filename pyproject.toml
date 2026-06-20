@@ -14,10 +14,13 @@ license = "MPL-2.0"
 requires-python = ">=3.9"
 keywords = [
     "concurrency",
+    "executor",
     "futures",
     "jobserver",
     "multiprocessing",
     "parallel",
+    "process-pool",
+    "worker-pool",
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
