@@ -1,3 +1,8 @@
 # draft/ holds internal design notes, an unimplemented-feature plan, and a
 # benchmark harness; none belong in the published source distribution.
 prune draft
+
+# Development- and CI-only files with no purpose in an installable sdist.
+prune .circleci
+exclude .gitignore
+exclude .coveragerc
