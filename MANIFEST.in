@@ -6,3 +6,4 @@ prune draft
 prune .circleci
 exclude .gitignore
 exclude .coveragerc
+exclude ci
