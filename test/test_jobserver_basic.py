@@ -286,7 +286,7 @@ class TestJobserverBasic(unittest.TestCase):
         ):
             with self.subTest(method=method, check_done=check_done):
                 with (
-                    SPSCQueue(context=method) as mq,
+                    SPSCQueue(method) as mq,
                     Jobserver(context=method, slots=1) as js,
                 ):
                     delay = 0.02  # Impacts test runtime on success path
