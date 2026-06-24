@@ -13,6 +13,7 @@ and the resolve_context / timeout_to_deadline helpers.
 import copy
 import os
 import queue
+import tempfile
 import threading
 import time
 import unittest
@@ -25,6 +26,8 @@ from jobserver._queue import (
     FixedBytesQueue,
     MPMCQueue,
     SPSCQueue,
+    from_fds,
+    from_fifo,
     resolve_context,
     timeout_to_deadline,
 )
@@ -49,7 +52,7 @@ class TestSPSCQueue(unittest.TestCase):
         """Copying of SPSCQueue is explicitly allowed."""
         for method in start_methods():
             with self.subTest(method=method):
-                with SPSCQueue(context=method) as mq1:
+                with SPSCQueue(method) as mq1:
                     mq2 = copy.copy(mq1)
                     mq3 = copy.deepcopy(mq1)
                     mq1.put(1)
@@ -132,8 +135,8 @@ class TestMPMCQueue(unittest.TestCase):
             with self.subTest(method=method):
                 ctx = get_context(method)
                 with (
-                    MPMCQueue(context=ctx) as inq,
-                    MPMCQueue(context=ctx) as outq,
+                    MPMCQueue(ctx) as inq,
+                    MPMCQueue(ctx) as outq,
                 ):
                     proc = ctx.Process(
                         target=_mpmc_echo_double, args=(inq, outq)
@@ -306,6 +309,63 @@ class TestFixedBytesQueue(unittest.TestCase):
                     self.assertEqual(b"PING", outq.get(timeout=30))
                     proc.join(30)
                     self.assertEqual(0, proc.exitcode)
+
+
+class TestEndpointSources(unittest.TestCase):
+    """from_fds / from_fifo as the pipe source for any queue type."""
+
+    def test_from_fds_roundtrips_all_queues(self) -> None:
+        """Every queue type works over an inherited fd pair, surviving a
+        getstate/setstate round-trip before put/get."""
+        cases = (
+            (lambda s: FixedBytesQueue(s, fixedlen=1), b"J"),
+            (lambda s: SPSCQueue(s), "hi"),
+            (lambda s: MPMCQueue(s), ("tuple", 1)),
+        )
+        for factory, item in cases:
+            with self.subTest(item=item):
+                r, w = os.pipe()
+                q = factory(from_fds(r, w))
+                os.close(r)  # the queue holds its own dups
+                os.close(w)
+                clone = type(q).__new__(type(q))
+                clone.__setstate__(q.__getstate__())
+                with clone:
+                    clone.put(item)
+                    self.assertEqual(item, clone.get(timeout=1))
+
+    def test_from_fds_keeps_caller_fds(self) -> None:
+        """from_fds dups, so the caller's fds stay usable afterward."""
+        r, w = os.pipe()
+        try:
+            with FixedBytesQueue(from_fds(r, w), fixedlen=1) as q:
+                q.put(b"J")
+                self.assertEqual(b"J", q.get(timeout=1))
+            os.write(w, b"Z")  # queue closed its dups, not the originals
+            self.assertEqual(b"Z", os.read(r, 1))
+        finally:
+            os.close(r)
+            os.close(w)
+
+    def test_from_fds_preserves_token_values(self) -> None:
+        """Opaque byte values survive verbatim (the GNU Make guarantee)."""
+        r, w = os.pipe()
+        os.write(w, b"\x00\x7f\xff")
+        q = FixedBytesQueue(from_fds(r, w), fixedlen=1)
+        os.close(r)  # the queue holds its own dups
+        os.close(w)
+        with q:
+            got = sorted(q.get(timeout=1) for _ in range(3))
+        self.assertEqual([b"\x00", b"\x7f", b"\xff"], got)
+
+    def test_from_fifo_roundtrip(self) -> None:
+        """A named FIFO backs a queue end to end."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "fifo")
+            os.mkfifo(path)
+            with FixedBytesQueue(from_fifo(path), fixedlen=1) as q:
+                q.put(b"J")
+                self.assertEqual(b"J", q.get(timeout=1))
 
 
 class TestResolveContext(unittest.TestCase):

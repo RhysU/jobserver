@@ -18,18 +18,25 @@ from multiprocessing.connection import Connection
 from multiprocessing.context import BaseContext
 from multiprocessing.reduction import ForkingPickler
 from multiprocessing.synchronize import Lock
-from typing import Any, Generic, Optional, TypeVar, Union, final
+from typing import Any, Callable, Generic, Optional, TypeVar, Union, final
 
 from ._compat import pipe_buf
 
 __all__ = (
+    "EndsFactory",
     "FixedBytesQueue",
     "MPMCQueue",
     "SPSCQueue",
-    "timeout_to_deadline",
+    "Source",
     "deadline_to_timeout",
+    "from_fds",
+    "from_fifo",
     "resolve_context",
+    "timeout_to_deadline",
 )
+
+EndsFactory = Callable[[], tuple[Connection, Connection]]
+Source = Union[None, str, BaseContext, EndsFactory]
 
 T = TypeVar("T")
 
@@ -82,6 +89,62 @@ def resolve_context(context: Union[None, str, BaseContext]) -> BaseContext:
     return context
 
 
+def from_fds(read_fd: int, write_fd: int) -> EndsFactory:
+    """A source over a private dup of the given fds."""
+
+    def from_fds_make() -> tuple[Connection, Connection]:
+        rd = os.dup(read_fd)
+        try:
+            wd = os.dup(write_fd)
+        except BaseException:
+            os.close(rd)
+            raise
+        return (
+            Connection(rd, readable=True, writable=False),
+            Connection(wd, readable=False, writable=True),
+        )
+
+    return from_fds_make
+
+
+def from_fifo(path: str) -> EndsFactory:
+    """A source over a named FIFO the queue will own."""
+
+    def from_fifo_make() -> tuple[Connection, Connection]:
+        rd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        try:
+            wd = os.open(path, os.O_WRONLY)
+        except BaseException:
+            os.close(rd)
+            raise
+        os.set_blocking(rd, True)
+        return (
+            Connection(rd, readable=True, writable=False),
+            Connection(wd, readable=False, writable=True),
+        )
+
+    return from_fifo_make
+
+
+def to_ends_factory(source: Source, /) -> EndsFactory:
+    """Pass a source through, or wrap a context as a pipe source."""
+    if callable(source):
+        return source
+    context = resolve_context(source)
+    return lambda: context.Pipe(duplex=False)
+
+
+def check_fixedlen(fixedlen: int) -> None:
+    """Validate a fixedlen token length."""
+    if not isinstance(fixedlen, int):
+        raise TypeError(f"fixedlen: int, got {type(fixedlen).__name__}")
+    pb = pipe_buf()
+    if not 1 <= fixedlen < pb:
+        raise ValueError(
+            f"fixedlen must satisfy 1 <= fixedlen < {pb}, got {fixedlen!r}"
+        )
+
+
 def _conn_repr(conn: Optional[Connection]) -> str:
     """Describe a pipe end for __repr__, tolerating closed fds."""
     if conn is None:
@@ -106,10 +169,8 @@ class AbstractQueue(Generic[T], abc.ABC):
     _reader: Optional[Connection]
     _writer: Optional[Connection]
 
-    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
-        """Use given context with default of multiprocessing.get_context()."""
-        context = resolve_context(context)
-        self._reader, self._writer = context.Pipe(duplex=False)
+    def __init__(self, state: Callable[[], tuple[Any, ...]], /) -> None:
+        self.__setstate__(state())
 
     def __repr__(self) -> str:
         return (
@@ -227,10 +288,9 @@ class AbstractPicklingQueue(AbstractQueue[T]):
         """Restore this queue's locks from _getstate_locks() output."""
         ...
 
-    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
-        """Use given context with default of multiprocessing.get_context()."""
-        super().__init__(context)
-        self.__setstate__((self._reader, self._writer, None))
+    def __init__(self, source: Source = None, /) -> None:
+        ends = to_ends_factory(source)
+        super().__init__(lambda: (*ends(), None))
 
     def __getstate__(self) -> tuple[Any, ...]:
         return (*super().__getstate__(), self._getstate_locks())
@@ -317,14 +377,21 @@ class MPMCQueue(AbstractPicklingQueue[T]):
     across pickling, providing genuine cross-process mutual exclusion.
     """
 
-    __slots__ = ("_context",)
+    __slots__ = ()
 
-    def __init__(self, context: Union[None, str, BaseContext] = None) -> None:
-        """Use given context with default of multiprocessing.get_context()."""
-        # Retain the resolved context so _setstate_locks can mint IPC locks
-        # from it at construction, before any locks have been inherited.
-        self._context = resolve_context(context)
-        super().__init__(self._context)
+    def __init__(
+        self,
+        source: Source = None,
+        /,
+        *,
+        context: Union[None, str, BaseContext] = None,
+    ) -> None:
+        if context is None and not callable(source):
+            context = source
+        ctx = resolve_context(context)
+        ends = to_ends_factory(source if callable(source) else ctx)
+        locks = (ctx.Lock(), ctx.Lock())
+        AbstractQueue.__init__(self, lambda: (*ends(), locks))
 
     def _getstate_locks(self) -> tuple[Lock, Lock]:
         # Preserve the IPC locks so cross-process mutual exclusion survives
@@ -332,13 +399,8 @@ class MPMCQueue(AbstractPicklingQueue[T]):
         return (self._read_lock, self._write_lock)
 
     def _setstate_locks(self, state_locks: Any) -> None:
-        if state_locks is None:
-            # Fresh construction: mint new IPC locks from the context.
-            self._read_lock = self._context.Lock()
-            self._write_lock = self._context.Lock()
-        else:
-            # Unpickled into another process: reuse the inherited locks.
-            self._read_lock, self._write_lock = state_locks
+        # Minted at construction, inherited on unpickle: always a real pair.
+        self._read_lock, self._write_lock = state_locks
 
 
 @final
@@ -354,21 +416,15 @@ class FixedBytesQueue(AbstractQueue[bytes]):
 
     def __init__(
         self,
-        context: Union[None, str, BaseContext] = None,
+        source: Source = None,
+        /,
         *,
         fixedlen: int,
     ) -> None:
         """Use fixedlen-byte tokens; requires 1 <= fixedlen < pipe_buf()."""
-        if not isinstance(fixedlen, int):
-            raise TypeError(f"fixedlen: int, got {type(fixedlen).__name__}")
-        pb = pipe_buf()
-        if not 1 <= fixedlen < pb:
-            raise ValueError(
-                f"fixedlen must satisfy 1 <= fixedlen < {pb}, "
-                f"got {fixedlen!r}"
-            )
-        super().__init__(context)
-        self.__setstate__((self._reader, self._writer, fixedlen))
+        check_fixedlen(fixedlen)
+        ends = to_ends_factory(source)
+        super().__init__(lambda: (*ends(), fixedlen))
 
     def __getstate__(self) -> tuple[Any, ...]:
         return (*super().__getstate__(), self._fixedlen)

@@ -169,7 +169,7 @@ class TestJobserverWorker(unittest.TestCase):
         for method in start_methods():
             with self.subTest(method=method):
                 # The grandchild reports its pid here so the test can reap it.
-                with SPSCQueue(context=method) as q:
+                with SPSCQueue(method) as q:
                     with Jobserver(context=method, slots=1) as js:
                         f = js.submit(
                             fn=helper_fork_orphan_then_die, args=(q,)
@@ -217,7 +217,7 @@ class TestJobserverWorker(unittest.TestCase):
         """
         for method in start_methods():
             with self.subTest(method=method):
-                with SPSCQueue(context=method) as q:
+                with SPSCQueue(method) as q:
                     with Jobserver(context=method, slots=1) as js:
                         f = js.submit(
                             fn=helper_exec_grandchild_then_die, args=(q,)
@@ -252,7 +252,7 @@ class TestJobserverWorker(unittest.TestCase):
         invalid_sig = max(signal.valid_signals()) + 1
         for method in start_methods():
             with self.subTest(method=method):
-                with SPSCQueue(context=method) as mq:
+                with SPSCQueue(method) as mq:
                     with Jobserver(context=method, slots=1) as js:
                         f = js.submit(fn=helper_nonblocking, args=(mq,))
                         try:
