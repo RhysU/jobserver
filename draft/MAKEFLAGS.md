@@ -7,55 +7,11 @@ participate in an existing GNU Make jobserver token pool.  This enables
 Python processes invoked from Make recipes to respect `-jN` parallelism
 limits alongside C compilers, linkers, and other tools.
 
-As part of this work, teach the slot-queue backend to operate on
-**inherited** raw file descriptors and a named FIFO, in addition to the
-locally-minted `os.pipe()` it already uses.  Slots always flow through
-a single-byte token queue — whether backed by a local pipe owned by the
-process or an inherited GNU Make pipe/FIFO.
-
----
-
-## Amendment note (API drift since first draft)
-
-This plan predates several refactors.  The original draft proposed building
-a brand-new `FdTokenQueue` to *replace* a class named `MinimalQueue`.  Neither
-name exists in the tree any longer, and most of what `FdTokenQueue` was meant
-to provide already ships.  The plan below is updated to the current API:
-
-- **The slot backend is already an fd/byte-token queue.**  `MinimalQueue` is
-  gone.  Slots are now held in `_queue.FixedBytesQueue`: a lockless,
-  single-byte (`fixedlen=1`) token queue that uses `os.read`/`os.write`
-  for I/O, relies on POSIX atomicity instead of locks, and exposes exactly
-  the `get()/put()/waitable()/close_get()/close_put()` interface this plan
-  needs.  Phase 1 therefore is no longer "write a new queue from scratch"
-  but "let the byte-token queue accept inherited fds and a FIFO path."
-
-- **Tokens are `bytes`, not `int`.**  The whole pipeline standardized on
-  single-byte `bytes` tokens (`_maybe_obtain_token` returns
-  `Optional[bytes]`; `_restore_token(slots, token: Optional[bytes])`).  The
-  proposed `Token = int` alias is obsolete; if any alias is wanted it is
-  `Token = bytes`.  Crucially, byte-token I/O **preserves Make's opaque
-  token values for free** — whatever byte is read is the byte written back.
-
-- **Slots live in `Resources`, not `Jobserver`.**  `Jobserver` is now a thin
-  handle; the slot queue and selector live in `_jobserver.Resources`.  All
-  slot wiring below targets `Resources.__init__`, not `Jobserver.__init__`.
-
-- **`Jobserver.__init__` lost its `env`/`preexec_fn`/`sleep_fn` kwargs.**
-  Its signature is `__init__(self, context=None, slots=None)`.  Submission
-  controls are now derived via `revise_env()`, `replace_preexec()`, and
-  `replace_sleep()`, each returning a sibling handle.  The Phase 3 sketch is
-  updated accordingly.
-
-- **`waitable()` returns a `Connection`, not a raw int.**  `FixedBytesQueue`
-  (via `AbstractQueue`) returns the reader `Connection`, which
-  `Resources.lazy_selector()` registers in a `DefaultSelector` (with
-  `SlotsSentinel` data).  An inherited-fd queue must present a `waitable()`
-  the selector can register too; a raw int read fd is accepted by
-  `DefaultSelector.register` and by `multiprocessing.connection.wait`.
-
-- **The executor's request/response channels use `SPSCQueue`,** not
-  `MinimalQueue`.  Those are untouched by this work.
+To support this, the slot-queue backend must operate on **inherited** raw
+file descriptors and a named FIFO, in addition to the locally-minted
+`os.pipe()` it already uses.  Slots always flow through a single-byte token
+queue — whether backed by a local pipe owned by the process or an inherited
+GNU Make pipe/FIFO.
 
 ---
 
@@ -72,8 +28,8 @@ to provide already ships.  The plan below is updated to the current API:
 - To start a sub-job: read one byte from the pipe.
 - When a sub-job finishes: write that byte back.
 - Tokens are opaque bytes (any value 0x00-0xFF).  Their values must be
-  preserved — write back exactly what was read.  The current byte-token
-  queue does this inherently; it never interprets a token's value.
+  preserved — write back exactly what was read.  The byte-token queue does
+  this inherently; it never interprets a token's value.
 
 ### The implicit +1
 
@@ -86,19 +42,34 @@ maps directly to the existing `consume=1` default in `submit()`.
 
 ## Current slot plumbing (what we are building on)
 
-`_queue.py` provides a small family of pipe-backed queues:
+The relevant pieces are already in place and shaped well for this work:
 
-- `AbstractQueue` — pipe lifecycle (`waitable()`, `close_get()`,
-  `close_put()`, repr, pickling) over a `multiprocessing` `Pipe`.
-- `AbstractPicklingQueue` / `SPSCQueue` / `MPMCQueue` — pickle generic
-  objects across the pipe; used for the executor's request/response and
-  other structured IPC.
-- `FixedBytesQueue` — **the slot backend**.  Lockless fixed-length byte
-  tokens; `get()` is one indivisible `os.read`, `put()` one atomic
-  `os.write` of `<= PIPE_BUF` bytes.  The reader is set non-blocking and
-  `get()` retries on `BlockingIOError`.
+- **Slots live in `Resources`.**  `Jobserver` is a thin handle; the slot
+  queue and selector live in `_jobserver.Resources`.  All slot wiring
+  below targets `Resources.__init__`.
 
-`_jobserver.Resources.__init__` currently does, in effect:
+- **The slot backend is a byte-token queue.**  `_queue.py` provides a small
+  family of pipe-backed queues:
+  - `AbstractQueue` — pipe lifecycle (`waitable()`, `close_get()`,
+    `close_put()`, repr, pickling) over a `multiprocessing` `Pipe`.
+  - `AbstractPicklingQueue` / `SPSCQueue` / `MPMCQueue` — pickle generic
+    objects across the pipe; used for the executor's request/response and
+    other structured IPC.  Untouched by this work.
+  - `FixedBytesQueue` — **the slot backend**.  A lockless, single-byte
+    (`fixedlen=1`) token queue: `get()` is one indivisible `os.read`,
+    `put()` one atomic `os.write` of `<= PIPE_BUF` bytes.  It relies on
+    POSIX atomicity instead of locks, sets the reader non-blocking, and
+    retries `get()` on `BlockingIOError`.  It already exposes the
+    `get()/put()/waitable()/close_get()/close_put()` surface this plan
+    needs.
+
+- **Tokens are `bytes`.**  The pipeline uses single-byte `bytes` tokens
+  (`_maybe_obtain_token` returns `Optional[bytes]`;
+  `_restore_token(slots, token: Optional[bytes])`).  Byte-token I/O
+  **preserves Make's opaque token values for free** — whatever byte is read
+  is the byte written back.
+
+`Resources.__init__` currently does, in effect:
 
 ```python
 if slots is None:
@@ -109,14 +80,15 @@ self._slots = FixedBytesQueue(self._context, fixedlen=1)
 self._slots.put(b"J" * slots)   # opaque local tokens; value is irrelevant
 ```
 
-`Jobserver` simply holds a `Resources`.  `Resources.__getstate__` pickles
-`(self._context, self._slots)`, so whatever backs `_slots` must pickle for
-nesting; `Resources.lazy_selector()` registers `self._slots.waitable()`
-once with a `SlotsSentinel`.
-
 The slot byte values are all `b"J"` today because nothing reads them — but
 the read/write path is already value-preserving, which is exactly what the
 Make protocol requires.
+
+`Resources.__getstate__` pickles `(self._context, self._slots)`, so whatever
+backs `_slots` must pickle for nesting.  `Resources.lazy_selector()`
+registers `self._slots.waitable()` once with a `SlotsSentinel`.
+`FixedBytesQueue.waitable()` returns the reader `Connection`, which
+`lazy_selector()` registers in a `DefaultSelector`.
 
 ---
 
@@ -128,11 +100,10 @@ We need a queue with `FixedBytesQueue` semantics that can wrap fds it does
 **not** own (an inherited Make pipe) or open a named FIFO, rather than
 minting a fresh `multiprocessing` `Pipe`.  Two viable shapes; pick one:
 
-1. **A sibling class** (e.g. `InheritedBytesQueue` / `FdTokenQueue`) that
-   mirrors `FixedBytesQueue`'s `get()/put()` byte logic but stores raw int
-   fds instead of `Connection`s.  It does **not** derive `AbstractQueue`
-   (whose `__init__` creates a Pipe); it re-implements the small surface
-   `Resources` actually uses.
+1. **A sibling class** (e.g. `FdTokenQueue`) that mirrors `FixedBytesQueue`'s
+   `get()/put()` byte logic but stores raw int fds instead of
+   `Connection`s.  It does **not** derive `AbstractQueue` (whose `__init__`
+   creates a Pipe); it re-implements the small surface `Resources` uses.
 
 2. **Extending `FixedBytesQueue`** with an alternate constructor that adopts
    pre-existing fds and an `owned` flag.  This keeps one class but mixes two
