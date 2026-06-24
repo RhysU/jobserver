@@ -92,123 +92,63 @@ registers `self._slots.waitable()` once with a `SlotsSentinel`.
 
 ---
 
-## Phase 1: an inherited-fd / FIFO byte-token queue
+## Phase 1: a pipe-source model for the queues
 
-**Modified file**: `src/jobserver/_queue.py`
+**Modified file**: `src/jobserver/_queue.py`.
 
-We need a queue with `FixedBytesQueue` semantics that can wrap fds it does
-**not** own (an inherited Make pipe) or open a named FIFO, rather than
-minting a fresh `multiprocessing` `Pipe`.  Two viable shapes; pick one:
-
-1. **A sibling class** (e.g. `FdTokenQueue`) that mirrors `FixedBytesQueue`'s
-   `get()/put()` byte logic but stores raw int fds instead of
-   `Connection`s.  It does **not** derive `AbstractQueue` (whose `__init__`
-   creates a Pipe); it re-implements the small surface `Resources` uses.
-
-2. **Extending `FixedBytesQueue`** with an alternate constructor that adopts
-   pre-existing fds and an `owned` flag.  This keeps one class but mixes two
-   fd-ownership models in `AbstractQueue`.
-
-Either way the object must duck-type with `FixedBytesQueue` for `Resources`:
-`get(timeout)`, `put(obj: bytes)`, `waitable()`, `close_get()`,
-`close_put()`, and pickling.  `Resources` never type-checks `_slots`, so a
-compatible interface is sufficient — no union annotation is forced.
-
-### Interface (sibling-class shape shown)
+How a queue obtains its pipe ends is decoupled from what the queue does
+with them.  Every queue — `FixedBytesQueue`, `SPSCQueue`, `MPMCQueue` —
+takes a single positional-only first argument that is *either* a
+multiprocessing context (mint a fresh private pipe, as before) *or* a
+**source**: a zero-argument callable returning a `(reader, writer)` pair of
+`Connection`s.  Two sources cover the Make cases — `from_fds` for an
+inherited fd pair, `from_fifo` for a named FIFO:
 
 ```python
-class FdTokenQueue:
-    """A single-byte token queue over raw, possibly inherited, fds."""
+EndsFactory = Callable[[], tuple[Connection, Connection]]
+Source = Union[None, str, BaseContext, EndsFactory]
 
-    __slots__ = ("_read_fd", "_write_fd", "_owned", "_origin",
-                 "_read_lock", "_write_lock")
+def from_fds(read_fd: int, write_fd: int) -> EndsFactory: ...   # inherited pipe
+def from_fifo(path: str) -> EndsFactory: ...                    # named FIFO
 
-    def __init__(self, read_fd: int, write_fd: int, *,
-                 owned: bool = False, origin: tuple | None = None) -> None: ...
-
-    @classmethod
-    def open_fifo(cls, path: str) -> "FdTokenQueue": ...
-
-    def get(self, timeout: float | None = None) -> bytes: ...
-    def put(self, obj: bytes) -> None: ...
-    def waitable(self) -> int: ...
-    def close_get(self) -> None: ...
-    def close_put(self) -> None: ...
+FixedBytesQueue(source=None, /, *, fixedlen)
+SPSCQueue(source=None, /)
+MPMCQueue(source=None, /, *, context=None)
 ```
-
-### Implementation notes
-
-- **Token type is `bytes`.**  `get()` returns a 1-byte `bytes`, `put()`
-  accepts `bytes` (one or more whole tokens), matching `FixedBytesQueue`
-  and the existing `_restore_token` / `_maybe_obtain_token` contract.  No
-  `int` conversion anywhere.
-
-- **`get(timeout)`**: deadline-first (convert timeout to an absolute
-  deadline before acquiring the read lock, mirroring `FixedBytesQueue`).
-  Set the read fd non-blocking and retry on `BlockingIOError` after a
-  readability wait, exactly as `FixedBytesQueue.get()` does.  Raise
-  `queue.Empty` on timeout, `EOFError` on a closed/drained pipe.  Wait for
-  readability with `select.select([read_fd], [], [], timeout)` (or reuse
-  the `poll()` discipline already used by the queue family).
-
-- **`put(obj)`**: one atomic `os.write(write_fd, obj)` under a write lock.
-  POSIX guarantees atomicity for writes `<= PIPE_BUF`.
-
-- **`waitable()`**: return `read_fd` (an `int`).  `DefaultSelector.register`
-  and `multiprocessing.connection.wait` both accept bare ints on Unix.
-  Note the contrast with `FixedBytesQueue.waitable()`, which returns a
-  `Connection`; `Resources` handles both because it only registers the
-  return value and compares it by identity in `_maybe_obtain_token`.
-
-- **Locking**: `threading.Lock` only.  Cross-process exclusion is the
-  kernel pipe buffer's job (single-byte read/write are atomic on POSIX);
-  per-process locks just keep two local threads from interleaving a
-  readability-wait + read.
-
-- **`owned` parameter**: when `True` the queue closes its fds in
-  `close_get()`/`close_put()`/`__del__`; when `False` (the default for
-  inherited Make fds) it never closes them, so sibling processes keep the
-  pipe open.  `FixedBytesQueue` always owns its pipe — this flag is the key
-  new behavior.
-
-- **`__repr__`**: show read/write fd numbers and `owned`.
-
-- **`__copy__` / `__deepcopy__`**: return `self`, matching the rest of the
-  queue family.
-
-### Opening a FIFO path
 
 ```python
-@classmethod
-def open_fifo(cls, path: str) -> "FdTokenQueue":
-    """Open a named FIFO for both reading and writing; owns both fds."""
+FixedBytesQueue(fixedlen=1)                   # default-context minted pipe
+FixedBytesQueue("spawn", fixedlen=1)          # minted with a named context
+FixedBytesQueue(ctx, fixedlen=1)              # minted with a BaseContext
+FixedBytesQueue(from_fds(r, w), fixedlen=1)   # inherited Make pipe
+FixedBytesQueue(from_fifo(path), fixedlen=1)  # Make 4.4+ named FIFO
 ```
 
-Open order matters for FIFOs:
-1. `os.open(path, os.O_RDONLY | os.O_NONBLOCK)` — non-blocking avoids
-   deadlock when no writer yet exists.
-2. `os.open(path, os.O_WRONLY)` — succeeds because a reader now exists.
-3. Leave the read fd non-blocking (the `get()` loop already tolerates
-   `BlockingIOError`), or clear `O_NONBLOCK` via `fcntl` if a blocking
-   reader is preferred — pick whichever matches `get()`'s implementation.
+A source yields two `Connection`s and nothing else, so each queue keeps its
+existing `get/put/waitable/close_*`/pickling surface and `Resources`
+consumes it with no union type or `Protocol`.  `from_fds` `dup()`s the
+caller's fds so the queue owns a private copy: closing it never disturbs
+Make's fds or sibling processes, so no ownership flag is required.
+`from_fifo` opens and owns both ends, opening the read end
+`O_RDONLY | O_NONBLOCK` first to dodge the open() deadlock and then clearing
+`O_NONBLOCK`; `FixedBytesQueue.__setstate__` re-applies non-blocking for its
+own reader discipline.
 
-This avoids `O_RDWR` (not POSIX-guaranteed on FIFOs, though it works on
-Linux).
+`to_ends_factory(source)` performs the coercion — a `callable()` is the
+source itself, anything else is resolved as a context and wrapped in a
+minting source — and `AbstractQueue.__init__(state, /)` installs whatever
+state the source yields via `__setstate__`, the canonical installer, with
+each subclass composing its own state tail (a `None` locks placeholder,
+`fixedlen`, or minted IPC locks).
 
-### Pickling (`__reduce__` / `__getstate__`)
-
-`Resources.__getstate__` pickles `self._slots`, so the slot queue must
-survive pickling when a Jobserver nests into a child.  `FixedBytesQueue`
-gets this from `AbstractQueue.__getstate__`, which ships its `Connection`s
-(reduced by multiprocessing's forking machinery).  An inherited-fd queue
-needs its own strategy, keyed by `_origin`:
-
-- **FIFO** (`_origin = ("fifo", path)`): pickle the path; the child calls
-  `open_fifo(path)`.  Works under every start method.
-
-- **Pipe fds** (`_origin = None` / `("pipe",)`): wrap each fd in
-  `multiprocessing.reduction.DupFd`, the same documented mechanism that
-  `Connection` pickling uses to pass fds to `spawn`/`forkserver` children.
+Pickling is unaffected: a source runs only at construction, after which the
+queue holds `Connection`s and pickles via `DupFd` as before, with no path
+re-opening and no origin tag, so a getstate/setstate round-trip followed by
+put/get works for every queue type.  `MPMCQueue` retains a `context`
+keyword solely for its IPC locks, because a `SemLock` is bound to its start
+method and cannot cross contexts; that context comes from `context=` or
+from a context passed as the source.  `check_fixedlen` is a module-level
+function.
 
 ---
 
@@ -310,25 +250,26 @@ Notes:
   because every token is written in one atomic `put()`.  That cap is a
   property of *minting*, so it stays on the explicit/auto-CPU paths and is
   skipped for an inherited Make pool.
-- `_slots` is annotated to accept either backend (e.g.
-  `Union[FixedBytesQueue, FdTokenQueue]`, or a small typing `Protocol`
-  capturing `get/put/waitable/close_*`).
+- `_slots` stays typed as `FixedBytesQueue`; no union or `Protocol` is
+  needed because the Make pool is just a `FixedBytesQueue` over a `from_fds`
+  / `from_fifo` source.
 
 ### Helper: `_open_jobserver_auth`
 
 ```python
-def _open_jobserver_auth(auth: JobserverAuth) -> FdTokenQueue:
+def _open_jobserver_auth(auth: JobserverAuth) -> FixedBytesQueue:
     if auth.fifo is not None:
-        return FdTokenQueue.open_fifo(auth.fifo)
+        return FixedBytesQueue(from_fifo(auth.fifo), fixedlen=1)
     assert auth.fds is not None
     read_fd, write_fd = auth.fds
     os.fstat(read_fd)   # raises OSError if invalid
     os.fstat(write_fd)  # raises OSError if invalid
-    return FdTokenQueue(read_fd, write_fd, owned=False)
+    return FixedBytesQueue(from_fds(read_fd, write_fd), fixedlen=1)
 ```
 
 If `fstat` fails, let the `OSError` propagate — the caller gets a clear
-"bad file descriptor" rather than a mysterious failure later.
+"bad file descriptor" rather than a mysterious failure later.  (`from_fds`
+dups, so Make's fds are never closed when this queue is torn down.)
 
 ---
 
@@ -490,11 +431,11 @@ Phase 2 ───────╯            │
 
 | Risk | Mitigation |
 |------|------------|
-| Adding a second slot backend changes the critical path | The default `FixedBytesQueue` path is unchanged; the inherited-fd queue duck-types the same `get/put/waitable/close_*` surface and is covered by the existing suite plus new tests |
-| `waitable()` returning a raw int vs. a `Connection` | `Resources` only registers the value in a `DefaultSelector` and compares it by identity; both ints and `Connection`s are accepted by the selector and by `connection.wait` on Unix |
+| Adding a slot backend changes the critical path | No new backend: the Make pool is the same `FixedBytesQueue` over a `from_fds`/`from_fifo` source, so the existing suite plus new source tests cover it |
+| `waitable()` shape | Unchanged: a source yields `Connection`s, so `waitable()` still returns the reader `Connection` exactly as before |
 | FIFO open-order deadlock | `O_NONBLOCK` on the read end; the `get()` loop already tolerates `BlockingIOError` |
 | Token leak on exception paths | Existing `try/except` unwind in `submit()` plus `_restore_token` writes the byte back; the byte-token queue never loses values |
-| Inherited fds closed out from under sibling processes | `owned=False` for inherited Make fds; `close_*`/`__del__` are no-ops there |
+| Inherited fds closed out from under sibling processes | `from_fds` `dup()`s the caller's fds, so the queue owns a private copy and tearing it down never touches Make's fds |
 | `select.select` / non-blocking portability | Only needed on Unix, the only platform with Make jobserver support; guard with a platform check |
 | MAKEFLAGS detection is surprising | Only triggers when `slots=None` (the default); explicit `slots=N` always overrides; document on both `Resources` and `Jobserver` |
 | `slots <= pipe_buf()` cap vs. a large Make pool | The cap is a minting constraint; it stays on the local-pipe paths and is skipped when inheriting a Make pool |
