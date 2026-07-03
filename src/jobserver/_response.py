@@ -12,8 +12,6 @@ Using NamedTuple (dataclass slots require 3.10+).
 import typing
 from typing import Any
 
-__all__ = ["Started", "Completed", "Failed", "Cancelled", "Shutdown"]
-
 
 class Started(typing.NamedTuple):
     """Work was dispatched and is now running."""

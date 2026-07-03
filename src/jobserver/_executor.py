@@ -28,8 +28,6 @@ from ._jobserver import (
 )
 from ._queue import SPSCQueue
 
-__all__ = ("JobserverExecutor",)
-
 _LOG = logging.getLogger(__name__)
 
 T = TypeVar("T")
