@@ -44,15 +44,15 @@ maps directly to the existing `consume=1` default in `submit()`.
 
 The relevant pieces are already in place and shaped well for this work:
 
-- **Slots live in `Resources`.**  `Jobserver` is a thin handle; the slot
-  queue and selector live in `_jobserver.Resources`.  All slot wiring
-  below targets `Resources.__init__`.
+- **Slots live in `_Resources`.**  `Jobserver` is a thin handle; the slot
+  queue and selector live in `_jobserver._Resources`.  All slot wiring
+  below targets `_Resources.__init__`.
 
 - **The slot backend is a byte-token queue.**  `_queue.py` provides a small
   family of pipe-backed queues:
-  - `AbstractQueue` — pipe lifecycle (`waitable()`, `close_get()`,
+  - `_AbstractQueue` — pipe lifecycle (`waitable()`, `close_get()`,
     `close_put()`, repr, pickling) over a `multiprocessing` `Pipe`.
-  - `AbstractPicklingQueue` / `SPSCQueue` / `MPMCQueue` — pickle generic
+  - `_AbstractPicklingQueue` / `SPSCQueue` / `MPMCQueue` — pickle generic
     objects across the pipe; used for the executor's request/response and
     other structured IPC.  Untouched by this work.
   - `FixedBytesQueue` — **the slot backend**.  A lockless, single-byte
@@ -69,7 +69,7 @@ The relevant pieces are already in place and shaped well for this work:
   **preserves Make's opaque token values for free** — whatever byte is read
   is the byte written back.
 
-`Resources.__init__` currently does, in effect:
+`_Resources.__init__` currently does, in effect:
 
 ```python
 if slots is None:
@@ -84,9 +84,9 @@ The slot byte values are all `b"J"` today because nothing reads them — but
 the read/write path is already value-preserving, which is exactly what the
 Make protocol requires.
 
-`Resources.__getstate__` pickles `(self._context, self._slots)`, so whatever
-backs `_slots` must pickle for nesting.  `Resources.lazy_selector()`
-registers `self._slots.waitable()` once with a `SlotsSentinel`.
+`_Resources.__getstate__` pickles `(self._context, self._slots)`, so whatever
+backs `_slots` must pickle for nesting.  `_Resources.lazy_selector()`
+registers `self._slots.waitable()` once with a `_SlotsSentinel`.
 `FixedBytesQueue.waitable()` returns the reader `Connection`, which
 `lazy_selector()` registers in a `DefaultSelector`.
 
@@ -125,7 +125,7 @@ FixedBytesQueue(from_fifo(path), fixedlen=1)  # Make 4.4+ named FIFO
 ```
 
 A source yields two `Connection`s and nothing else, so each queue keeps its
-existing `get/put/waitable/close_*`/pickling surface and `Resources`
+existing `get/put/waitable/close_*`/pickling surface and `_Resources`
 consumes it with no union type or `Protocol`.  `from_fds` `dup()`s the
 caller's fds so the queue owns a private copy: closing it never disturbs
 Make's fds or sibling processes, so no ownership flag is required.
@@ -134,9 +134,9 @@ Make's fds or sibling processes, so no ownership flag is required.
 `O_NONBLOCK`; `FixedBytesQueue.__setstate__` re-applies non-blocking for its
 own reader discipline.
 
-`to_ends_factory(source)` performs the coercion — a `callable()` is the
+`_to_ends_factory(source)` performs the coercion — a `callable()` is the
 source itself, anything else is resolved as a context and wrapped in a
-minting source — and `AbstractQueue.__init__(state, /)` installs whatever
+minting source — and `_AbstractQueue.__init__(state, /)` installs whatever
 state the source yields via `__setstate__`, the canonical installer, with
 each subclass composing its own state tail (a `None` locks placeholder,
 `fixedlen`, or minted IPC locks).
@@ -147,7 +147,7 @@ re-opening and no origin tag, so a getstate/setstate round-trip followed by
 put/get works for every queue type.  `MPMCQueue` retains a `context`
 keyword solely for its IPC locks, because a `SemLock` is bound to its start
 method and cannot cross contexts; that context comes from `context=` or
-from a context passed as the source.  `check_fixedlen` is a module-level
+from a context passed as the source.  `_check_fixedlen` is a module-level
 function.
 
 ---
@@ -207,15 +207,15 @@ dataclass-`__slots__` gap.  (The project still tests on CPython 3.9.)
 
 ---
 
-## Phase 3: MAKEFLAGS integration in `Resources.__init__`
+## Phase 3: MAKEFLAGS integration in `_Resources.__init__`
 
 **Files**: `_jobserver.py`
 
 Connect Phase 1 and Phase 2: when `slots=None`, check MAKEFLAGS
-before falling back to CPU count.  This is wired in `Resources.__init__`
+before falling back to CPU count.  This is wired in `_Resources.__init__`
 (the slot owner), not `Jobserver.__init__`.
 
-### Modified `Resources.__init__` logic
+### Modified `_Resources.__init__` logic
 
 ```python
 def __init__(self, context=None, slots: Optional[int] = None) -> None:
@@ -394,7 +394,7 @@ validate that adding an alternate slot backend leaves the default
    `LostResult`; decide deliberately whether the new symbols join it or
    stay internal.
 
-2. Update the `Resources.__init__` and `Jobserver.__init__` docstrings to
+2. Update the `_Resources.__init__` and `Jobserver.__init__` docstrings to
    document MAKEFLAGS auto-detection.  Both currently say slots default to
    `len(os.sched_getaffinity(0))`; the auto path now reads "an inherited
    Make jobserver if `MAKEFLAGS` advertises one, else the usable CPU count."
@@ -437,7 +437,7 @@ Phase 2 ───────╯            │
 | Token leak on exception paths | Existing `try/except` unwind in `submit()` plus `_restore_token` writes the byte back; the byte-token queue never loses values |
 | Inherited fds closed out from under sibling processes | `from_fds` `dup()`s the caller's fds, so the queue owns a private copy and tearing it down never touches Make's fds |
 | `select.select` / non-blocking portability | Only needed on Unix, the only platform with Make jobserver support; guard with a platform check |
-| MAKEFLAGS detection is surprising | Only triggers when `slots=None` (the default); explicit `slots=N` always overrides; document on both `Resources` and `Jobserver` |
+| MAKEFLAGS detection is surprising | Only triggers when `slots=None` (the default); explicit `slots=N` always overrides; document on both `_Resources` and `Jobserver` |
 | `slots <= pipe_buf()` cap vs. a large Make pool | The cap is a minting constraint; it stays on the local-pipe paths and is skipped when inheriting a Make pool |
 | Sibling process token starvation | Inherent to the protocol — not our bug to fix, but worth documenting |
 | `DupFd` ties us to `multiprocessing.reduction` | Same mechanism `Connection` pickling already uses; it is the documented public API for fd passing across start methods |
