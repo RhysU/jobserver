@@ -27,8 +27,8 @@ from jobserver import (
     LostResult,
 )
 from jobserver._jobserver import (
-    ExceptionWrapper,
-    ResultWrapper,
+    _ExceptionWrapper,
+    _ResultWrapper,
     _worker_entrypoint,
 )
 from jobserver._queue import SPSCQueue
@@ -115,7 +115,7 @@ class TestJobserverWorker(unittest.TestCase):
         The worker catches them via ``except BaseException``, sends a
         LostResult carrying the cause's traceback, then re-raises for
         normal teardown.  The parent sees LostResult whose __cause__ is a
-        RemoteTraceback naming the originating type (see #167).
+        _RemoteTraceback naming the originating type (see #167).
         """
         # fn, args, substring expected in the propagated child traceback.
         base_exceptions: list[tuple] = [
@@ -623,7 +623,7 @@ class TestJobserverWorker(unittest.TestCase):
                     )
                     self.assertEqual("FROM_SUBMIT", f.result())
 
-                # preexec override: later noop suppresses the helper
+                # preexec override: later _noop suppresses the helper
                 with Jobserver(context=method, slots=1).replace_preexec(
                     helper_preexec_fn
                 ) as js:
@@ -840,7 +840,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, ResultWrapper)
+        self.assertIsInstance(wrapper, _ResultWrapper)
         self.assertEqual(3, wrapper.unwrap())
         self.assertTrue(send.closed)
 
@@ -852,7 +852,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, ExceptionWrapper)
+        self.assertIsInstance(wrapper, _ExceptionWrapper)
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
@@ -875,7 +875,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, ExceptionWrapper)
+        self.assertIsInstance(wrapper, _ExceptionWrapper)
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
@@ -889,7 +889,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, ExceptionWrapper)
+        self.assertIsInstance(wrapper, _ExceptionWrapper)
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
