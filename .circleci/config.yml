@@ -53,7 +53,7 @@ jobs:
               --project-url https://github.com/RhysU/jobserver \
               --make-html \
               --html-output docs/html \
-              --docformat plaintext \
+              --docformat restructuredtext \
               --intersphinx https://docs.python.org/3/objects.inv \
               src/jobserver
       - save_cache:
