@@ -26,7 +26,7 @@ from jobserver import (
     Blocked,
     Jobserver,
 )
-from jobserver._jobserver import Resources
+from jobserver._jobserver import _Resources
 from jobserver._queue import SPSCQueue
 
 from .helpers import (
@@ -452,12 +452,12 @@ class TestJobserverBasic(unittest.TestCase):
                     self.assertEqual(2, i.result())
 
     def test_resources_setstate_rejects_malformed_state(self) -> None:
-        """Resources.__setstate__ rejects non-tuple and mis-sized state.
+        """_Resources.__setstate__ rejects non-tuple and mis-sized state.
 
         The shape guards are explicit raises rather than asserts, so they
         still fire under python -O (which strips assert statements).
         """
-        obj = Resources.__new__(Resources)
+        obj = _Resources.__new__(_Resources)
         with self.assertRaises(TypeError):
             obj.__setstate__(None)
         with self.assertRaises(ValueError):
@@ -474,7 +474,7 @@ class TestJobserverBasic(unittest.TestCase):
     def test_nested_sibling_with_keeps_pool_open(self) -> None:
         """An inner with on a sibling handle must not close the shared pool.
 
-        The shared Resources reference-counts context-manager entries, so the
+        The shared _Resources reference-counts context-manager entries, so the
         inner block exiting only decrements; teardown waits for the last open
         with.  A regression that closed on any exit would fail the final
         submit() against the still-open outer handle.

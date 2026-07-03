@@ -29,7 +29,7 @@ T = TypeVar("T")
 
 # Bound TypeVar emulating the Python 3.11+ Self type so that methods
 # returning self report the concrete subclass type under mypy.
-Self = TypeVar("Self", bound="AbstractQueue")
+Self = TypeVar("Self", bound="_AbstractQueue")
 
 # Maximum seconds safely passable to poll() without overflow.  poll(2) on
 # Linux takes timeout in milliseconds as a signed 32-bit int, so the ceiling
@@ -113,7 +113,7 @@ def from_fifo(path: str) -> EndsFactory:
     return from_fifo_make
 
 
-def to_ends_factory(source: Source, /) -> EndsFactory:
+def _to_ends_factory(source: Source, /) -> EndsFactory:
     """Pass a source through, or wrap a context as a pipe source."""
     if callable(source):
         return source
@@ -121,7 +121,7 @@ def to_ends_factory(source: Source, /) -> EndsFactory:
     return lambda: context.Pipe(duplex=False)
 
 
-def check_fixedlen(fixedlen: int) -> None:
+def _check_fixedlen(fixedlen: int) -> None:
     """Validate a fixedlen token length."""
     if not isinstance(fixedlen, int):
         raise TypeError(f"fixedlen: int, got {type(fixedlen).__name__}")
@@ -143,7 +143,7 @@ def _conn_repr(conn: Optional[Connection]) -> str:
         return "open(fd=closed)"
 
 
-class AbstractQueue(Generic[T], abc.ABC):
+class _AbstractQueue(Generic[T], abc.ABC):
     """Abstract pipe-backed queue; subclasses implement get()/put().
 
     Provides the pipe lifecycle -- repr, pickling, waitable(), and
@@ -250,8 +250,8 @@ class AbstractQueue(Generic[T], abc.ABC):
         ...
 
 
-class AbstractPicklingQueue(AbstractQueue[T]):
-    """AbstractQueue whose get()/put() pickle generic objects.
+class _AbstractPicklingQueue(_AbstractQueue[T]):
+    """_AbstractQueue whose get()/put() pickle generic objects.
 
     Objects are serialized/deserialized with ForkingPickler and moved
     across the pipe as length-prefixed byte frames.  The read/write guards
@@ -276,7 +276,7 @@ class AbstractPicklingQueue(AbstractQueue[T]):
         ...
 
     def __init__(self, source: Source = None, /) -> None:
-        ends = to_ends_factory(source)
+        ends = _to_ends_factory(source)
         super().__init__(lambda: (*ends(), None))
 
     def __getstate__(self) -> tuple[Any, ...]:
@@ -337,8 +337,8 @@ class AbstractPicklingQueue(AbstractQueue[T]):
 
 
 @final
-class SPSCQueue(AbstractPicklingQueue[T]):
-    """A single-producer, single-consumer AbstractQueue.
+class SPSCQueue(_AbstractPicklingQueue[T]):
+    """A single-producer, single-consumer _AbstractQueue.
 
     Here "single" means single process: the threading.Lock guards
     serialize producers and consumers within one process only and are
@@ -356,8 +356,8 @@ class SPSCQueue(AbstractPicklingQueue[T]):
 
 
 @final
-class MPMCQueue(AbstractPicklingQueue[T]):
-    """A multiple-producer, multiple-consumer AbstractQueue.
+class MPMCQueue(_AbstractPicklingQueue[T]):
+    """A multiple-producer, multiple-consumer _AbstractQueue.
 
     Safe for concurrent producers and consumers across processes: the
     read/write guards are multiprocessing IPC locks that are preserved
@@ -376,9 +376,9 @@ class MPMCQueue(AbstractPicklingQueue[T]):
         if context is None and not callable(source):
             context = source
         ctx = resolve_context(context)
-        ends = to_ends_factory(source if callable(source) else ctx)
+        ends = _to_ends_factory(source if callable(source) else ctx)
         locks = (ctx.Lock(), ctx.Lock())
-        AbstractQueue.__init__(self, lambda: (*ends(), locks))
+        _AbstractQueue.__init__(self, lambda: (*ends(), locks))
 
     def _getstate_locks(self) -> tuple[Lock, Lock]:
         # Preserve the IPC locks so cross-process mutual exclusion survives
@@ -391,7 +391,7 @@ class MPMCQueue(AbstractPicklingQueue[T]):
 
 
 @final
-class FixedBytesQueue(AbstractQueue[bytes]):
+class FixedBytesQueue(_AbstractQueue[bytes]):
     """A lockless queue of fixed-length byte tokens.
 
     Tokens are fixedlen bytes with 1 <= fixedlen < PIPE_BUF.  Each get() is a
@@ -409,8 +409,8 @@ class FixedBytesQueue(AbstractQueue[bytes]):
         fixedlen: int,
     ) -> None:
         """Use fixedlen-byte tokens; requires 1 <= fixedlen < pipe_buf()."""
-        check_fixedlen(fixedlen)
-        ends = to_ends_factory(source)
+        _check_fixedlen(fixedlen)
+        ends = _to_ends_factory(source)
         super().__init__(lambda: (*ends(), fixedlen))
 
     def __getstate__(self) -> tuple[Any, ...]:

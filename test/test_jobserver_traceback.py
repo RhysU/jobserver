@@ -16,9 +16,9 @@ import unittest
 
 from jobserver import Jobserver, LostResult
 from jobserver._jobserver import (
-    ExceptionWrapper,
-    RemoteTraceback,
-    ResultWrapper,
+    _ExceptionWrapper,
+    _RemoteTraceback,
+    _ResultWrapper,
 )
 
 from .helpers import (
@@ -74,16 +74,16 @@ def helper_raise_unpicklable_outer() -> typing.NoReturn:
         raise LocalOuter("outer-local") from e
 
 
-def _wrap_live_exception() -> ExceptionWrapper:
-    """Return an ExceptionWrapper around an exception with a live tb."""
+def _wrap_live_exception() -> _ExceptionWrapper:
+    """Return an _ExceptionWrapper around an exception with a live tb."""
     try:
         helper_raise(ZeroDivisionError, "boom")
     except Exception as e:
-        return ExceptionWrapper(e)
+        return _ExceptionWrapper(e)
     raise AssertionError("unreachable")
 
 
-def _wrap_live_base_exception(klass: type, *args) -> ExceptionWrapper:
+def _wrap_live_base_exception(klass: type, *args) -> _ExceptionWrapper:
     """Mirror _worker_entrypoint's BaseException path: raise LostResult
     from a freshly-raised control-flow BaseException, then wrap it (#167).
     """
@@ -93,7 +93,7 @@ def _wrap_live_base_exception(klass: type, *args) -> ExceptionWrapper:
         try:
             raise LostResult() from e
         except LostResult as died:
-            return ExceptionWrapper(died)
+            return _ExceptionWrapper(died)
     raise AssertionError("unreachable")
 
 
@@ -235,12 +235,12 @@ class TestJobserverTraceback(unittest.TestCase):
 
 
 class TestExceptionWrapperPickle(unittest.TestCase):
-    """ExceptionWrapper pickle round-trips are idempotent (see #206)."""
+    """_ExceptionWrapper pickle round-trips are idempotent (see #206)."""
 
-    def _round_trip(self, w: ExceptionWrapper) -> ExceptionWrapper:
+    def _round_trip(self, w: _ExceptionWrapper) -> _ExceptionWrapper:
         return pickle.loads(pickle.dumps(w))
 
-    def _assert_idempotent(self, w: ExceptionWrapper) -> None:
+    def _assert_idempotent(self, w: _ExceptionWrapper) -> None:
         """Two consecutive round-trips preserve _raised_tb and unwrap()."""
         once = self._round_trip(w)
         twice = self._round_trip(once)
@@ -270,20 +270,22 @@ class TestExceptionWrapperPickle(unittest.TestCase):
 
     def test_round_trip_without_traceback(self) -> None:
         """Parent-built wrappers have no tb; round-trips stay empty."""
-        w = ExceptionWrapper(LostResult())
+        w = _ExceptionWrapper(LostResult())
         self.assertEqual(w._raised_tb, "")
         self._assert_idempotent(w)
 
     def test_round_trip_cause_result_wrapper(self) -> None:
-        """A ResultWrapper cause contributes no tb; round-trips stay empty."""
-        w = ExceptionWrapper(RuntimeError("fallback"), cause=ResultWrapper(42))
+        """A _ResultWrapper cause contributes no tb; round-trips stay empty."""
+        w = _ExceptionWrapper(
+            RuntimeError("fallback"), cause=_ResultWrapper(42)
+        )
         self.assertEqual(w._raised_tb, "")
         self._assert_idempotent(w)
 
     def test_round_trip_cause_exception_wrapper(self) -> None:
-        """An ExceptionWrapper cause donates its tb; round-trips preserve."""
+        """An _ExceptionWrapper cause donates its tb; round-trips preserve."""
         inner = _wrap_live_exception()
-        w = ExceptionWrapper(RuntimeError("fallback"), cause=inner)
+        w = _ExceptionWrapper(RuntimeError("fallback"), cause=inner)
         self.assertEqual(w._raised_tb, inner._raised_tb)
         self.assertIn("helper_raise", w._raised_tb)
         self._assert_idempotent(w)
@@ -291,7 +293,7 @@ class TestExceptionWrapperPickle(unittest.TestCase):
     def test_round_trip_cause_exception_wrapper_after_pickle(self) -> None:
         """Cause donation works after the cause has already round-tripped."""
         inner = self._round_trip(_wrap_live_exception())
-        w = ExceptionWrapper(RuntimeError("fallback"), cause=inner)
+        w = _ExceptionWrapper(RuntimeError("fallback"), cause=inner)
         self.assertEqual(w._raised_tb, inner._raised_tb)
         self._assert_idempotent(w)
 
@@ -312,12 +314,12 @@ class TestExceptionWrapperPickle(unittest.TestCase):
         self._assert_idempotent(w)
 
     def test_chained_base_exception_round_trips(self) -> None:
-        """unwrap() after pickle raises LostResult whose RemoteTraceback
+        """unwrap() after pickle raises LostResult whose _RemoteTraceback
         renders the chained control-flow cause."""
         w = self._round_trip(_wrap_live_base_exception(KeyboardInterrupt))
         with self.assertRaises(LostResult) as ctx:
             w.unwrap()
-        self.assertIsInstance(ctx.exception.__cause__, RemoteTraceback)
+        self.assertIsInstance(ctx.exception.__cause__, _RemoteTraceback)
         self.assertIn("KeyboardInterrupt", str(ctx.exception.__cause__))
 
     def test_custom_init_exception_reconstruct_failure(self) -> None:

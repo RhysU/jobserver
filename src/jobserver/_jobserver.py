@@ -107,7 +107,7 @@ class LostResult(Exception):
     """
 
 
-class Wrapper(abc.ABC, Generic[T]):
+class _Wrapper(abc.ABC, Generic[T]):
     """Allows Futures to track whether a value was raised or returned."""
 
     __slots__ = ()
@@ -123,11 +123,11 @@ class Wrapper(abc.ABC, Generic[T]):
         ...
 
 
-# Down the road, ResultWrapper might be extended with "big object"
+# Down the road, _ResultWrapper might be extended with "big object"
 # support that chooses to place data in shared memory or on disk
 # Likely only necessary if/when sending results via pipe breaks down
-class ResultWrapper(Wrapper[T]):
-    """Specialization of Wrapper for when a result is available."""
+class _ResultWrapper(_Wrapper[T]):
+    """Specialization of _Wrapper for when a result is available."""
 
     __slots__ = ("_result",)
 
@@ -143,7 +143,7 @@ class ResultWrapper(Wrapper[T]):
 
 
 # TODO: revisit once Python 3.11 is the minimum version (Exception.add_note).
-class RemoteTraceback(Exception):
+class _RemoteTraceback(Exception):
     """Carries a child's formatted traceback string.
 
     Surfaced only via __cause__ on exceptions Future.result() re-raises.
@@ -156,15 +156,15 @@ class RemoteTraceback(Exception):
         return self._traceback
 
 
-class ExceptionWrapper(Wrapper[Any]):
-    """Specialization of Wrapper for when an Exception has been raised.
+class _ExceptionWrapper(_Wrapper[Any]):
+    """Specialization of _Wrapper for when an Exception has been raised.
 
     Captures the raised exception's traceback as a string at construction
     so that the child stack survives pickle (which drops __traceback__).
-    On unpickling, the captured string is re-attached as a RemoteTraceback
+    On unpickling, the captured string is re-attached as a _RemoteTraceback
     via __cause__ so the parent sees the originating frames on unwrap().
     Any pre-existing __cause__ chain renders inside that string but is
-    collapsed into the single RemoteTraceback programmatically.
+    collapsed into the single _RemoteTraceback programmatically.
     """
 
     __slots__ = ("_raised", "_raised_tb")
@@ -175,13 +175,13 @@ class ExceptionWrapper(Wrapper[Any]):
     def __init__(
         self,
         raised: Exception,
-        cause: Optional["Wrapper"] = None,
+        cause: Optional["_Wrapper"] = None,
     ) -> None:
         """Wrap raised; inherit cause's captured tb when cause is an
-        ExceptionWrapper, else format from raised.__traceback__."""
+        _ExceptionWrapper, else format from raised.__traceback__."""
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
-        if isinstance(cause, ExceptionWrapper):
+        if isinstance(cause, _ExceptionWrapper):
             self._raised_tb = cause._raised_tb
         elif raised.__traceback__ is not None:
             self._raised_tb = "".join(
@@ -202,7 +202,7 @@ class ExceptionWrapper(Wrapper[Any]):
         # string via __cause__ so the child's stack renders in the parent.
         self._raised, self._raised_tb = state
         if self._raised_tb:
-            self._raised.__cause__ = RemoteTraceback(self._raised_tb)
+            self._raised.__cause__ = _RemoteTraceback(self._raised_tb)
 
     def unwrap(self) -> NoReturn:
         raise self._raised
@@ -275,7 +275,7 @@ class Future(Generic[T]):
         assert connection is not None  # Becomes None after Connection.close()
         self._connection: Optional[Connection] = connection
 
-        self._wrapper: Optional[Wrapper[T]] = None
+        self._wrapper: Optional[_Wrapper[T]] = None
 
         # Populated by calls to when_done(...).  A heapq ordered by
         # (priority, callback_seqno, ...) so token restoration fires before
@@ -465,7 +465,7 @@ class Future(Generic[T]):
             try:
                 self._wrapper = self._connection.recv()
             except EOFError:
-                self._wrapper = ExceptionWrapper(LostResult())
+                self._wrapper = _ExceptionWrapper(LostResult())
             except KeyboardInterrupt:
                 # A Ctrl-C may be local or may sneak in from the recv() itself.
                 raise
@@ -473,11 +473,11 @@ class Future(Generic[T]):
                 # A value can pickle in the child yet fail to reconstitute
                 # in the parent (e.g. a returned Connection raises
                 # FileNotFoundError deep in recv()).
-                self._wrapper = ExceptionWrapper(
+                self._wrapper = _ExceptionWrapper(
                     RuntimeError(f"Result not reconstructable: {e!r}")
                 )
             else:
-                assert isinstance(self._wrapper, Wrapper), type(self._wrapper)
+                assert isinstance(self._wrapper, _Wrapper), type(self._wrapper)
 
             # Now set to None to (a) later allow reclaiming Python resources
             # and (b) prevent any callback from observing non-None members
@@ -523,7 +523,7 @@ class Future(Generic[T]):
 
 
 @dataclass(frozen=True)
-class SlotsSentinel:
+class _SlotsSentinel:
     """Selector data for the slots waitable; its no-op done() lets
     reclaim_resources() treat it like a Future.  Frozen, hence hashable,
     so reclaim can dedup selector data with a set instead of via id().
@@ -571,15 +571,15 @@ def _cleanup_after_user_callbacks(
 
 
 @final
-class Resources:
+class _Resources:
     """
     The slots and selector shared by a Jobserver and its variants.
 
     A slot is one unit of process concurrency, roughly one running worker.
     Slots default to the number of CPUs available to the current process.
 
-    A Jobserver is a thin handle over a Resources instance; its replace_*(...)
-    methods produce sibling handles sharing the same Resources.  Teardown is
+    A Jobserver is a thin handle over a _Resources instance; its replace_*(...)
+    methods produce sibling handles sharing the same _Resources.  Teardown is
     reference-counted across context-manager entries.  These resources are
     closed only when the last open with-block exits or, failing that, when the
     final handle is finalized.
@@ -642,7 +642,7 @@ class Resources:
 
     def __getstate__(self) -> tuple:
         """
-        Get Resources state without exposing in-flight Futures.
+        Get _Resources state without exposing in-flight Futures.
 
         Only capture the context and slots so an instance can travel to a
         sub-Process; Futures can be neither copied nor pickled.
@@ -651,15 +651,15 @@ class Resources:
 
     def __setstate__(self, state: tuple) -> None:
         """
-        Set Resources state, deferring selector construction to first use.
+        Set _Resources state, deferring selector construction to first use.
         """
         if not isinstance(state, tuple):
             raise TypeError(
-                f"Resources state must be a tuple, got {type(state).__name__}"
+                f"_Resources state must be a tuple, got {type(state).__name__}"
             )
         if len(state) != 2:
             raise ValueError(
-                f"Resources state must have 2 elements, got {len(state)}"
+                f"_Resources state must have 2 elements, got {len(state)}"
             )
         self._context, self._slots = state
         self._selector = None
@@ -690,7 +690,7 @@ class Resources:
 
     def __repr__(self) -> str:
         method = self._context.get_start_method()
-        return f"Resources({method!r}, tracked={self.tracked()})"
+        return f"_Resources({method!r}, tracked={self.tracked()})"
 
     def __del__(self) -> None:
         """
@@ -726,7 +726,7 @@ class Resources:
             selector.close()
             self._selector_closed = True
 
-    def __enter__(self) -> "Resources":
+    def __enter__(self) -> "_Resources":
         # Preparing the selector confirms these resources are not closed.
         # Counting the entry lets a nested with-block on a sibling handle exit
         # without closing resources the outer block still needs.
@@ -788,13 +788,13 @@ class Resources:
         # ancestor's Futures and share its epoll set.
         if self._selector is None or self._selector_pid != os.getpid():
             # Pre-register the slots waitable so the obtain-token loop and
-            # reclaim share one persistent interest set (a noop done() keeps
+            # reclaim share one persistent interest set (a _noop done() keeps
             # it indistinguishable from a Future entry during select()).
             self._selector = DefaultSelector()
             self._selector.register(
                 self._slots.waitable(),
                 EVENT_READ,
-                data=SlotsSentinel(),
+                data=_SlotsSentinel(),
             )
             self._selector_pid = os.getpid()
         return self._selector
@@ -826,7 +826,7 @@ class Resources:
 
 
 # Serves as the default preexec and sleep so Jobserver need not special-case
-def noop(*args, **kwargs) -> None:
+def _noop(*args, **kwargs) -> None:
     """A "do nothing" function conforming to (the rejected) PEP-559."""
     return None
 
@@ -868,7 +868,7 @@ class Jobserver:
         "_sleep",
     )
 
-    _resources: Resources
+    _resources: _Resources
     # A read-only diff applied to the child's os.environ (None unsets a name).
     # Stored as a MappingProxyType so a shared sibling handle cannot mutate it.
     _envdiff: types.MappingProxyType[str, Optional[str]]
@@ -893,18 +893,18 @@ class Jobserver:
         revise_env(...), replace_preexec(...), and replace_sleep(...) to
         derive a handle with different submission controls.
         """
-        self._resources = Resources(context, slots)
+        self._resources = _Resources(context, slots)
         self._envdiff = types.MappingProxyType({})
-        self._preexec_fn = noop
+        self._preexec_fn = _noop
         self._preexec_args = ()
         self._preexec_kwargs = types.MappingProxyType({})
-        self._sleep = noop
+        self._sleep = _noop
 
     def __getstate__(self) -> tuple:
         """
         Get instance state without exposing in-flight Futures.
 
-        Only capture the shared Resources and controls to allow nesting.
+        Only capture the shared _Resources and controls to allow nesting.
         """
         # Required because Futures can be neither copied nor pickled
         # Without custom handling of Futures, submit(...) would fail
@@ -942,7 +942,7 @@ class Jobserver:
     # Use typing.Self once Python 3.11 is the minimum version
     def __copy__(self) -> "Jobserver":
         """Return a sibling handle sharing this Jobserver's slots."""
-        # A copy is another handle onto the same Resources with identical
+        # A copy is another handle onto the same _Resources with identical
         # submission controls; revise_env() and replace_*() build on this.
         # _envdiff is a read-only MappingProxyType, so sharing it is safe.
         other = Jobserver.__new__(Jobserver)
@@ -956,7 +956,7 @@ class Jobserver:
 
     def __deepcopy__(self, memo: dict) -> "Jobserver":
         """Return a sibling handle sharing this Jobserver's slots."""
-        # The shared Resources cannot be duplicated, so a deep copy shares it
+        # The shared _Resources cannot be duplicated, so a deep copy shares it
         # exactly as a shallow copy does.  Honor memo so repeated references to
         # one Jobserver within a deepcopy collapse to a single sibling handle.
         existing = memo.get(id(self))
@@ -1068,7 +1068,7 @@ class Jobserver:
         return f"Jobserver({method!r}, tracked={tracked})"
 
     def __enter__(self) -> "Jobserver":
-        # Entering the shared Resources confirms it is open, counts the scope.
+        # Entering the shared _Resources confirms it is open, counts the scope.
         self._resources.__enter__()
         return self
 
@@ -1370,9 +1370,9 @@ def _worker_entrypoint(
     # Enforce close-on-exec so exec()'d grandchildren don't inherit the pipe.
     os.set_inheritable(send.fileno(), False)
 
-    # Wrapper usage tracks whether a value was returned or raised
+    # _Wrapper usage tracks whether a value was returned or raised
     # in degenerate case where client code returns an Exception
-    result: Optional[Wrapper[Any]] = None
+    result: Optional[_Wrapper[Any]] = None
     try:
         # None invalid in os.environ so interpret as sentinel for popping
         for key, value in envdiff.items():
@@ -1382,16 +1382,16 @@ def _worker_entrypoint(
                 os.environ[key] = value
         # preexec() may return a context manager wrapping fn execution.
         # If __exit__ suppresses an exception from fn, raw keeps its
-        # pre-call value of None so the result becomes ResultWrapper(None).
+        # pre-call value of None so the result becomes _ResultWrapper(None).
         raw = None
         with ExitStack() as stack:
             cm = preexec_fn(*preexec_args, **preexec_kwargs)
             if cm is not None:
                 stack.enter_context(cm)
             raw = fn(*args, **kwargs)
-        result = ResultWrapper(raw)
+        result = _ResultWrapper(raw)
     except Exception as exception:
-        result = ExceptionWrapper(exception)
+        result = _ExceptionWrapper(exception)
     except BaseException as base_exception:
         # When possible, send cause of death back to the parent to aid
         # users in debugging.  Raising LostResult() from the escaped
@@ -1402,7 +1402,7 @@ def _worker_entrypoint(
         try:
             raise LostResult() from base_exception
         except LostResult as lost:
-            result = ExceptionWrapper(lost)
+            result = _ExceptionWrapper(lost)
         raise  # Proceed with any BaseException-specific teardown
     finally:
         try:
@@ -1415,7 +1415,7 @@ def _worker_entrypoint(
                 except Exception as pe:
                     # Pickling user types can produce arbitrary exceptions.
                     payload = ForkingPickler.dumps(
-                        ExceptionWrapper(
+                        _ExceptionWrapper(
                             RuntimeError(
                                 f"{result.describe()} not picklable: {pe!r}"
                             ),
