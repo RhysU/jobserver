@@ -3,7 +3,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-"""Example 5 shows detecting a submission that ends without a result."""
+"""Example 4 shows detecting a submission that ends without a result."""
 
 import signal
 from logging import INFO, basicConfig, captureWarnings, info

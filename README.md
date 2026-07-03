@@ -105,10 +105,10 @@ Examples
    `wait()`, and `result()`, plus `reclaim_resources()` and cleanup.
  * [ex03_nested.py](examples/ex03_nested.py) - Nesting submissions so child work
    shares slot constraints with its parent.
- * [ex04_cancel.py](examples/ex04_cancel.py) - Cancelling running work by sending
-   `SIGTERM` to a worker via `Future.wait(signal=...)`.
- * [ex05_death.py](examples/ex05_death.py) - Detecting a submission whose result
-   pipe closes without a result (e.g. a killed worker) via `LostResult`.
+ * [ex04_death.py](examples/ex04_death.py) - Detecting a submission whose result
+   pipe closes without a result (e.g. a `SIGKILL`-ed worker) via `LostResult`.
+ * [ex05_pause.py](examples/ex05_pause.py) - Pausing and resuming a worker via
+   `SIGSTOP`/`SIGCONT` through `Future.wait(signal=...)`.
  * [ex06_sleep.py](examples/ex06_sleep.py) - Gating work acceptance on an
    external condition using `replace_sleep()`.
  * [ex07_callbacks.py](examples/ex07_callbacks.py) - Registering `when_done`
