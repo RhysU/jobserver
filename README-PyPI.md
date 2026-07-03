@@ -104,10 +104,10 @@ Examples
    `wait()`, and `result()`, plus `reclaim_resources()` and cleanup.
  * ex03_nested.py - Nesting submissions so child work
    shares slot constraints with its parent.
- * ex04_cancel.py - Cancelling running work by sending
-   `SIGTERM` to a worker via `Future.wait(signal=...)`.
- * ex05_death.py - Detecting a submission whose result
-   pipe closes without a result (e.g. a killed worker) via `LostResult`.
+ * ex04_death.py - Detecting a submission whose result
+   pipe closes without a result (e.g. a `SIGKILL`-ed worker) via `LostResult`.
+ * ex05_pause.py - Pausing and resuming a worker via
+   `SIGSTOP`/`SIGCONT` through `Future.wait(signal=...)`.
  * ex06_sleep.py - Gating work acceptance on an
    external condition using `replace_sleep()`.
  * ex07_callbacks.py - Registering `when_done`
@@ -294,58 +294,10 @@ if __name__ == "__main__":
     main()
 ```
 
-### Example ex04_cancel.py
+### Example ex04_death.py
 
 ```python
-"""Example 4 shows cancelling running work by signalling the worker."""
-
-import signal
-import time
-from logging import INFO, basicConfig, captureWarnings, info
-
-from jobserver import Jobserver, LostResult
-
-
-def main() -> None:
-    """Shows cancelling running work via SIGTERM through Future.wait()."""
-    with Jobserver(slots=2) as jobserver:
-        # Submit long-running work that would otherwise never finish here.
-        future_cancel = jobserver.submit(fn=time.sleep, args=(3600,))
-
-        # Submit normal work alongside the doomed submission.
-        future_ok = jobserver.submit(fn=len, args=("hello",))
-
-        # wait(signal=...) sends a signal to the running worker, then waits.
-        # wait() returns True once completion (here, death) is confirmed.
-        # Any signal can be sent (SIGTERM, SIGKILL, SIGUSR1, etc.)
-        # and the wait timeout can be as short or as long as desired.
-        info(
-            "Cancelled worker wait: %s",
-            future_cancel.wait(signal=signal.SIGTERM),
-        )
-        info("Normal result: %s", future_ok.result())
-
-        # Here, result() raises LostResult for the SIGTERM-ed worker
-        try:
-            future_cancel.result()
-            raise RuntimeError("Expected LostResult was not raised")
-        except LostResult:
-            info("Caught expected LostResult from cancelled worker")
-
-
-if __name__ == "__main__":
-    basicConfig(
-        level=INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-    captureWarnings(True)
-    main()
-```
-
-### Example ex05_death.py
-
-```python
-"""Example 5 shows detecting a submission that ends without a result."""
+"""Example 4 shows detecting a submission that ends without a result."""
 
 import signal
 from logging import INFO, basicConfig, captureWarnings, info
@@ -373,6 +325,47 @@ def main() -> None:
             raise RuntimeError("Expected LostResult was not raised")
         except LostResult:
             info("Caught expected LostResult from SIGKILL worker")
+
+
+if __name__ == "__main__":
+    basicConfig(
+        level=INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    captureWarnings(True)
+    main()
+```
+
+### Example ex05_pause.py
+
+```python
+"""Example 5 shows pausing and resuming a worker via SIGSTOP/SIGCONT."""
+
+import signal
+import time
+from logging import INFO, basicConfig, captureWarnings, info
+
+from jobserver import Jobserver
+
+
+def main() -> None:
+    """Shows pausing and resuming a worker via SIGSTOP/SIGCONT."""
+    with Jobserver(context="spawn", slots=2) as jobserver:
+        # Submit work that will complete once allowed to run
+        future = jobserver.submit(fn=time.sleep, args=(0.1,))
+
+        # Pause the worker with SIGSTOP (does not kill it)
+        paused = future.wait(timeout=0, signal=signal.SIGSTOP)
+        info("Pausing worker: %s", paused)
+
+        # The future is not done while the worker is stopped
+        info("Done while stopped: %s", future.done())
+
+        # Resume the worker with SIGCONT so it can finish
+        info("Resuming worker: %s", future.wait(signal=signal.SIGCONT))
+
+        # Now the result is available
+        info("Result after resume: %s", future.result())
 
 
 if __name__ == "__main__":
