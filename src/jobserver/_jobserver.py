@@ -223,7 +223,7 @@ _PRIORITY_AFTER = 2
 
 
 def _callback_wrapper(seqno: int, fn, /, *args, **kwargs) -> None:
-    """Call fn(*args, **kwargs) wrapping any Exception in CallbackRaised.
+    """Call ``fn(*args, **kwargs)`` wrapping any Exception in CallbackRaised.
 
     The seqno is the when_done(...) sequence number from registering fn
     and is stamped on any CallbackRaised raised here.  A non-Exception
@@ -332,7 +332,7 @@ class Future(Generic[T]):
 
     def when_done(self, fn: Callable, /, *args: Any, **kwargs: Any) -> int:
         """
-        Register fn(*args, **kwargs) for execution after Future.done(...).
+        Register ``fn(*args, **kwargs)`` for execution after Future.done(...).
 
         Callbacks run synchronously, inline, on whichever thread first
         observes completion.  There is no background thread or timeout.
@@ -1026,7 +1026,7 @@ class Jobserver:
         """
         Return a Jobserver invoking replacement in the child just before fn.
 
-        The replacement(*args, **kwargs) may return None or a context
+        The ``replacement(*args, **kwargs)`` may return None or a context
         manager that wraps fn execution with entry/exit semantics, so fn
         runs inside it.  A context manager's __exit__ may suppress
         exceptions, in which case the result is None.  Shares this
@@ -1077,9 +1077,9 @@ class Jobserver:
 
     def __call__(self, fn: Callable[..., T], /, *args, **kwargs) -> Future[T]:
         """
-        Submit running fn(*args, **kwargs) to this Jobserver.
+        Submit running ``fn(*args, **kwargs)`` to this Jobserver.
 
-        Shorthand for calling submit(fn=fn, args=*args, kwargs=**kwargs),
+        Shorthand for calling ``submit(fn=fn, args=*args, kwargs=**kwargs)``,
         with all submission semantics per that method's default arguments.
         """
         return self.submit(fn=fn, args=args, kwargs=kwargs)
@@ -1112,7 +1112,7 @@ class Jobserver:
         timeout: Optional[float] = None,
     ) -> Future[T]:
         """
-        Submit running fn(*args, **kwargs) to this Jobserver.
+        Submit running ``fn(*args, **kwargs)`` to this Jobserver.
 
         Raises Blocked when insufficient resources available to accept work.
         Timeout is given in seconds with None meaning block indefinitely.
@@ -1572,7 +1572,7 @@ def _validate_args_kwargs(n: int, args: Any, kwargs: Any) -> tuple:
 
 
 def _map_chunk(fn: Callable, chunk: tuple) -> list:
-    """Execute fn(*args, **kwargs) for each (args, kwargs) in chunk."""
+    """Execute ``fn(*args, **kwargs)`` for each (args, kwargs) in chunk."""
     # Eager list required; result must be picklable across process boundary.
     return [fn(*args, **kwargs) for args, kwargs in chunk]
 
