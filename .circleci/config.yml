@@ -62,13 +62,7 @@ jobs:
             - ~/.cache/uv
       - run:
           name: Deploy to gh-pages
-          command: |
-            if [ "${CIRCLE_BRANCH}" = "master" ]; then
-              echo "Deploying documentation to gh-pages..."
-              ./.circleci/deploy-ghpages.sh docs/html
-            else
-              echo "Not master (current: ${CIRCLE_BRANCH}), skipping deployment"
-            fi
+          command: ./.circleci/deploy-ghpages.sh docs/html
 
 workflows:
   matrix-tests:
