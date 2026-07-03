@@ -35,6 +35,41 @@ jobs:
           paths:
             - ~/.cache/uv
 
+  deploy-docs:
+    executor:
+      name: python-docker
+      version: "3.13"
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - uv-cache-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
+      - run:
+          name: Build pydoctor documentation
+          command: |
+            uv run --with pydoctor \
+              pydoctor \
+              --project-name jobserver \
+              --project-url https://github.com/RhysU/jobserver \
+              --make-html \
+              --html-output docs/html \
+              --docformat plaintext \
+              --intersphinx https://docs.python.org/3/objects.inv \
+              src/jobserver
+      - save_cache:
+          key: uv-cache-{{ arch }}-{{ .Environment.CIRCLE_JOB }}
+          paths:
+            - ~/.cache/uv
+      - run:
+          name: Deploy to gh-pages
+          command: |
+            if [ "${CIRCLE_BRANCH}" = "master" ]; then
+              echo "Deploying documentation to gh-pages..."
+              ./.circleci/deploy-ghpages.sh docs/html
+            else
+              echo "Not master (current: ${CIRCLE_BRANCH}), skipping deployment"
+            fi
+
 workflows:
   matrix-tests:
     jobs:
@@ -48,3 +83,9 @@ workflows:
                 - "3.12"
                 - "3.13"
                 - "3.14"
+      - deploy-docs:
+          requires:
+            - test
+          filters:
+            branches:
+              only: master
