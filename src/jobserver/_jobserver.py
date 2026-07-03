@@ -83,12 +83,15 @@ class CallbackRaised(Exception):
     """
 
     def __init__(self, seqno: int) -> None:
+        """Construct from the seqno of the registration that raised."""
         if not isinstance(seqno, int):
             raise TypeError(f"seqno: int, got {type(seqno).__name__}")
         super().__init__()
         self.seqno = seqno
+        """Identifies the callback registration whose invocation raised."""
 
     def __repr__(self) -> str:
+        """Returns a string representation of this instance."""
         return f"{type(self).__name__}(seqno={self.seqno})"
 
     # Exceptions need an explicit __str__; BaseException.__str__ ignores it.
@@ -261,6 +264,7 @@ class Future(Generic[T]):
         "_callbacks_issuing",
         "_callbacks_seqno",
     )
+    """Defines instance data members."""
 
     def __init__(self, process: BaseProcess, connection: Connection) -> None:
         """
@@ -292,6 +296,7 @@ class Future(Generic[T]):
         self._callbacks_seqno = -2
 
     def __repr__(self) -> str:
+        """Returns a string representation of this instance."""
         with self._rlock:
             done = self._connection is None
             ncallbacks = len(self._callbacks)
@@ -867,6 +872,7 @@ class Jobserver:
         "_preexec_kwargs",
         "_sleep",
     )
+    """Defines instance data members."""
 
     _resources: _Resources
     # A read-only diff applied to the child's os.environ (None unsets a name).
@@ -1063,16 +1069,19 @@ class Jobserver:
         )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this instance."""
         method = self._resources.context.get_start_method()
         tracked = self._resources.tracked()
         return f"Jobserver({method!r}, tracked={tracked})"
 
     def __enter__(self) -> "Jobserver":
+        """Enters a context that defers resource reclaim to the last exit."""
         # Entering the shared _Resources confirms it is open, counts the scope.
         self._resources.__enter__()
         return self
 
     def __exit__(self, *exc: Any) -> None:
+        """Exits a context, reclaiming resources once the last scope exits."""
         self._resources.__exit__(*exc)
 
     def __call__(self, fn: Callable[..., T], /, *args, **kwargs) -> Future[T]:
