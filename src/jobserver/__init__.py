@@ -50,6 +50,8 @@ from ._jobserver import (
     LostResult,
 )
 
+__version__: str
+"""Provides package version information."""
 try:
     __version__ = version("jobserver")
 except PackageNotFoundError:  # pragma: no cover

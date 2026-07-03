@@ -115,6 +115,7 @@ class JobserverExecutor(concurrent.futures.Executor):
         )
 
     def __repr__(self) -> str:
+        """Returns a string representation of this instance."""
         with self._lock:
             if self._broken is not None:
                 state = "broken"
