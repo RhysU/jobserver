@@ -334,6 +334,7 @@ class TestExceptionWrapperPickle(unittest.TestCase):
                 lengths.append(len(traceback.extract_tb(e.__traceback__)))
                 self.assertIsInstance(e.__cause__, _RemoteTraceback)
                 self.assertEqual(w._raised_tb, str(e.__cause__))
+        # Undesired: tracebacks accumulate across calls (#448).
         self.assertEqual([2, 4, 6], lengths)
 
     @unittest.skipIf(sys.version_info < (3, 11), "requires add_note")
@@ -353,6 +354,7 @@ class TestExceptionWrapperPickle(unittest.TestCase):
                 e.add_note(f"caller {i}")
                 self.assertIsInstance(e.__cause__, _RemoteTraceback)
                 self.assertEqual(w._raised_tb, str(e.__cause__))
+        # Undesired: caller notes leak into later calls (#448).
         self.assertEqual(
             [
                 ["worker"],
