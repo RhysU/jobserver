@@ -322,6 +322,17 @@ class TestExceptionWrapperPickle(unittest.TestCase):
         self.assertIsInstance(ctx.exception.__cause__, _RemoteTraceback)
         self.assertIn("KeyboardInterrupt", str(ctx.exception.__cause__))
 
+    def test_unwrap_traceback_grows(self) -> None:
+        """Each unwrap() re-raises one instance, growing its tb (#448)."""
+        w = self._round_trip(_wrap_live_exception())
+        lengths = []
+        for _ in range(3):
+            try:
+                w.unwrap()
+            except ZeroDivisionError as e:
+                lengths.append(len(traceback.extract_tb(e.__traceback__)))
+        self.assertEqual([2, 4, 6], lengths)
+
     def test_custom_init_exception_reconstruct_failure(self) -> None:
         """An exception whose __init__ has a non-standard signature
         still surfaces usefully after pickle round-trip."""
