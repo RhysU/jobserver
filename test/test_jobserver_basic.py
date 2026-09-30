@@ -35,6 +35,7 @@ from .helpers import (
     helper_callback,
     helper_nonblocking,
     helper_noop,
+    helper_raise,
     helper_recurse,
     helper_return,
     helper_return_kwargs,
@@ -239,8 +240,6 @@ class TestJobserverBasic(unittest.TestCase):
 
     def test_raises(self) -> None:
         """Future.result() raises exceptions thrown while processing work."""
-        from .helpers import helper_raise
-
         for method in start_methods():
             with self.subTest(method=method):
                 # Prepare how callbacks will be observed

@@ -14,13 +14,14 @@ from __future__ import annotations
 import gc
 import multiprocessing
 import os
+import subprocess
 import sys
 import time
 import typing
 from multiprocessing import get_all_start_methods
 from multiprocessing.util import Finalize
 
-from jobserver import Jobserver, JobserverExecutor
+from jobserver import Blocked, Jobserver, JobserverExecutor
 from jobserver._queue import SPSCQueue
 
 T = typing.TypeVar("T")
@@ -293,8 +294,6 @@ def helper_exec_grandchild_then_die(q: SPSCQueue[int]) -> typing.NoReturn:
 
     The grandchild's pid is sent via q so the test can reap it.
     """
-    import subprocess
-
     proc = subprocess.Popen(["sleep", "60"])
     q.put(proc.pid)
     os._exit(0)  # worker dies WITHOUT sending a result
@@ -365,8 +364,6 @@ def helper_current_process_name() -> str:
 
 def helper_recurse(js: Jobserver, max_depth: int) -> int:
     """Helper submitting work until either Blocked or max_depth reached."""
-    from jobserver import Blocked
-
     if max_depth < 1:
         return 0
     try:

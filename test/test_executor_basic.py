@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import concurrent.futures
 import operator
+import os
 import signal
 import sys
+import tempfile
 import threading
 import time
 import typing
@@ -212,9 +214,6 @@ class TestFutureStateQueries(unittest.TestCase):
 
     def test_running_transition(self) -> None:
         """A dispatched future transitions to RUNNING."""
-        import os
-        import tempfile
-
         with Jobserver(context=FAST, slots=2) as js:
             with tempfile.NamedTemporaryFile(delete=False) as tmp:
                 gate = tmp.name
