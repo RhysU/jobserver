@@ -11,12 +11,14 @@ start methods.
 
 from __future__ import annotations
 
+import gc
 import multiprocessing
 import os
 import sys
 import time
 import typing
 from multiprocessing import get_all_start_methods
+from multiprocessing.util import Finalize
 
 from jobserver import Jobserver, JobserverExecutor
 from jobserver._queue import SPSCQueue
@@ -233,6 +235,32 @@ def helper_return_reconstruct_on_unpickle(
 def helper_raise(klass: type, *args) -> typing.NoReturn:
     """Helper raising the requested Exception class."""
     raise klass(*args)
+
+
+def helper_raise_nested(js: Jobserver) -> None:
+    """Re-raise a nested submission's exception, which its Future retains."""
+    f = js.submit(
+        fn=helper_raise, args=(ValueError, "nested"), timeout=TIMEOUT
+    )
+    f.result(timeout=TIMEOUT)
+
+
+def helper_record_unraisable(path: str) -> None:
+    """Create path, append unraisable exceptions to it, and GC at exit.
+
+    Install via replace_preexec(...) to catch unraisables in workers.
+    """
+    with open(path, "a"):
+        pass
+
+    def append_unraisable(unraisable: sys.UnraisableHookArgs) -> None:
+        with open(path, "a") as handle:
+            handle.write(
+                f"{unraisable.exc_type.__name__}: {unraisable.exc_value}\n"
+            )
+
+    sys.unraisablehook = append_unraisable
+    Finalize(None, gc.collect, exitpriority=100)
 
 
 def helper_noop() -> None:

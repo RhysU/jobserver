@@ -11,10 +11,12 @@ replace_sleep scheduling control, and how derived handles apply in submit().
 """
 
 import errno
+import gc
 import itertools
 import os
 import signal
 import sys
+import tempfile
 import threading
 import time
 import typing
@@ -28,6 +30,7 @@ from jobserver import (
 )
 from jobserver._jobserver import (
     _ExceptionWrapper,
+    _RemoteTraceback,
     _ResultWrapper,
     _worker_entrypoint,
 )
@@ -49,6 +52,8 @@ from .helpers import (
     helper_preexec_fn,
     helper_preexec_suppressing_cm,
     helper_raise,
+    helper_raise_nested,
+    helper_record_unraisable,
     helper_return,
     helper_return_kwargs,
     helper_return_raise_on_unpickle,
@@ -798,6 +803,21 @@ class _RecordingSend:
         os.close(self._fd)
 
 
+def _entrypoint_send_fails() -> typing.NoReturn:
+    """Raise after a raising fn's send fails within _worker_entrypoint."""
+    _worker_entrypoint(
+        send=_RecordingSend(fail_with=BrokenPipeError),
+        envdiff={},
+        preexec_fn=lambda: None,
+        preexec_args=(),
+        preexec_kwargs={},
+        fn=helper_raise,
+        args=(ValueError, "boom"),
+        kwargs={},
+    )
+    raise ValueError("unsent")
+
+
 class TestWorkerEntrypointPickleFallback(unittest.TestCase):
     """_worker_entrypoint pre-flights the pickle so only genuine
     serialization failures hit the not-picklable fallback (see #284)."""
@@ -1092,3 +1112,49 @@ class TestUnpickleInterruptSelfHeals(unittest.TestCase):
                     self.assertTrue(evil.done(timeout=TIMEOUT))
                     with self.assertRaises(LostResult):
                         evil.result(timeout=0)
+
+
+class TestWorkerUnraisable(unittest.TestCase):
+    """Raising workers leave nothing for sys.unraisablehook (#444)."""
+
+    def _assert_no_unraisable(
+        self, fn: typing.Callable, args_of: typing.Callable[[Jobserver], tuple]
+    ) -> None:
+        """Submit fn per start method; expect ValueError, no unraisables."""
+        for method in start_methods():
+            with (
+                self.subTest(method=method),
+                tempfile.TemporaryDirectory() as tmpdir,
+                Jobserver(context=method, slots=2) as js,
+            ):
+                # Fork children inherit and would report the runner's garbage
+                gc.collect()
+                path = os.path.join(tmpdir, "unraisable")
+                f = js.replace_preexec(helper_record_unraisable, path).submit(
+                    fn=fn, args=args_of(js), timeout=TIMEOUT
+                )
+                with self.assertRaises(ValueError) as ctx:
+                    f.result(timeout=TIMEOUT)
+                self.assertIsInstance(
+                    ctx.exception.__cause__, _RemoteTraceback
+                )
+                with open(path) as handle:
+                    self.assertEqual("", handle.read())
+
+    def test_fn_raises(self) -> None:
+        """The wrapped exception ties the worker frame into a cycle."""
+        self._assert_no_unraisable(
+            fn=helper_raise, args_of=lambda js: (ValueError, "boom")
+        )
+
+    def test_fn_reraises_nested(self) -> None:
+        """A cycle through args, not result, must not leak either."""
+        self._assert_no_unraisable(
+            fn=helper_raise_nested, args_of=lambda js: (js,)
+        )
+
+    def test_send_bytes_raises(self) -> None:
+        """A failed send after fn raises must not strand payload."""
+        self._assert_no_unraisable(
+            fn=_entrypoint_send_fails, args_of=lambda js: ()
+        )
