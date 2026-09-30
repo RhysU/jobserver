@@ -10,6 +10,7 @@ result() must surface the child's traceback some other way (see #206).
 """
 
 import pickle
+import sys
 import traceback
 import typing
 import unittest
@@ -331,7 +332,35 @@ class TestExceptionWrapperPickle(unittest.TestCase):
                 w.unwrap()
             except ZeroDivisionError as e:
                 lengths.append(len(traceback.extract_tb(e.__traceback__)))
+                self.assertIsInstance(e.__cause__, _RemoteTraceback)
+                self.assertEqual(w._raised_tb, str(e.__cause__))
         self.assertEqual([2, 4, 6], lengths)
+
+    @unittest.skipIf(sys.version_info < (3, 11), "requires add_note")
+    def test_unwrap_notes_accumulate(self) -> None:
+        """Each unwrap() re-raises one instance, leaking notes (#448)."""
+        try:
+            helper_raise(ZeroDivisionError, "boom")
+        except ZeroDivisionError as e:
+            e.add_note("worker")
+            w = self._round_trip(_ExceptionWrapper(e))
+        notes = []
+        for i in range(3):
+            try:
+                w.unwrap()
+            except ZeroDivisionError as e:
+                notes.append(list(e.__notes__))
+                e.add_note(f"caller {i}")
+                self.assertIsInstance(e.__cause__, _RemoteTraceback)
+                self.assertEqual(w._raised_tb, str(e.__cause__))
+        self.assertEqual(
+            [
+                ["worker"],
+                ["worker", "caller 0"],
+                ["worker", "caller 0", "caller 1"],
+            ],
+            notes,
+        )
 
     def test_custom_init_exception_reconstruct_failure(self) -> None:
         """An exception whose __init__ has a non-standard signature

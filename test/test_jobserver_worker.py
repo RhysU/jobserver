@@ -1138,6 +1138,7 @@ class TestWorkerUnraisable(unittest.TestCase):
                 self.assertIsInstance(
                     ctx.exception.__cause__, _RemoteTraceback
                 )
+                self.assertIn(fn.__name__, str(ctx.exception.__cause__))
                 with open(path) as handle:
                     self.assertEqual("", handle.read())
 
