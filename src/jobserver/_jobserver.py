@@ -1431,7 +1431,12 @@ def _worker_entrypoint(
                             cause=result,
                         )
                     )
-                send.send_bytes(payload)
+                try:
+                    send.send_bytes(payload)
+                finally:
+                    # payload exports a BytesIO buffer.  If a cycle holds this
+                    # frame, GC may close the BytesIO first: BufferError.
+                    del payload
         except OSError:
             # Broken or closed result fd (BrokenPipeError, EBADF, ...):
             # close quietly and let the parent see EOFError instead.
