@@ -770,12 +770,14 @@ def _raise_reduce_runtimeerror() -> object:
 class _RecordingSend:
     """Stand-in for a worker's pipe end recording send_bytes payloads.
 
-    When fail_with is provided, send_bytes raises it to emulate a
-    misbehaving Connection substitute rather than a pickle failure.
+    When fail_with is provided, send_bytes raises a fresh fail_with() to
+    emulate a misbehaving Connection substitute rather than a pickle
+    failure.  A reused instance would form a cycle via its traceback.
     """
 
     def __init__(
-        self, fail_with: typing.Optional[BaseException] = None
+        self,
+        fail_with: typing.Optional[typing.Callable[[], BaseException]] = None,
     ) -> None:
         self.payloads: list[bytes] = []
         self.closed = False
@@ -787,7 +789,7 @@ class _RecordingSend:
 
     def send_bytes(self, payload: typing.Any) -> None:
         if self._fail_with is not None:
-            raise self._fail_with
+            raise self._fail_with()
         # ForkingPickler.dumps returns a reusable buffer view; copy it.
         self.payloads.append(bytes(payload))
 
@@ -808,8 +810,9 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         The pre-flight now confines the catch to serialization, so the
         genuine error propagates and no fallback re-send is attempted.
         """
-        boom = AttributeError("misbehaving connection")
-        send = _RecordingSend(fail_with=boom)
+        send = _RecordingSend(
+            fail_with=lambda: AttributeError("misbehaving connection")
+        )
         with self.assertRaises(AttributeError) as ctx:
             _worker_entrypoint(
                 send,
@@ -821,7 +824,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
                 ((1, 2, 3),),
                 {},
             )
-        self.assertIs(boom, ctx.exception)
+        self.assertEqual("misbehaving connection", str(ctx.exception))
         # No "not picklable" rewrap was sent in place of the real error.
         self.assertEqual([], send.payloads)
 
@@ -905,8 +908,9 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         """An OSError/EBADF from a closed result fd closes quietly instead
         of crashing the worker; the parent still observes EOF and reports
         LostResult, but without a noisy child traceback."""
-        boom = OSError(errno.EBADF, "Bad file descriptor")
-        send = _RecordingSend(fail_with=boom)
+        send = _RecordingSend(
+            fail_with=lambda: OSError(errno.EBADF, "Bad file descriptor")
+        )
         _worker_entrypoint(
             send,
             {},
@@ -922,7 +926,7 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
 
     def test_broken_pipe_still_swallowed(self) -> None:
         """The original BrokenPipeError handling is preserved."""
-        send = _RecordingSend(fail_with=BrokenPipeError())
+        send = _RecordingSend(fail_with=BrokenPipeError)
         _worker_entrypoint(
             send,
             {},
