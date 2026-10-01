@@ -11,6 +11,7 @@ import heapq
 import os
 import queue
 import signal
+import sys
 import threading
 import time
 import traceback
@@ -167,7 +168,8 @@ class _ExceptionWrapper(_Wrapper[Any]):
     On unpickling, the captured string is re-attached as a _RemoteTraceback
     via __cause__ so the parent sees the originating frames on unwrap().
     Any pre-existing __cause__ chain renders inside that string but is
-    collapsed into the single _RemoteTraceback programmatically.
+    collapsed into the single _RemoteTraceback programmatically.  From
+    3.11 notes render inside that string too, so raised drops them.
     """
 
     __slots__ = ("_raised", "_raised_tb")
@@ -194,8 +196,20 @@ class _ExceptionWrapper(_Wrapper[Any]):
                     raised.__traceback__,
                 )
             )
+            if sys.version_info >= (3, 11):
+                self._strip_notes(raised)
         else:
             self._raised_tb = ""
+
+    @staticmethod
+    def _strip_notes(exc: BaseException) -> None:
+        """Drop notes already rendered in the remote traceback."""
+        exc.__dict__.pop("__notes__", None)
+        if isinstance(
+            exc, BaseExceptionGroup  # type: ignore[name-defined]  # noqa: F821
+        ):
+            for member in exc.exceptions:
+                _ExceptionWrapper._strip_notes(member)
 
     def __getstate__(self) -> tuple:
         return (self._raised, self._raised_tb)
@@ -519,6 +533,9 @@ class Future(Generic[T]):
         Timeout is given in seconds with None meaning to block indefinitely.
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
+
+        From Python 3.11, Exception.add_note(...) renders only in its original
+        traceback, for exceptions, exception groups, and group members.
         """
         if not self.wait(timeout):
             raise Blocked()

@@ -350,19 +350,12 @@ class TestExceptionWrapperPickle(unittest.TestCase):
             try:
                 w.unwrap()
             except ZeroDivisionError as e:
-                notes.append(list(e.__notes__))
+                notes.append(list(getattr(e, "__notes__", ())))
                 e.add_note(f"caller {i}")
                 self.assertIsInstance(e.__cause__, _RemoteTraceback)
                 self.assertEqual(w._raised_tb, str(e.__cause__))
         # Undesired: caller notes leak into later calls.
-        self.assertEqual(
-            [
-                ["worker"],
-                ["worker", "caller 0"],
-                ["worker", "caller 0", "caller 1"],
-            ],
-            notes,
-        )
+        self.assertEqual([[], ["caller 0"], ["caller 0", "caller 1"]], notes)
 
     def test_custom_init_exception_reconstruct_failure(self) -> None:
         """An exception whose __init__ has a non-standard signature
