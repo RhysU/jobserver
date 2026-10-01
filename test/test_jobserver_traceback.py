@@ -324,7 +324,7 @@ class TestExceptionWrapperPickle(unittest.TestCase):
         self.assertIn("KeyboardInterrupt", str(ctx.exception.__cause__))
 
     def test_unwrap_traceback_grows(self) -> None:
-        """Each unwrap() re-raises one instance, growing its tb (#448)."""
+        """Each unwrap() re-raises one instance, growing its tb."""
         w = self._round_trip(_wrap_live_exception())
         lengths = []
         for _ in range(3):
@@ -334,12 +334,12 @@ class TestExceptionWrapperPickle(unittest.TestCase):
                 lengths.append(len(traceback.extract_tb(e.__traceback__)))
                 self.assertIsInstance(e.__cause__, _RemoteTraceback)
                 self.assertEqual(w._raised_tb, str(e.__cause__))
-        # Undesired: tracebacks accumulate across calls (#448).
+        # Undesired: tracebacks accumulate across calls.
         self.assertEqual([2, 4, 6], lengths)
 
     @unittest.skipIf(sys.version_info < (3, 11), "requires add_note")
     def test_unwrap_notes_accumulate(self) -> None:
-        """Each unwrap() re-raises one instance, leaking notes (#448)."""
+        """Each unwrap() re-raises one instance, leaking notes."""
         try:
             helper_raise(ZeroDivisionError, "boom")
         except ZeroDivisionError as e:
@@ -354,7 +354,7 @@ class TestExceptionWrapperPickle(unittest.TestCase):
                 e.add_note(f"caller {i}")
                 self.assertIsInstance(e.__cause__, _RemoteTraceback)
                 self.assertEqual(w._raised_tb, str(e.__cause__))
-        # Undesired: caller notes leak into later calls (#448).
+        # Undesired: caller notes leak into later calls.
         self.assertEqual(
             [
                 ["worker"],

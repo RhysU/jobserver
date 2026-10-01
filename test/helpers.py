@@ -238,6 +238,13 @@ def helper_raise(klass: type, *args) -> typing.NoReturn:
     raise klass(*args)
 
 
+def helper_raise_made(
+    make: typing.Callable[[], BaseException],
+) -> typing.NoReturn:
+    """Helper raising what make() builds, so construction happens here."""
+    raise make()
+
+
 def helper_raise_nested(js: Jobserver) -> None:
     """Re-raise a nested submission's exception, which its Future retains."""
     f = js.submit(
