@@ -77,12 +77,10 @@ class TestNotesRendered(unittest.TestCase):
         )
         self.assertEqual(
             (
-                # Undesired: renders in the remote text and again.
-                (2,),
-                # Undesired: worker notes cross the pipe.
-                [_WORKER_NOTE],
+                (1,),
+                False,
             ),
-            (_counts(e, _WORKER_NOTE), e.__notes__),
+            (_counts(e, _WORKER_NOTE), hasattr(e, "__notes__")),
         )
 
     def test_builtin_notes(self) -> None:
@@ -107,17 +105,15 @@ class TestNotesRendered(unittest.TestCase):
                         type(expected),
                         expected.args,
                         str(expected),
-                        # Undesired: renders in the remote text and again.
-                        (2,),
-                        # Undesired: worker notes cross the pipe.
-                        [_WORKER_NOTE],
+                        (1,),
+                        False,
                     ),
                     (
                         type(e),
                         e.args,
                         str(e),
                         _counts(e, _WORKER_NOTE),
-                        e.__notes__,
+                        hasattr(e, "__notes__"),
                     ),
                 )
 
@@ -133,12 +129,13 @@ class TestNotesRendered(unittest.TestCase):
         e = _raised(TestNotesRendered._raise_explicit_chain)
         self.assertEqual(
             (
-                # Undesired: the outer note renders twice.
-                (1, 2),
-                # Undesired: worker notes cross the pipe.
-                [_OUTER_NOTE],
+                (1, 1),
+                False,
             ),
-            (_counts(e, _CAUSE_NOTE, _OUTER_NOTE), e.__notes__),
+            (
+                _counts(e, _CAUSE_NOTE, _OUTER_NOTE),
+                hasattr(e, "__notes__"),
+            ),
         )
 
     @staticmethod
@@ -153,12 +150,13 @@ class TestNotesRendered(unittest.TestCase):
         e = _raised(TestNotesRendered._raise_implicit_chain)
         self.assertEqual(
             (
-                # Undesired: the outer note renders twice.
-                (1, 2),
-                # Undesired: worker notes cross the pipe.
-                [_OUTER_NOTE],
+                (1, 1),
+                False,
             ),
-            (_counts(e, _CONTEXT_NOTE, _OUTER_NOTE), e.__notes__),
+            (
+                _counts(e, _CONTEXT_NOTE, _OUTER_NOTE),
+                hasattr(e, "__notes__"),
+            ),
         )
 
     @staticmethod
@@ -184,19 +182,16 @@ class TestNotesRendered(unittest.TestCase):
         nested, plain_nested = inner.exceptions
         self.assertEqual(
             (
-                # Undesired: group and member notes render twice.
-                (2, 2, 2),
-                # Undesired: worker notes cross the pipe.
-                [_MEMBER_NOTE],
-                # Undesired: worker notes cross the pipe.
-                [_NESTED_NOTE],
+                (1, 1, 1),
+                False,
+                False,
                 False,
                 False,
             ),
             (
                 _counts(e, _GROUP_NOTE, _MEMBER_NOTE, _NESTED_NOTE),
-                member.__notes__,
-                nested.__notes__,
+                hasattr(member, "__notes__"),
+                hasattr(nested, "__notes__"),
                 hasattr(plain, "__notes__"),
                 hasattr(plain_nested, "__notes__"),
             ),
@@ -225,11 +220,9 @@ class TestNotesRendered(unittest.TestCase):
         member, plain = e.exceptions
         self.assertEqual(
             (
-                # Undesired: crossing group and member notes render twice.
-                (1, 1, 2, 2),
+                (1, 1, 1, 1),
                 None,
-                # Undesired: worker notes cross the pipe.
-                [_MEMBER_NOTE],
+                False,
                 False,
             ),
             (
@@ -241,7 +234,7 @@ class TestNotesRendered(unittest.TestCase):
                     _MEMBER_NOTE,
                 ),
                 member.__cause__,
-                member.__notes__,
+                hasattr(member, "__notes__"),
                 hasattr(plain, "__notes__"),
             ),
         )
@@ -276,12 +269,10 @@ class TestNotesRendered(unittest.TestCase):
                 e = _raised(fn)
                 self.assertEqual(
                     (
-                        # Undesired: the note renders twice.
-                        (2,),
-                        # Undesired: worker notes cross the pipe.
-                        [_WORKER_NOTE],
+                        (1,),
+                        False,
                     ),
-                    (_counts(e, _WORKER_NOTE), e.__notes__),
+                    (_counts(e, _WORKER_NOTE), hasattr(e, "__notes__")),
                 )
 
     @staticmethod
@@ -297,16 +288,14 @@ class TestNotesRendered(unittest.TestCase):
         (member,) = e.exceptions
         self.assertEqual(
             (
-                # Undesired: group and member notes render twice.
-                (2, 2),
+                (1, 1),
                 None,
-                # Undesired: worker notes cross the pipe.
-                [_MEMBER_NOTE],
+                False,
             ),
             (
                 _counts(e, _GROUP_NOTE, _MEMBER_NOTE),
                 member.__cause__,
-                member.__notes__,
+                hasattr(member, "__notes__"),
             ),
         )
 
