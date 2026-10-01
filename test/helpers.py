@@ -373,16 +373,6 @@ def helper_recurse(js: Jobserver, max_depth: int) -> int:
     return 1 + f.result(timeout=None)
 
 
-def helper_close_own_pipe() -> None:
-    """Worker closes its own result pipe fd, causing LostResult."""
-    # The send Connection is already closed by the parent after start();
-    # the worker's copy is the only writer.  Closing the underlying fd
-    # makes send_bytes fail with OSError so the finally block swallows it
-    # and the parent sees EOFError -> LostResult.
-    os.close(1)
-    os._exit(0)
-
-
 def helper_make_circular() -> list:
     """Return a list with a circular reference."""
     a: list = [1, 2]

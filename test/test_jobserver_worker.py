@@ -21,6 +21,7 @@ import threading
 import time
 import typing
 import unittest
+from multiprocessing import Pipe
 from multiprocessing.reduction import ForkingPickler
 
 from jobserver import (
@@ -41,7 +42,6 @@ from .helpers import (
     HelperContextManager,
     HelperReconstructOnUnpickle,
     helper_callback,
-    helper_close_own_pipe,
     helper_current_process_name,
     helper_exec_grandchild_then_die,
     helper_fork_orphan_then_die,
@@ -944,6 +944,23 @@ class TestWorkerEntrypointSendBytesErrors(unittest.TestCase):
         self.assertEqual([], send.payloads)
         self.assertTrue(send.closed)
 
+    def test_closed_result_pipe_is_swallowed(self) -> None:
+        """fn closing the real result fd yields EOF, not a result."""
+        recv, send = Pipe(duplex=False)
+        with recv, send:
+            _worker_entrypoint(
+                send=send,
+                envdiff={},
+                preexec_fn=lambda: None,
+                preexec_args=(),
+                preexec_kwargs={},
+                fn=os.close,
+                args=(send.fileno(),),
+                kwargs={},
+            )
+            with self.assertRaises(EOFError):
+                recv.recv_bytes()
+
     def test_broken_pipe_still_swallowed(self) -> None:
         """The original BrokenPipeError handling is preserved."""
         send = _RecordingSend(fail_with=BrokenPipeError)
@@ -1053,15 +1070,6 @@ class TestResultNotReconstructable(unittest.TestCase):
                     result = f.result(timeout=TIMEOUT)
                     self.assertIsInstance(result, HelperReconstructOnUnpickle)
                     self.assertEqual("rebuilt", result.payload)
-
-    def test_worker_closes_send_pipe_yields_lost_result(self) -> None:
-        """A worker that sabotages its result pipe produces LostResult."""
-        for method in start_methods():
-            with self.subTest(method=method):
-                with Jobserver(context=method, slots=1) as js:
-                    f = js.submit(fn=helper_close_own_pipe, timeout=5)
-                    with self.assertRaises(LostResult):
-                        f.result(timeout=5)
 
     def test_circular_reference_round_trips(self) -> None:
         """A result with circular references round-trips via pickle."""
