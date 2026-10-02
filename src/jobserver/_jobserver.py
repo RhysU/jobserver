@@ -160,6 +160,10 @@ class _RemoteTraceback(Exception):
         return self._traceback
 
 
+_RAISED_NOTE = "Raised in a Jobserver worker"
+_REPLACED_NOTE = "Replaced in a Jobserver worker: original not picklable"
+
+
 class _ExceptionWrapper(_Wrapper[Any]):
     """Specialization of _Wrapper for when an Exception has been raised.
 
@@ -169,11 +173,14 @@ class _ExceptionWrapper(_Wrapper[Any]):
     via __cause__ so the parent sees the originating frames on unwrap().
     Any pre-existing __cause__ chain renders inside that string but is
     collapsed into the single _RemoteTraceback programmatically.  From
-    3.11 notes render inside that string too, so raised drops them.
+    3.11 notes render inside that string too, so raised trades them for
+    one note telling where it came from.  Unpickling attaches that note
+    again, surviving classes whose pickling drops __dict__.
     """
 
-    __slots__ = ("_raised", "_raised_tb")
+    __slots__ = ("_notes", "_raised", "_raised_tb")
 
+    _notes: list[str]
     _raised: Exception
     _raised_tb: str
 
@@ -186,6 +193,17 @@ class _ExceptionWrapper(_Wrapper[Any]):
         _ExceptionWrapper, else format from raised.__traceback__."""
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
+
+        # Choose the hint: raised, replaced, or none when built in the parent.
+        if cause is None and raised.__traceback__ is None:
+            notes: list[str] = []
+        elif raised.__traceback__ is not None:
+            notes = [_RAISED_NOTE]
+        else:
+            notes = [_REPLACED_NOTE]
+        self._notes = notes
+
+        # Pickle drops __traceback__, so capture the child stack as a string.
         if isinstance(cause, _ExceptionWrapper):
             self._raised_tb = cause._raised_tb
         elif raised.__traceback__ is not None:
@@ -196,10 +214,20 @@ class _ExceptionWrapper(_Wrapper[Any]):
                     raised.__traceback__,
                 )
             )
-            if sys.version_info >= (3, 11):
-                self._strip_notes(raised)
         else:
             self._raised_tb = ""
+
+        # Notes already render in _raised_tb, so swap them for the hint.
+        if sys.version_info >= (3, 11):
+            self._strip_notes(raised)
+            self._attach_notes(raised, notes)
+
+    @staticmethod
+    def _attach_notes(exc: BaseException, notes: list[str]) -> None:
+        """Attach notes unless exc's class defines __notes__."""
+        # Unpickling cannot set a __notes__ property.
+        if not hasattr(type(exc), "__notes__"):
+            exc.__dict__["__notes__"] = notes
 
     @staticmethod
     def _strip_notes(exc: BaseException) -> None:
@@ -212,14 +240,18 @@ class _ExceptionWrapper(_Wrapper[Any]):
                 _ExceptionWrapper._strip_notes(member)
 
     def __getstate__(self) -> tuple:
-        return (self._raised, self._raised_tb)
+        return (self._notes, self._raised, self._raised_tb)
 
     def __setstate__(self, state: tuple) -> None:
         # Pickle dropped __traceback__ in transit; re-attach the captured
         # string via __cause__ so the child's stack renders in the parent.
-        self._raised, self._raised_tb = state
+        self._notes, self._raised, self._raised_tb = state
         if self._raised_tb:
             self._raised.__cause__ = _RemoteTraceback(self._raised_tb)
+
+        # Custom pickling may drop __dict__, so attach the hint again.
+        if sys.version_info >= (3, 11):
+            self._attach_notes(self._raised, self._notes)
 
     def unwrap(self) -> NoReturn:
         raise self._raised
@@ -536,6 +568,8 @@ class Future(Generic[T]):
 
         From Python 3.11, Exception.add_note(...) renders only in its original
         traceback, for exceptions, exception groups, and group members.
+        One note marks exceptions from a worker.  Notes added later persist
+        across calls.
         """
         if not self.wait(timeout):
             raise Blocked()

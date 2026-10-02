@@ -11,19 +11,26 @@ pickling.  Notes on exceptions that also cross the pipe render again.
 
 import errno
 import functools
+import os
 import sys
 import traceback
 import typing
 import unittest
 
-from jobserver import Jobserver
+from jobserver import Jobserver, LostResult
+from jobserver._jobserver import _RAISED_NOTE, _REPLACED_NOTE
 
-from .helpers import FAST, helper_raise_made
+from .helpers import (
+    FAST,
+    helper_raise_made,
+    helper_return_raise_on_unpickle,
+)
 
 # Note texts, distinct so that render counts cannot overlap.
 _CALLER_NOTE = "caller note"
 _CAUSE_GROUP_NOTE = "cause group note"
 _CAUSE_NOTE = "cause note"
+_CLASS_NOTE = "class note"
 _CONTEXT_NOTE = "context note"
 _GROUP_NOTE = "group note"
 _HAND_NOTE = "hand note"
@@ -33,8 +40,30 @@ _MEMBER_NOTE = "member note"
 _NESTED_NOTE = "nested note"
 _OUTER_GROUP_NOTE = "outer group note"
 _OUTER_NOTE = "outer note"
+_PROPERTY_NOTE = "property note"
 _RETURNED_NOTE = "returned note"
 _WORKER_NOTE = "worker note"
+
+
+class _PropertyNotesError(Exception):
+    """Defines __notes__ as a property, which pickle cannot restore."""
+
+    @property
+    def __notes__(self) -> tuple[str, ...]:
+        return (_PROPERTY_NOTE,)
+
+
+class _ClassNotesError(Exception):
+    """Defines __notes__ as a class attribute."""
+
+    __notes__ = (_CLASS_NOTE,)
+
+
+class _DictlessPickleError(Exception):
+    """Pickles only its args, dropping __dict__."""
+
+    def __reduce__(self) -> tuple:
+        return (type(self), self.args)
 
 
 def _noted(e: BaseException, note: str) -> BaseException:
@@ -78,9 +107,9 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             (
                 (1,),
-                False,
+                [_RAISED_NOTE],
             ),
-            (_counts(e, _WORKER_NOTE), hasattr(e, "__notes__")),
+            (_counts(e, _WORKER_NOTE), e.__notes__),
         )
 
     def test_builtin_notes(self) -> None:
@@ -106,14 +135,14 @@ class TestNotesRendered(unittest.TestCase):
                         expected.args,
                         str(expected),
                         (1,),
-                        False,
+                        [_RAISED_NOTE],
                     ),
                     (
                         type(e),
                         e.args,
                         str(e),
                         _counts(e, _WORKER_NOTE),
-                        hasattr(e, "__notes__"),
+                        e.__notes__,
                     ),
                 )
 
@@ -130,11 +159,11 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             (
                 (1, 1),
-                False,
+                [_RAISED_NOTE],
             ),
             (
                 _counts(e, _CAUSE_NOTE, _OUTER_NOTE),
-                hasattr(e, "__notes__"),
+                e.__notes__,
             ),
         )
 
@@ -151,11 +180,11 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             (
                 (1, 1),
-                False,
+                [_RAISED_NOTE],
             ),
             (
                 _counts(e, _CONTEXT_NOTE, _OUTER_NOTE),
-                hasattr(e, "__notes__"),
+                e.__notes__,
             ),
         )
 
@@ -183,6 +212,7 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             (
                 (1, 1, 1),
+                [_RAISED_NOTE],
                 False,
                 False,
                 False,
@@ -190,6 +220,7 @@ class TestNotesRendered(unittest.TestCase):
             ),
             (
                 _counts(e, _GROUP_NOTE, _MEMBER_NOTE, _NESTED_NOTE),
+                e.__notes__,
                 hasattr(member, "__notes__"),
                 hasattr(nested, "__notes__"),
                 hasattr(plain, "__notes__"),
@@ -221,6 +252,7 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             (
                 (1, 1, 1, 1),
+                [_RAISED_NOTE],
                 None,
                 False,
                 False,
@@ -233,6 +265,7 @@ class TestNotesRendered(unittest.TestCase):
                     _OUTER_GROUP_NOTE,
                     _MEMBER_NOTE,
                 ),
+                e.__notes__,
                 member.__cause__,
                 hasattr(member, "__notes__"),
                 hasattr(plain, "__notes__"),
@@ -270,9 +303,9 @@ class TestNotesRendered(unittest.TestCase):
                 self.assertEqual(
                     (
                         (1,),
-                        False,
+                        [_RAISED_NOTE],
                     ),
-                    (_counts(e, _WORKER_NOTE), hasattr(e, "__notes__")),
+                    (_counts(e, _WORKER_NOTE), e.__notes__),
                 )
 
     @staticmethod
@@ -289,11 +322,13 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             (
                 (1, 1),
+                [_RAISED_NOTE],
                 None,
                 False,
             ),
             (
                 _counts(e, _GROUP_NOTE, _MEMBER_NOTE),
+                e.__notes__,
                 member.__cause__,
                 hasattr(member, "__notes__"),
             ),
@@ -330,8 +365,8 @@ class TestNotesRendered(unittest.TestCase):
         """An unpicklable noted exception arrives as RuntimeError."""
         e = _raised(TestNotesRendered._raise_noted_local)
         self.assertEqual(
-            (RuntimeError, (1,), False),
-            (type(e), _counts(e, _WORKER_NOTE), hasattr(e, "__notes__")),
+            (RuntimeError, (1,), [_REPLACED_NOTE]),
+            (type(e), _counts(e, _WORKER_NOTE), e.__notes__),
         )
 
     @staticmethod
@@ -343,6 +378,109 @@ class TestNotesRendered(unittest.TestCase):
         with Jobserver(context=FAST, slots=1) as js:
             f = js.submit(fn=TestNotesRendered._make_returned, timeout=5)
             self.assertEqual([_RETURNED_NOTE], f.result(timeout=5).__notes__)
+
+
+@unittest.skipIf(sys.version_info < (3, 11), "requires add_note")
+class TestNotesHint(unittest.TestCase):
+    """One note tells whether a worker raised or replaced an exception."""
+
+    def test_caller_notes_persist(self) -> None:
+        """Caller notes follow the hint across result() calls."""
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(fn=helper_raise_made, args=(ValueError,), timeout=5)
+            notes = []
+            for i in range(3):
+                try:
+                    f.result(timeout=5)
+                except ValueError as e:
+                    notes.append(list(e.__notes__))
+                    e.add_note(f"{_CALLER_NOTE} {i}")
+        self.assertEqual(
+            [
+                [_RAISED_NOTE],
+                [_RAISED_NOTE, f"{_CALLER_NOTE} 0"],
+                [_RAISED_NOTE, f"{_CALLER_NOTE} 0", f"{_CALLER_NOTE} 1"],
+            ],
+            notes,
+        )
+
+    @staticmethod
+    def _return_local() -> typing.Any:
+        class LocallyDefined:
+            pass
+
+        return LocallyDefined()
+
+    def test_replaced_value(self) -> None:
+        """An unpicklable value arrives as a RuntimeError marked replaced."""
+        e = _raised(TestNotesHint._return_local)
+        self.assertEqual(
+            (RuntimeError, [_REPLACED_NOTE], (1,)),
+            (type(e), e.__notes__, _counts(e, _REPLACED_NOTE)),
+        )
+
+    def test_lost_result(self) -> None:
+        """A worker exiting without a result gets an empty list."""
+        e = _raised(os._exit, 0)
+        self.assertEqual((LostResult, []), (type(e), e.__notes__))
+
+    def test_not_reconstructable(self) -> None:
+        """A value failing to unpickle gets an empty list."""
+        e = _raised(helper_return_raise_on_unpickle, ValueError)
+        self.assertEqual((RuntimeError, []), (type(e), e.__notes__))
+
+    @staticmethod
+    def _raise_nested(depth: int) -> typing.NoReturn:
+        if depth == 0:
+            raise ValueError("innermost")
+        with Jobserver(context=FAST, slots=1) as js:
+            f = js.submit(
+                fn=TestNotesHint._raise_nested, args=(depth - 1,), timeout=5
+            )
+            f.result(timeout=5)
+        raise AssertionError("result() returned")
+
+    def test_nested_hints(self) -> None:
+        """Each worker boundary renders one hint."""
+        for depth in (0, 1, 2):
+            with self.subTest(depth=depth):
+                e = _raised(TestNotesHint._raise_nested, depth)
+                self.assertEqual(
+                    ([_RAISED_NOTE], (depth + 1,)),
+                    (e.__notes__, _counts(e, _RAISED_NOTE)),
+                )
+
+    def test_class_defined_notes(self) -> None:
+        """Classes defining __notes__ keep theirs and get no hint."""
+        for klass, note in (
+            (_PropertyNotesError, _PROPERTY_NOTE),
+            (_ClassNotesError, _CLASS_NOTE),
+        ):
+            with self.subTest(type=klass.__name__):
+                e = _raised(helper_raise_made, klass)
+                self.assertEqual(
+                    (
+                        klass,
+                        (note,),
+                        False,
+                        # Undesired: notes render in the worker and again.
+                        (2, 0),
+                    ),
+                    (
+                        type(e),
+                        e.__notes__,
+                        "__notes__" in e.__dict__,
+                        _counts(e, note, _RAISED_NOTE),
+                    ),
+                )
+
+    def test_dictless_pickle(self) -> None:
+        """Pickling that drops __dict__ keeps the hint."""
+        e = _raised(helper_raise_made, _DictlessPickleError)
+        self.assertEqual(
+            (_DictlessPickleError, [_RAISED_NOTE]),
+            (type(e), e.__notes__),
+        )
 
 
 @unittest.skipIf(sys.version_info >= (3, 11), "notes render from 3.11")
