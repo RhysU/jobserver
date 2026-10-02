@@ -160,6 +160,10 @@ class _RemoteTraceback(Exception):
         return self._traceback
 
 
+_RAISED_NOTE = "Raised in a Jobserver worker: original was pickled"
+_REPLACED_NOTE = "Replaced from a Jobserver worker: original not picklable"
+
+
 class _ExceptionWrapper(_Wrapper[Any]):
     """Specialization of _Wrapper for when an Exception has been raised.
 
@@ -169,7 +173,9 @@ class _ExceptionWrapper(_Wrapper[Any]):
     via __cause__ so the parent sees the originating frames on unwrap().
     Any pre-existing __cause__ chain renders inside that string but is
     collapsed into the single _RemoteTraceback programmatically.  From
-    3.11 notes render inside that string too, so raised drops them.
+    3.11 notes render inside that string too, so __init__ strips them
+    from the exception.  One local note takes their place.  It says
+    whether the original exception was pickled or was not picklable.
     """
 
     __slots__ = ("_raised", "_raised_tb")
@@ -186,6 +192,16 @@ class _ExceptionWrapper(_Wrapper[Any]):
         _ExceptionWrapper, else format from raised.__traceback__."""
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
+
+        # Choose the hint: raised, replaced, or none when built in the parent.
+        if cause is None and raised.__traceback__ is None:
+            notes: list[str] = []
+        elif raised.__traceback__ is not None:
+            notes = [_RAISED_NOTE]
+        else:
+            notes = [_REPLACED_NOTE]
+
+        # Pickle drops __traceback__, so capture the child stack as a string.
         if isinstance(cause, _ExceptionWrapper):
             self._raised_tb = cause._raised_tb
         elif raised.__traceback__ is not None:
@@ -196,10 +212,15 @@ class _ExceptionWrapper(_Wrapper[Any]):
                     raised.__traceback__,
                 )
             )
-            if sys.version_info >= (3, 11):
-                self._strip_notes(raised)
         else:
             self._raised_tb = ""
+
+        # Notes already rendered.  Now swap for local hint.
+        # Skip classes defining __notes__: unpickling cannot set a property.
+        if sys.version_info >= (3, 11):
+            self._strip_notes(raised)
+            if not hasattr(type(raised), "__notes__"):
+                raised.__dict__["__notes__"] = notes
 
     @staticmethod
     def _strip_notes(exc: BaseException) -> None:
@@ -534,8 +555,8 @@ class Future(Generic[T]):
         May raise CallbackRaised from at most one registered callback.
         See CallbackRaised documentation for callback error semantics.
 
-        From Python 3.11, Exception.add_note(...) renders only in its original
-        traceback, for exceptions, exception groups, and group members.
+        From Python 3.11, a raised exception omits notes added in the worker
+        and instead carries a local note.
         """
         if not self.wait(timeout):
             raise Blocked()

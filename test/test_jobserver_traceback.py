@@ -17,6 +17,7 @@ import unittest
 
 from jobserver import Jobserver, LostResult
 from jobserver._jobserver import (
+    _RAISED_NOTE,
     _ExceptionWrapper,
     _RemoteTraceback,
     _ResultWrapper,
@@ -338,8 +339,8 @@ class TestExceptionWrapperPickle(unittest.TestCase):
         self.assertEqual([2, 4, 6], lengths)
 
     @unittest.skipIf(sys.version_info < (3, 11), "requires add_note")
-    def test_unwrap_notes_accumulate(self) -> None:
-        """Each unwrap() re-raises one instance, leaking notes."""
+    def test_unwrap_notes_persist(self) -> None:
+        """Caller notes persist across unwrap() calls after the hint."""
         try:
             helper_raise(ZeroDivisionError, "boom")
         except ZeroDivisionError as e:
@@ -354,8 +355,14 @@ class TestExceptionWrapperPickle(unittest.TestCase):
                 e.add_note(f"caller {i}")
                 self.assertIsInstance(e.__cause__, _RemoteTraceback)
                 self.assertEqual(w._raised_tb, str(e.__cause__))
-        # Undesired: caller notes leak into later calls.
-        self.assertEqual([[], ["caller 0"], ["caller 0", "caller 1"]], notes)
+        self.assertEqual(
+            [
+                [_RAISED_NOTE],
+                [_RAISED_NOTE, "caller 0"],
+                [_RAISED_NOTE, "caller 0", "caller 1"],
+            ],
+            notes,
+        )
 
     def test_custom_init_exception_reconstruct_failure(self) -> None:
         """An exception whose __init__ has a non-standard signature
