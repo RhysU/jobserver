@@ -12,6 +12,8 @@ Using NamedTuple (dataclass slots require 3.10+).
 import typing
 from typing import Any
 
+from ._jobserver import _Wrapper
+
 
 class Started(typing.NamedTuple):
     """Work was dispatched and is now running."""
@@ -19,14 +21,14 @@ class Started(typing.NamedTuple):
     work_id: int
 
 
-class Completed(typing.NamedTuple):
-    """Work finished successfully with a value.
+class Finished(typing.NamedTuple):
+    """Work finished, returning or raising through its unpickled wrapper.
 
     Generic T cannot flow through NamedTuple; callers should cast.
     """
 
     work_id: int
-    value: Any
+    wrapper: _Wrapper[Any]
 
 
 class Failed(typing.NamedTuple):
