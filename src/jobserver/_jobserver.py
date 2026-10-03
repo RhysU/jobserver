@@ -170,6 +170,7 @@ class _ExceptionWrapper(_Wrapper[Any]):
     Any pre-existing __cause__ chain renders inside that string but is
     collapsed into the single _RemoteTraceback programmatically.  From
     3.11 notes render inside that string too, so raised drops them.
+    Any extra_traceback_notes given to __init__ render there as well.
     """
 
     __slots__ = ("_raised", "_raised_tb")
@@ -180,15 +181,26 @@ class _ExceptionWrapper(_Wrapper[Any]):
     def __init__(
         self,
         raised: Exception,
+        *extra_traceback_notes: str,
         cause: Optional["_Wrapper"] = None,
     ) -> None:
         """Wrap raised; inherit cause's captured tb when cause is an
-        _ExceptionWrapper, else format from raised.__traceback__."""
+        _ExceptionWrapper, else format from raised.__traceback__ with
+        extra_traceback_notes added.  Without a tb to format, they go
+        unused."""
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
         if isinstance(cause, _ExceptionWrapper):
             self._raised_tb = cause._raised_tb
         elif raised.__traceback__ is not None:
+            has_notes = sys.version_info >= (3, 11)
+            # Render notes in the text only.  Hostile __notes__ may refuse.
+            if has_notes:
+                try:
+                    for note in extra_traceback_notes:
+                        raised.add_note(note)
+                except Exception:
+                    pass
             self._raised_tb = "".join(
                 traceback.format_exception(
                     type(raised),
@@ -196,7 +208,7 @@ class _ExceptionWrapper(_Wrapper[Any]):
                     raised.__traceback__,
                 )
             )
-            if sys.version_info >= (3, 11):
+            if has_notes:
                 self._strip_notes(raised)
         else:
             self._raised_tb = ""
@@ -536,6 +548,7 @@ class Future(Generic[T]):
 
         From Python 3.11, Exception.add_note(...) renders only in its original
         traceback, for exceptions, exception groups, and group members.
+        One more note there marks the worker entry point.
         """
         if not self.wait(timeout):
             raise Blocked()
@@ -1375,6 +1388,9 @@ class Jobserver:
         )
 
 
+_RAISED_NOTE = "Raised within jobserver worker entry point"
+
+
 def _worker_entrypoint(
     send: Any,
     envdiff: dict[str, Optional[str]],
@@ -1417,7 +1433,7 @@ def _worker_entrypoint(
             raw = fn(*args, **kwargs)
         result = _ResultWrapper(raw)
     except Exception as exception:
-        result = _ExceptionWrapper(exception)
+        result = _ExceptionWrapper(exception, _RAISED_NOTE)
     except BaseException as base_exception:
         # When possible, send cause of death back to the parent to aid
         # users in debugging.  Raising LostResult() from the escaped
@@ -1428,7 +1444,7 @@ def _worker_entrypoint(
         try:
             raise LostResult() from base_exception
         except LostResult as lost:
-            result = _ExceptionWrapper(lost)
+            result = _ExceptionWrapper(lost, _RAISED_NOTE)
         raise  # Proceed with any BaseException-specific teardown
     finally:
         try:
