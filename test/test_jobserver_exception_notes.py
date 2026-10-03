@@ -37,6 +37,13 @@ _RETURNED_NOTE = "returned note"
 _WORKER_NOTE = "worker note"
 
 
+class _StatelessError(Exception):
+    """Accepts no unpickled state, as a class without attributes may."""
+
+    def __setstate__(self, state: dict) -> None:
+        raise AssertionError(f"unexpected state {state!r}")
+
+
 def _noted(e: BaseException, note: str) -> BaseException:
     e.add_note(note)
     return e
@@ -312,6 +319,19 @@ class TestNotesRendered(unittest.TestCase):
         self.assertEqual(
             ([_HELD_NOTE], [_HELD_NOTE]),
             (e.args[0].__notes__, e.held.__notes__),
+        )
+
+    @staticmethod
+    def _make_stateless_group() -> BaseException:
+        return ExceptionGroup("stateless", [_StatelessError()])  # noqa: F821
+
+    def test_unnoted_stays_stateless(self) -> None:
+        """Stripping gives an exception without notes no pickled state."""
+        e = _raised(helper_raise_made, _StatelessError)
+        g = _raised(helper_raise_made, TestNotesRendered._make_stateless_group)
+        self.assertEqual(
+            (_StatelessError, ExceptionGroup),  # noqa: F821
+            (type(e), type(g)),
         )
 
     def test_caller_note_renders_once(self) -> None:

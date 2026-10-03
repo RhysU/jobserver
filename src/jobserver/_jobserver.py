@@ -204,7 +204,9 @@ class _ExceptionWrapper(_Wrapper[Any]):
     @staticmethod
     def _strip_notes(exc: BaseException) -> None:
         """Drop notes already rendered in the remote traceback."""
-        exc.__dict__.pop("__notes__", None)
+        # Reading __dict__ creates it, which pickle then sends as state.
+        if hasattr(exc, "__notes__"):
+            exc.__dict__.pop("__notes__", None)
         if isinstance(
             exc, BaseExceptionGroup  # type: ignore[name-defined]  # noqa: F821
         ):
