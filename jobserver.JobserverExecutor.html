@@ -1,0 +1,1225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "DTD/xhtml1-strict.dtd">
+<html>
+  
+
+  <head>
+    
+    <title>jobserver.JobserverExecutor</title>
+    <meta name="generator" content="pydoctor 25.10.1"> 
+        
+    </meta>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1 maximum-scale=1" />
+    <link rel="stylesheet" type="text/css" href="bootstrap.min.css" />
+    <link rel="stylesheet" type="text/css" href="apidocs.css" />
+    <link rel="stylesheet" type="text/css" href="extra.css" />
+    
+</head>
+
+  <body>
+
+    
+
+    <nav class="navbar navbar-default mainnavbar">
+      
+  
+  <div class="container-fluid">
+
+
+    <div class="navbar-header">
+      
+      <div class="navlinks">
+        <span class="navbar-brand">
+          <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a> <a href="index.html">API Documentation</a>
+        </span>
+
+        <a href="moduleIndex.html">
+          Modules
+        </a>
+
+        <a href="classIndex.html">
+          Classes
+        </a>
+
+        <a href="nameIndex.html">
+          Names
+        </a>
+
+        <div id="search-box-container">
+          <div class="input-group">
+            <input id="search-box" type="search" name="search-query" placeholder="Search..." aria-label="Search" minlength="2" class="form-control" autocomplete="off" />
+            
+            <span class="input-group-btn">
+              <a style="display: none;" class="btn btn-default" id="search-clear-button" title="Clear" onclick="clearSearch()"><img src="fonts/x-circle.svg" alt="Clear" /></a>
+              <a class="btn btn-default" id="apidocs-help-button" title="Help" href="apidocs-help.html"><img src="fonts/info.svg" alt="Help" /></a>
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="search-results-container" style="display: none;">
+        
+        <div id="search-buttons">
+          <span class="label label-default" id="search-docstrings-button">
+          <label class="checkbox-inline">
+            <input type="checkbox" id="toggle-search-in-docstrings-checkbox" value="false" onclick="toggleSearchInDocstrings()">
+              search in docstrings
+            </input>
+          </label>
+          </span>
+          
+        </div>
+        
+        <noscript>
+            <h1>Cannot search: JavaScript is not supported/enabled in your browser.</h1>
+        </noscript>
+
+        <div id="search-status"> </div>
+
+        <div class="warning" id="search-warn-box" style="display: none;">
+          <p class="rst-last"><span id="search-warn"></span></p>
+        </div>
+
+        <table id="search-results">
+          <!-- Filled dynamically by JS -->
+        </table>
+        
+        <div style="margin-top: 10px;">
+          <p>For more information on the search, visit the <a href="apidocs-help.html#rst-search">help page</a>.</p>
+        </div>
+      </div>
+
+    </div>
+
+
+  </div>
+</nav>
+    
+    <div class="container-fluid">
+
+      <!-- Side navigation -->
+      <div class="sidebarcontainer" style="display: none;">
+        
+        <div class="sidebar"><nav class="sidebar">
+  
+
+  <div>
+
+      <div class="thingTitle">
+        <span>Class</span>
+        <code class="thisobject"><a href="jobserver.JobserverExecutor.html" class="internal-link" title="This class"><wbr></wbr>Jobserver<wbr></wbr>Executor</a></code> 
+      </div>
+      
+      <div>
+        
+
+        
+         
+
+        
+        
+
+        <div class="childrenKindTitle">Methods</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__init__" class="internal-link" title="jobserver.JobserverExecutor.__init__">__init__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__repr__" class="internal-link" title="jobserver.JobserverExecutor.__repr__">__repr__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#map" class="internal-link" title="jobserver.JobserverExecutor.map">map</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#shutdown" class="internal-link" title="jobserver.JobserverExecutor.shutdown">shutdown</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#submit" class="internal-link" title="jobserver.JobserverExecutor.submit">submit</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_translate_blocked" class="internal-link" title="jobserver.JobserverExecutor._translate_blocked">_translate<wbr></wbr>_blocked</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_fail_all" class="internal-link" title="jobserver.JobserverExecutor._fail_all">_fail<wbr></wbr>_all</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_notify_cancel" class="internal-link" title="jobserver.JobserverExecutor._notify_cancel">_notify<wbr></wbr>_cancel</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_receive_loop" class="internal-link" title="jobserver.JobserverExecutor._receive_loop">_receive<wbr></wbr>_loop</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_receive_messages" class="internal-link" title="jobserver.JobserverExecutor._receive_messages">_receive<wbr></wbr>_messages</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+
+        <div class="childrenKindTitle">Attributes</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_broken" class="internal-link" title="jobserver.JobserverExecutor._broken">_broken</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_dispatcher" class="internal-link" title="jobserver.JobserverExecutor._dispatcher">_dispatcher</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_futures" class="internal-link" title="jobserver.JobserverExecutor._futures">_futures</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_jobserver" class="internal-link" title="jobserver.JobserverExecutor._jobserver">_jobserver</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_lock" class="internal-link" title="jobserver.JobserverExecutor._lock">_lock</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_own_jobserver" class="internal-link" title="jobserver.JobserverExecutor._own_jobserver">_own<wbr></wbr>_jobserver</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_receiver" class="internal-link" title="jobserver.JobserverExecutor._receiver">_receiver</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_requests" class="internal-link" title="jobserver.JobserverExecutor._requests">_requests</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_responses" class="internal-link" title="jobserver.JobserverExecutor._responses">_responses</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_shutdown" class="internal-link" title="jobserver.JobserverExecutor._shutdown">_shutdown</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_work_ids" class="internal-link" title="jobserver.JobserverExecutor._work_ids">_work<wbr></wbr>_ids</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div><div>
+
+      <div class="thingTitle">
+        <span>Package</span>
+        <code><a href="index.html" class="internal-link" title="The parent of this class">jobserver</a></code> 
+      </div>
+      
+      <div>
+        
+
+        <div class="childrenKindTitle">Modules</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._compat.html" class="internal-link" title="jobserver._compat">_compat</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._executor.html" class="internal-link" title="jobserver._executor">_executor</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._jobserver.html" class="internal-link" title="jobserver._jobserver">_jobserver</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.html" class="internal-link" title="jobserver._queue">_queue</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._request.html" class="internal-link" title="jobserver._request">_request</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._response.html" class="internal-link" title="jobserver._response">_response</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        <div class="childrenKindTitle">Classes</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Future.html" class="internal-link" title="jobserver.Future"><wbr></wbr>Future</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Jobserver.html" class="internal-link" title="jobserver.Jobserver"><wbr></wbr>Jobserver</a></code>
+            </div>
+        
+
+    </li><li class=" thisobject">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.JobserverExecutor.html" class="internal-link" title="jobserver.JobserverExecutor"><wbr></wbr>Jobserver<wbr></wbr>Executor</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Blocked.html" class="internal-link" title="jobserver.Blocked"><wbr></wbr>Blocked</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.CallbackRaised.html" class="internal-link" title="jobserver.CallbackRaised"><wbr></wbr>Callback<wbr></wbr>Raised</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.LostResult.html" class="internal-link" title="jobserver.LostResult"><wbr></wbr>Lost<wbr></wbr>Result</a></code>
+            </div>
+        
+
+    </li>
+</ul>
+
+        
+         
+
+        
+         
+
+        <div class="childrenKindTitle">Variables</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="index.html#__version__" class="internal-link" title="jobserver.__version__">__version__</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div>
+
+</nav>
+        </div>
+        <div id="collapse-sidebar">
+          <a class="btn btn-link" onclick="toggleSideBarCollapse()" title="Toggle Sidebar Collapse">
+          </a>
+        </div> 
+        <script src="sidebartoggle.js" type="text/javascript"></script>
+       
+      </div>
+
+      <main class="">
+        
+
+        
+
+        <div class="page-header">
+          <h1 class="class"><code><code><a href="index.html" class="internal-link">jobserver</a></code><wbr></wbr>.<code><a href="jobserver.JobserverExecutor.html" class="internal-link" title="jobserver.JobserverExecutor">JobserverExecutor</a></code></code></h1>
+          <div id="show-private">
+            <button class="btn btn-link" onclick="togglePrivate()">Toggle Private API</button>
+          </div>
+        </div>
+
+        <div class="categoryHeader">
+          class documentation
+        </div>
+
+        <div class="extrasDocstring">
+          <p class="class-signature"><code><span class="py-keyword">class</span> <span class="py-defname">JobserverExecutor</span>(<a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Executor" class="intersphinx-link">concurrent.futures.Executor</a>):</code></p><p>Constructor: <code><a href="#__init__" class="internal-link" title="jobserver.JobserverExecutor.__init__">JobserverExecutor(jobserver)</a></code></p><p><a href="classIndex.html#jobserver.JobserverExecutor">View In Hierarchy</a></p>
+        </div>
+
+        <div class="moduleDocstring">
+          <div><p>A concurrent.futures.Executor that delegates to a Jobserver.</p>
+<p>JobserverExecutor is a drop-in replacement for ProcessPoolExecutor that
+honors the standard Executor interface.  Existing code using submit(),
+map(), and the context manager protocol should work without modification.</p>
+<p>Do not provide untrusted arguments to submit() because they may be
+pickled.</p>
+</div>
+        </div>
+
+        <div id="split-tables">
+          <table class="children sortable" id="id33">
+  
+  
+  <tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__init__" class="internal-link" title="jobserver.JobserverExecutor.__init__">__init__</a></code></td>
+    <td>Initialize the executor with an optional Jobserver.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__repr__" class="internal-link" title="jobserver.JobserverExecutor.__repr__">__repr__</a></code></td>
+    <td>Returns a string representation of this instance.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#map" class="internal-link" title="jobserver.JobserverExecutor.map">map</a></code></td>
+    <td>Return an iterator of fn applied to each iterables entry.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#shutdown" class="internal-link" title="jobserver.JobserverExecutor.shutdown">shutdown</a></code></td>
+    <td>Shut down the executor, optionally cancelling pending futures.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#submit" class="internal-link" title="jobserver.JobserverExecutor.submit">submit</a></code></td>
+    <td>Submit a callable for execution and return a Future.</td>
+  </tr><tr class="staticmethod private">
+    
+    <td>Static Method</td>
+    <td><code><a href="#_translate_blocked" class="internal-link" title="jobserver.JobserverExecutor._translate_blocked">_translate<wbr></wbr>_blocked</a></code></td>
+    <td>Yield from inner, re-raising the first Blocked as TimeoutError.</td>
+  </tr><tr class="method private">
+    
+    <td>Method</td>
+    <td><code><a href="#_fail_all" class="internal-link" title="jobserver.JobserverExecutor._fail_all">_fail<wbr></wbr>_all</a></code></td>
+    <td>Fail every outstanding future; no more results will arrive.</td>
+  </tr><tr class="method private">
+    
+    <td>Method</td>
+    <td><code><a href="#_notify_cancel" class="internal-link" title="jobserver.JobserverExecutor._notify_cancel">_notify<wbr></wbr>_cancel</a></code></td>
+    <td>Emit Cancel(work_id) so the dispatcher prunes the pending work.</td>
+  </tr><tr class="method private">
+    
+    <td>Method</td>
+    <td><code><a href="#_receive_loop" class="internal-link" title="jobserver.JobserverExecutor._receive_loop">_receive<wbr></wbr>_loop</a></code></td>
+    <td>Drain responses; never let the receiver die silently.</td>
+  </tr><tr class="method private">
+    
+    <td>Method</td>
+    <td><code><a href="#_receive_messages" class="internal-link" title="jobserver.JobserverExecutor._receive_messages">_receive<wbr></wbr>_messages</a></code></td>
+    <td>Drain response queue, completing c.f.Futures as results arrive.</td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_broken" class="internal-link" title="jobserver.JobserverExecutor._broken">_broken</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_dispatcher" class="internal-link" title="jobserver.JobserverExecutor._dispatcher">_dispatcher</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_futures" class="internal-link" title="jobserver.JobserverExecutor._futures">_futures</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_jobserver" class="internal-link" title="jobserver.JobserverExecutor._jobserver">_jobserver</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_lock" class="internal-link" title="jobserver.JobserverExecutor._lock">_lock</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_own_jobserver" class="internal-link" title="jobserver.JobserverExecutor._own_jobserver">_own<wbr></wbr>_jobserver</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_receiver" class="internal-link" title="jobserver.JobserverExecutor._receiver">_receiver</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_requests" class="internal-link" title="jobserver.JobserverExecutor._requests">_requests</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_responses" class="internal-link" title="jobserver.JobserverExecutor._responses">_responses</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_shutdown" class="internal-link" title="jobserver.JobserverExecutor._shutdown">_shutdown</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_work_ids" class="internal-link" title="jobserver.JobserverExecutor._work_ids">_work<wbr></wbr>_ids</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr>
+</table>
+          
+
+            
+        </div>
+
+        <div id="child-list">
+          <div class="basemethod">
+  
+  
+  <a name="jobserver.JobserverExecutor.__init__">
+    
+  </a>
+  <a name="__init__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__init__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">jobserver: <code><a href="jobserver.Jobserver.html" class="internal-link" title="jobserver.Jobserver">Jobserver</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></span>):</span>
+    
+    <a class="headerLink" href="#__init__" title="jobserver.JobserverExecutor.__init__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Initialize the executor with an optional Jobserver.</p>
+<p>When jobserver is None, a default-constructed Jobserver is
+created and owned by this executor.</p>
+</div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.JobserverExecutor.__repr__">
+    
+  </a>
+  <a name="__repr__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__repr__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a></code>:</span>
+    
+    <a class="headerLink" href="#__repr__" title="jobserver.JobserverExecutor.__repr__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Returns a string representation of this instance.</p></div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.JobserverExecutor.map">
+    
+  </a>
+  <a name="map">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">map</span><span class="function-signature long-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">fn: <code>Callable[<wbr></wbr><span class="rst-variable-ellipsis">...</span>, <wbr></wbr>T]</code>, </span><span class="rst-sig-symbol">/, </span><span class="rst-sig-param">*iterables: <code>Any</code>, </span><span class="rst-sig-param">timeout: <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a>, </span><span class="rst-sig-param">chunksize: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code> = 1, </span><span class="rst-sig-param">buffersize: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></span>) -&gt; <code>Iterator[<wbr></wbr>T]</code>:</span>
+    
+    <a class="headerLink" href="#map" title="jobserver.JobserverExecutor.map">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Return an iterator of fn applied to each iterables entry.</p></div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.JobserverExecutor.shutdown">
+    
+  </a>
+  <a name="shutdown">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">shutdown</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">wait: <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#True" class="intersphinx-link">True</a>, </span><span class="rst-sig-symbol">*, </span><span class="rst-sig-param">cancel_futures: <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#False" class="intersphinx-link">False</a></span>):</span>
+    
+    <a class="headerLink" href="#shutdown" title="jobserver.JobserverExecutor.shutdown">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Shut down the executor, optionally cancelling pending futures.</p>
+<p>Like ProcessPoolExecutor, shutdown(wait=False) is not fire-and-forget:
+the dispatcher keeps the interpreter alive until running work finishes.
+cancel_futures only prunes pending work; running futures are drained.</p>
+</div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.JobserverExecutor.submit">
+    
+  </a>
+  <a name="submit">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">submit</span><span class="function-signature long-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">fn: <code>Callable[<wbr></wbr><span class="rst-variable-ellipsis">...</span>, <wbr></wbr>T]</code>, </span><span class="rst-sig-symbol">/, </span><span class="rst-sig-param">*args: <code>Any</code>, </span><span class="rst-sig-param">**kwargs: <code>Any</code></span>) -&gt; <code><a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future" class="intersphinx-link">concurrent.futures.Future</a>[<wbr></wbr>T]</code>:</span>
+    
+    <a class="headerLink" href="#submit" title="jobserver.JobserverExecutor.submit">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Submit a callable for execution and return a Future.</p></div>
+  </div>
+</div><div class="basestaticmethod private">
+  
+  
+  <a name="jobserver.JobserverExecutor._translate_blocked">
+    
+  </a>
+  <a name="_translate_blocked">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <div><span class="decorator">@<a href="https://docs.python.org/3/builtins/functions.html#staticmethod" class="intersphinx-link">staticmethod</a><br /></span></div>
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_translate_blocked</span><span class="function-signature">(<span class="rst-sig-param">inner: <code>Iterator[<wbr></wbr>T]</code></span>) -&gt; <code>Iterator[<wbr></wbr>T]</code>:</span>
+    
+    <a class="headerLink" href="#_translate_blocked" title="jobserver.JobserverExecutor._translate_blocked">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Yield from inner, re-raising the first Blocked as TimeoutError.</p></div>
+  </div>
+</div><div class="basemethod private">
+  
+  
+  <a name="jobserver.JobserverExecutor._fail_all">
+    
+  </a>
+  <a name="_fail_all">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_fail_all</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">cause: <code><a href="https://docs.python.org/3/builtins/exceptions.html#BaseException" class="intersphinx-link">BaseException</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_fail_all" title="jobserver.JobserverExecutor._fail_all">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Fail every outstanding future; no more results will arrive.</p>
+<p>cause is None when the dispatcher exited; otherwise the receiver died
+and cause is recorded as _broken and chained onto each failed future.</p>
+</div>
+  </div>
+</div><div class="basemethod private">
+  
+  
+  <a name="jobserver.JobserverExecutor._notify_cancel">
+    
+  </a>
+  <a name="_notify_cancel">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_notify_cancel</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">work_id: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_notify_cancel" title="jobserver.JobserverExecutor._notify_cancel">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Emit Cancel(work_id) so the dispatcher prunes the pending work.</p></div>
+  </div>
+</div><div class="basemethod private">
+  
+  
+  <a name="jobserver.JobserverExecutor._receive_loop">
+    
+  </a>
+  <a name="_receive_loop">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_receive_loop</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>):</span>
+    
+    <a class="headerLink" href="#_receive_loop" title="jobserver.JobserverExecutor._receive_loop">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Drain responses; never let the receiver die silently.</p>
+<p>An unhandled exception here would otherwise kill this daemon thread
+and hang every outstanding future.  Fail them with the cause attached,
+then re-raise so the thread still dies loudly via threading.excepthook.</p>
+</div>
+  </div>
+</div><div class="basemethod private">
+  
+  
+  <a name="jobserver.JobserverExecutor._receive_messages">
+    
+  </a>
+  <a name="_receive_messages">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_receive_messages</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>):</span>
+    
+    <a class="headerLink" href="#_receive_messages" title="jobserver.JobserverExecutor._receive_messages">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Drain response queue, completing c.f.Futures as results arrive.</p></div>
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._broken">
+    
+  </a>
+  <a name="_broken">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_broken</span>: <code><a href="https://docs.python.org/3/builtins/exceptions.html#BaseException" class="intersphinx-link">BaseException</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> =
+    
+    <a class="headerLink" href="#_broken" title="jobserver.JobserverExecutor._broken">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._dispatcher">
+    
+  </a>
+  <a name="_dispatcher">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_dispatcher</span> =
+    
+    <a class="headerLink" href="#_dispatcher" title="jobserver.JobserverExecutor._dispatcher">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._futures">
+    
+  </a>
+  <a name="_futures">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_futures</span>: <code><a href="https://docs.python.org/3/builtins/stdtypes.html#dict" class="intersphinx-link">dict</a>[<wbr></wbr><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a>, <wbr></wbr><a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future" class="intersphinx-link">concurrent.futures.Future</a>]</code> =
+    
+    <a class="headerLink" href="#_futures" title="jobserver.JobserverExecutor._futures">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._jobserver">
+    
+  </a>
+  <a name="_jobserver">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_jobserver</span> =
+    
+    <a class="headerLink" href="#_jobserver" title="jobserver.JobserverExecutor._jobserver">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._lock">
+    
+  </a>
+  <a name="_lock">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_lock</span> =
+    
+    <a class="headerLink" href="#_lock" title="jobserver.JobserverExecutor._lock">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._own_jobserver">
+    
+  </a>
+  <a name="_own_jobserver">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_own_jobserver</span>: <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code> =
+    
+    <a class="headerLink" href="#_own_jobserver" title="jobserver.JobserverExecutor._own_jobserver">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._receiver">
+    
+  </a>
+  <a name="_receiver">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_receiver</span> =
+    
+    <a class="headerLink" href="#_receiver" title="jobserver.JobserverExecutor._receiver">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._requests">
+    
+  </a>
+  <a name="_requests">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_requests</span>: <code>SPSCQueue</code> =
+    
+    <a class="headerLink" href="#_requests" title="jobserver.JobserverExecutor._requests">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._responses">
+    
+  </a>
+  <a name="_responses">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_responses</span>: <code>SPSCQueue</code> =
+    
+    <a class="headerLink" href="#_responses" title="jobserver.JobserverExecutor._responses">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._shutdown">
+    
+  </a>
+  <a name="_shutdown">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_shutdown</span>: <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code> =
+    
+    <a class="headerLink" href="#_shutdown" title="jobserver.JobserverExecutor._shutdown">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.JobserverExecutor._work_ids">
+    
+  </a>
+  <a name="_work_ids">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_work_ids</span>: <code>Iterator[<wbr></wbr><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a>]</code> =
+    
+    <a class="headerLink" href="#_work_ids" title="jobserver.JobserverExecutor._work_ids">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div>
+        </div>
+      
+      </main>
+    </div>
+
+    <footer class="navbar navbar-default">
+
+  
+  <div class="container-fluid">
+    <a href="index.html">API Documentation</a> for <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a>,
+  generated by <a href="https://github.com/twisted/pydoctor/">pydoctor</a>
+    25.10.1 at 2026-10-03 01:54:08.
+  </div>
+
+  <!-- Search related scripts needs to be loaded at the end of HTML 
+    parsing not to introduce overhead and display HTML data asap -->
+  <script src="ajax.js" type="text/javascript"></script>
+  <script src="searchlib.js" type="text/javascript"></script>
+  <script src="search.js" type="text/javascript"></script>
+
+</footer>
+  
+    <script src="pydoctor.js" type="text/javascript"></script>
+
+  </body>
+</html>

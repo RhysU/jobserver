@@ -1,0 +1,1175 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "DTD/xhtml1-strict.dtd">
+<html>
+  
+
+  <head>
+    
+    <title>jobserver.Future</title>
+    <meta name="generator" content="pydoctor 25.10.1"> 
+        
+    </meta>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1 maximum-scale=1" />
+    <link rel="stylesheet" type="text/css" href="bootstrap.min.css" />
+    <link rel="stylesheet" type="text/css" href="apidocs.css" />
+    <link rel="stylesheet" type="text/css" href="extra.css" />
+    
+</head>
+
+  <body>
+
+    
+
+    <nav class="navbar navbar-default mainnavbar">
+      
+  
+  <div class="container-fluid">
+
+
+    <div class="navbar-header">
+      
+      <div class="navlinks">
+        <span class="navbar-brand">
+          <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a> <a href="index.html">API Documentation</a>
+        </span>
+
+        <a href="moduleIndex.html">
+          Modules
+        </a>
+
+        <a href="classIndex.html">
+          Classes
+        </a>
+
+        <a href="nameIndex.html">
+          Names
+        </a>
+
+        <div id="search-box-container">
+          <div class="input-group">
+            <input id="search-box" type="search" name="search-query" placeholder="Search..." aria-label="Search" minlength="2" class="form-control" autocomplete="off" />
+            
+            <span class="input-group-btn">
+              <a style="display: none;" class="btn btn-default" id="search-clear-button" title="Clear" onclick="clearSearch()"><img src="fonts/x-circle.svg" alt="Clear" /></a>
+              <a class="btn btn-default" id="apidocs-help-button" title="Help" href="apidocs-help.html"><img src="fonts/info.svg" alt="Help" /></a>
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="search-results-container" style="display: none;">
+        
+        <div id="search-buttons">
+          <span class="label label-default" id="search-docstrings-button">
+          <label class="checkbox-inline">
+            <input type="checkbox" id="toggle-search-in-docstrings-checkbox" value="false" onclick="toggleSearchInDocstrings()">
+              search in docstrings
+            </input>
+          </label>
+          </span>
+          
+        </div>
+        
+        <noscript>
+            <h1>Cannot search: JavaScript is not supported/enabled in your browser.</h1>
+        </noscript>
+
+        <div id="search-status"> </div>
+
+        <div class="warning" id="search-warn-box" style="display: none;">
+          <p class="rst-last"><span id="search-warn"></span></p>
+        </div>
+
+        <table id="search-results">
+          <!-- Filled dynamically by JS -->
+        </table>
+        
+        <div style="margin-top: 10px;">
+          <p>For more information on the search, visit the <a href="apidocs-help.html#rst-search">help page</a>.</p>
+        </div>
+      </div>
+
+    </div>
+
+
+  </div>
+</nav>
+    
+    <div class="container-fluid">
+
+      <!-- Side navigation -->
+      <div class="sidebarcontainer" style="display: none;">
+        
+        <div class="sidebar"><nav class="sidebar">
+  
+
+  <div>
+
+      <div class="thingTitle">
+        <span>Class</span>
+        <code class="thisobject"><a href="jobserver.Future.html" class="internal-link" title="This class"><wbr></wbr>Future</a></code> 
+      </div>
+      
+      <div>
+        
+
+        
+         
+
+        
+        
+
+        <div class="childrenKindTitle">Methods</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__copy__" class="internal-link" title="jobserver.Future.__copy__">__copy__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__del__" class="internal-link" title="jobserver.Future.__del__">__del__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__init__" class="internal-link" title="jobserver.Future.__init__">__init__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__reduce__" class="internal-link" title="jobserver.Future.__reduce__">__reduce__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__repr__" class="internal-link" title="jobserver.Future.__repr__">__repr__</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#done" class="internal-link" title="jobserver.Future.done">done</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#result" class="internal-link" title="jobserver.Future.result">result</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#wait" class="internal-link" title="jobserver.Future.wait">wait</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#when_done" class="internal-link" title="jobserver.Future.when_done">when<wbr></wbr>_done</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_issue_callbacks" class="internal-link" title="jobserver.Future._issue_callbacks">_issue<wbr></wbr>_callbacks</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_when_done" class="internal-link" title="jobserver.Future._when_done">_when<wbr></wbr>_done</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+
+        <div class="childrenKindTitle">Attributes</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#__slots__" class="internal-link" title="jobserver.Future.__slots__">__slots__</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_callbacks" class="internal-link" title="jobserver.Future._callbacks">_callbacks</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_callbacks_issuing" class="internal-link" title="jobserver.Future._callbacks_issuing">_callbacks<wbr></wbr>_issuing</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_callbacks_seqno" class="internal-link" title="jobserver.Future._callbacks_seqno">_callbacks<wbr></wbr>_seqno</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_connection" class="internal-link" title="jobserver.Future._connection">_connection</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_process" class="internal-link" title="jobserver.Future._process">_process</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_rlock" class="internal-link" title="jobserver.Future._rlock">_rlock</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_wrapper" class="internal-link" title="jobserver.Future._wrapper">_wrapper</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div><div>
+
+      <div class="thingTitle">
+        <span>Package</span>
+        <code><a href="index.html" class="internal-link" title="The parent of this class">jobserver</a></code> 
+      </div>
+      
+      <div>
+        
+
+        <div class="childrenKindTitle">Modules</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._compat.html" class="internal-link" title="jobserver._compat">_compat</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._executor.html" class="internal-link" title="jobserver._executor">_executor</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._jobserver.html" class="internal-link" title="jobserver._jobserver">_jobserver</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.html" class="internal-link" title="jobserver._queue">_queue</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._request.html" class="internal-link" title="jobserver._request">_request</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._response.html" class="internal-link" title="jobserver._response">_response</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        <div class="childrenKindTitle">Classes</div>
+        <ul>
+    
+    <li class=" thisobject">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Future.html" class="internal-link" title="jobserver.Future"><wbr></wbr>Future</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Jobserver.html" class="internal-link" title="jobserver.Jobserver"><wbr></wbr>Jobserver</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.JobserverExecutor.html" class="internal-link" title="jobserver.JobserverExecutor"><wbr></wbr>Jobserver<wbr></wbr>Executor</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Blocked.html" class="internal-link" title="jobserver.Blocked"><wbr></wbr>Blocked</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.CallbackRaised.html" class="internal-link" title="jobserver.CallbackRaised"><wbr></wbr>Callback<wbr></wbr>Raised</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.LostResult.html" class="internal-link" title="jobserver.LostResult"><wbr></wbr>Lost<wbr></wbr>Result</a></code>
+            </div>
+        
+
+    </li>
+</ul>
+
+        
+         
+
+        
+         
+
+        <div class="childrenKindTitle">Variables</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="index.html#__version__" class="internal-link" title="jobserver.__version__">__version__</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div>
+
+</nav>
+        </div>
+        <div id="collapse-sidebar">
+          <a class="btn btn-link" onclick="toggleSideBarCollapse()" title="Toggle Sidebar Collapse">
+          </a>
+        </div> 
+        <script src="sidebartoggle.js" type="text/javascript"></script>
+       
+      </div>
+
+      <main class="">
+        
+
+        
+
+        <div class="page-header">
+          <h1 class="class"><code><code><a href="index.html" class="internal-link">jobserver</a></code><wbr></wbr>.<code><a href="jobserver.Future.html" class="internal-link" title="jobserver.Future">Future</a></code></code></h1>
+          <div id="show-private">
+            <button class="btn btn-link" onclick="togglePrivate()">Toggle Private API</button>
+          </div>
+        </div>
+
+        <div class="categoryHeader">
+          class documentation
+        </div>
+
+        <div class="extrasDocstring">
+          <p class="class-signature"><code><span class="py-keyword">class</span> <span class="py-defname">Future</span>(Generic[<wbr></wbr>T]):</code></p><p>Constructor: <code><a href="#__init__" class="internal-link" title="jobserver.Future.__init__">Future(process, connection)</a></code></p><p><a href="classIndex.html#jobserver.Future">View In Hierarchy</a></p>
+        </div>
+
+        <div class="moduleDocstring">
+          <div><p>Future instances are obtained by submitting work to a Jobserver.</p>
+<p>Futures report if a submission is done(), its result(), and may
+additionally be used to register callbacks issued at completion.
+Futures are threadsafe.  Futures can be neither copied nor pickled.</p>
+</div>
+        </div>
+
+        <div id="split-tables">
+          <table class="children sortable" id="id35">
+  
+  
+  <tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__copy__" class="internal-link" title="jobserver.Future.__copy__">__copy__</a></code></td>
+    <td>Disallow copying as duplicates cannot sensibly share resources.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__del__" class="internal-link" title="jobserver.Future.__del__">__del__</a></code></td>
+    <td>Emit ResourceWarning if this Future still holds OS resources.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__init__" class="internal-link" title="jobserver.Future.__init__">__init__</a></code></td>
+    <td>An instance expecting a Process to send(...) a result to a Connection.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__reduce__" class="internal-link" title="jobserver.Future.__reduce__">__reduce__</a></code></td>
+    <td>Disallow pickling as duplicates cannot sensibly share resources.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#__repr__" class="internal-link" title="jobserver.Future.__repr__">__repr__</a></code></td>
+    <td>Returns a string representation of this instance.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#done" class="internal-link" title="jobserver.Future.done">done</a></code></td>
+    <td>Never raising Blocked, returns True if result(timeout=0) won't block.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#result" class="internal-link" title="jobserver.Future.result">result</a></code></td>
+    <td>Obtain result when ready.  Raises Blocked if result unavailable.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#wait" class="internal-link" title="jobserver.Future.wait">wait</a></code></td>
+    <td>Waiting at most timeout, return True if result(timeout=0) won't block.</td>
+  </tr><tr class="method">
+    
+    <td>Method</td>
+    <td><code><a href="#when_done" class="internal-link" title="jobserver.Future.when_done">when<wbr></wbr>_done</a></code></td>
+    <td>Register <tt class="rst-docutils rst-literal"><span class="pre">fn(*args,</span> **kwargs)</tt> for execution after Future.done(...).</td>
+  </tr><tr class="classvariable">
+    
+    <td>Class Variable</td>
+    <td><code><a href="#__slots__" class="internal-link" title="jobserver.Future.__slots__">__slots__</a></code></td>
+    <td>Defines instance data members.</td>
+  </tr><tr class="method private">
+    
+    <td>Method</td>
+    <td><code><a href="#_issue_callbacks" class="internal-link" title="jobserver.Future._issue_callbacks">_issue<wbr></wbr>_callbacks</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="method private">
+    
+    <td>Method</td>
+    <td><code><a href="#_when_done" class="internal-link" title="jobserver.Future._when_done">_when<wbr></wbr>_done</a></code></td>
+    <td>Register a callback with some priority, returning its seqno.</td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_callbacks" class="internal-link" title="jobserver.Future._callbacks">_callbacks</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_callbacks_issuing" class="internal-link" title="jobserver.Future._callbacks_issuing">_callbacks<wbr></wbr>_issuing</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_callbacks_seqno" class="internal-link" title="jobserver.Future._callbacks_seqno">_callbacks<wbr></wbr>_seqno</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_connection" class="internal-link" title="jobserver.Future._connection">_connection</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_process" class="internal-link" title="jobserver.Future._process">_process</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_rlock" class="internal-link" title="jobserver.Future._rlock">_rlock</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="instancevariable private">
+    
+    <td>Instance Variable</td>
+    <td><code><a href="#_wrapper" class="internal-link" title="jobserver.Future._wrapper">_wrapper</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr>
+</table>
+          
+
+            
+        </div>
+
+        <div id="child-list">
+          <div class="basemethod">
+  
+  
+  <a name="jobserver.Future.__copy__">
+    
+  </a>
+  <a name="__copy__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__copy__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>) -&gt; <code>NoReturn</code>:</span>
+    
+    <a class="headerLink" href="#__copy__" title="jobserver.Future.__copy__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Disallow copying as duplicates cannot sensibly share resources.</p></div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.__del__">
+    
+  </a>
+  <a name="__del__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__del__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>):</span>
+    
+    <a class="headerLink" href="#__del__" title="jobserver.Future.__del__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Emit ResourceWarning if this Future still holds OS resources.</p>
+<p>The Jobserver keeps an in-flight Future alive while it remains open,
+so this warning mostly covers a Future that outlives a closed
+Jobserver.  A Future dropped while the Jobserver is open keeps the
+worker running and the Jobserver reports it on finalization instead.</p>
+</div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.__init__">
+    
+  </a>
+  <a name="__init__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__init__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">process: <code>BaseProcess</code>, </span><span class="rst-sig-param">connection: <code>Connection</code></span>):</span>
+    
+    <a class="headerLink" href="#__init__" title="jobserver.Future.__init__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>An instance expecting a Process to send(...) a result to a Connection.</p></div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.__reduce__">
+    
+  </a>
+  <a name="__reduce__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__reduce__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>) -&gt; <code>NoReturn</code>:</span>
+    
+    <a class="headerLink" href="#__reduce__" title="jobserver.Future.__reduce__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Disallow pickling as duplicates cannot sensibly share resources.</p></div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.__repr__">
+    
+  </a>
+  <a name="__repr__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">__repr__</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a></code>:</span>
+    
+    <a class="headerLink" href="#__repr__" title="jobserver.Future.__repr__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Returns a string representation of this instance.</p></div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.done">
+    
+  </a>
+  <a name="done">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">done</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">timeout: <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = 0</span>) -&gt; <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code>:</span>
+    
+    <a class="headerLink" href="#done" title="jobserver.Future.done">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Never raising Blocked, returns True if result(timeout=0) won't block.</p>
+<p>Returns whether completion can be confirmed within the timeout.
+True means result() will not raise Blocked. Timeout is given in
+seconds with None meaning to block indefinitely. Never raises
+Blocked but instead returns False on unavailable result.</p>
+<p>May raise CallbackRaised from at most one registered callback.
+See CallbackRaised documentation for callback error semantics.</p>
+</div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.result">
+    
+  </a>
+  <a name="result">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">result</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">timeout: <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></span>) -&gt; <code>T</code>:</span>
+    
+    <a class="headerLink" href="#result" title="jobserver.Future.result">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Obtain result when ready.  Raises Blocked if result unavailable.</p>
+<p>Timeout is given in seconds with None meaning to block indefinitely.
+May raise CallbackRaised from at most one registered callback.
+See CallbackRaised documentation for callback error semantics.</p>
+<p>From Python 3.11, Exception.add_note(...) renders only in its original
+traceback, for exceptions, exception groups, and group members.</p>
+</div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.wait">
+    
+  </a>
+  <a name="wait">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">wait</span><span class="function-signature long-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">timeout: <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a>, </span><span class="rst-sig-symbol">*, </span><span class="rst-sig-param">signal: <code><a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a> | <a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a> | <a href="https://docs.python.org/3/library/signal.html#signal.Signals" class="intersphinx-link">signal.Signals</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code>:</span>
+    
+    <a class="headerLink" href="#wait" title="jobserver.Future.wait">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Waiting at most timeout, return True if result(timeout=0) won't block.</p>
+<p>First, sends any provided signal to any underlying, running process.
+Second, returns True once the result pipe yields a result or closes
+without one. The work is not done until the pipe is closed.
+Timeout is given in seconds with None meaning to block indefinitely.
+Never raises Blocked but instead returns False on unavailable result.</p>
+<p>Allows, e.g., a SIGTERM followed by waiting 1 second for termination.
+A signal need not force termination, e.g. SIGUSR1 or SIGCONT.
+Caution: SIGSTOP suspends the child indefinitely; the Future
+cannot complete until a subsequent wait(signal=SIGCONT).</p>
+<p>May raise CallbackRaised from at most one registered callback.
+See CallbackRaised documentation for callback error semantics.</p>
+</div>
+  </div>
+</div><div class="basemethod">
+  
+  
+  <a name="jobserver.Future.when_done">
+    
+  </a>
+  <a name="when_done">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">when_done</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">fn: <code>Callable</code>, </span><span class="rst-sig-symbol">/, </span><span class="rst-sig-param">*args: <code>Any</code>, </span><span class="rst-sig-param">**kwargs: <code>Any</code></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>:</span>
+    
+    <a class="headerLink" href="#when_done" title="jobserver.Future.when_done">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Register <tt class="rst-docutils rst-literal"><span class="pre">fn(*args,</span> **kwargs)</tt> for execution after Future.done(...).</p>
+<p>Callbacks run synchronously, inline, on whichever thread first
+observes completion.  There is no background thread or timeout.
+When already done(...) function fn(...) will be invoked
+immediately after completion of any currently executing or
+registered callbacks for <em>this</em> Future.</p>
+<p>The Future is not automatically passed; to receive it, bind it
+explicitly via args, e.g. future.when_done(cb, future).
+May raise CallbackRaised from at most this new callback.</p>
+<p>Returns a seqno identifying this registration.  Should fn raise,
+the resulting CallbackRaised reports it via CallbackRaised.seqno.</p>
+<p>Callbacks must not raise BaseException (e.g. KeyboardInterrupt,
+SystemExit); only Exception subclasses are wrapped in
+CallbackRaised -- a BaseException propagates uncaught.</p>
+</div>
+  </div>
+</div><div class="baseclassvariable">
+  
+  
+  <a name="jobserver.Future.__slots__">
+    
+  </a>
+  <a name="__slots__">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">__slots__</span>: <code><a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" class="intersphinx-link">tuple</a>[<wbr></wbr><a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a>, <wbr></wbr><span class="rst-variable-ellipsis">...</span>]</code> =
+    
+    <a class="headerLink" href="#__slots__" title="jobserver.Future.__slots__">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p>Defines instance data members.</p></div>
+    
+  </div>
+</div><div class="basemethod private">
+  
+  
+  <a name="jobserver.Future._issue_callbacks">
+    
+  </a>
+  <a name="_issue_callbacks">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_issue_callbacks</span><span class="function-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span></span>):</span>
+    
+    <a class="headerLink" href="#_issue_callbacks" title="jobserver.Future._issue_callbacks">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+  </div>
+</div><div class="basemethod private">
+  
+  
+  <a name="jobserver.Future._when_done">
+    
+  </a>
+  <a name="_when_done">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_when_done</span><span class="function-signature long-signature">(<span class="rst-sig-param"><span class="rst-undocumented">self</span>, </span><span class="rst-sig-param">fn: <code>Callable</code>, </span><span class="rst-sig-param">priority: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>, </span><span class="rst-sig-param">args: <code><a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" class="intersphinx-link">tuple</a>[<wbr></wbr>Any, <wbr></wbr><span class="rst-variable-ellipsis">...</span>]</code> = (), </span><span class="rst-sig-param">kwargs: <code>Mapping[<wbr></wbr><a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a>, <wbr></wbr>Any] | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> = <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>:</span>
+    
+    <a class="headerLink" href="#_when_done" title="jobserver.Future._when_done">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Register a callback with some priority, returning its seqno.</p></div>
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._callbacks">
+    
+  </a>
+  <a name="_callbacks">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_callbacks</span>: <code><a href="https://docs.python.org/3/builtins/stdtypes.html#list" class="intersphinx-link">list</a>[<wbr></wbr><a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" class="intersphinx-link">tuple</a>]</code> =
+    
+    <a class="headerLink" href="#_callbacks" title="jobserver.Future._callbacks">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._callbacks_issuing">
+    
+  </a>
+  <a name="_callbacks_issuing">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_callbacks_issuing</span>: <code><a href="https://docs.python.org/3/builtins/functions.html#bool" class="intersphinx-link">bool</a></code> =
+    
+    <a class="headerLink" href="#_callbacks_issuing" title="jobserver.Future._callbacks_issuing">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._callbacks_seqno">
+    
+  </a>
+  <a name="_callbacks_seqno">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_callbacks_seqno</span>: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code> =
+    
+    <a class="headerLink" href="#_callbacks_seqno" title="jobserver.Future._callbacks_seqno">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._connection">
+    
+  </a>
+  <a name="_connection">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_connection</span>: <code>Connection | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> =
+    
+    <a class="headerLink" href="#_connection" title="jobserver.Future._connection">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._process">
+    
+  </a>
+  <a name="_process">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_process</span>: <code>BaseProcess | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> =
+    
+    <a class="headerLink" href="#_process" title="jobserver.Future._process">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._rlock">
+    
+  </a>
+  <a name="_rlock">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_rlock</span> =
+    
+    <a class="headerLink" href="#_rlock" title="jobserver.Future._rlock">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div><div class="baseinstancevariable private">
+  
+  
+  <a name="jobserver.Future._wrapper">
+    
+  </a>
+  <a name="_wrapper">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_wrapper</span>: <code>_Wrapper[<wbr></wbr>T] | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code> =
+    
+    <a class="headerLink" href="#_wrapper" title="jobserver.Future._wrapper">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    
+  </div>
+</div>
+        </div>
+      
+      </main>
+    </div>
+
+    <footer class="navbar navbar-default">
+
+  
+  <div class="container-fluid">
+    <a href="index.html">API Documentation</a> for <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a>,
+  generated by <a href="https://github.com/twisted/pydoctor/">pydoctor</a>
+    25.10.1 at 2026-10-03 01:54:08.
+  </div>
+
+  <!-- Search related scripts needs to be loaded at the end of HTML 
+    parsing not to introduce overhead and display HTML data asap -->
+  <script src="ajax.js" type="text/javascript"></script>
+  <script src="searchlib.js" type="text/javascript"></script>
+  <script src="search.js" type="text/javascript"></script>
+
+</footer>
+  
+    <script src="pydoctor.js" type="text/javascript"></script>
+
+  </body>
+</html>
