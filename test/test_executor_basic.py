@@ -31,6 +31,7 @@ from jobserver import (
 )
 from jobserver._compat import PICKLE_DUMP_ERRORS
 from jobserver._executor import _responses_put_failed
+from jobserver._jobserver import _RemoteTraceback
 from jobserver._queue import SPSCQueue
 
 from .helpers import (
@@ -108,6 +109,15 @@ class TestExceptionPropagation(unittest.TestCase):
                 f = exe.submit(helper_raise, ValueError, "raised")
                 exc = f.exception(timeout=TIMEOUT)
                 self.assertIsInstance(exc, ValueError)
+
+    def test_exception_carries_worker_traceback(self) -> None:
+        """exception() carries the worker's traceback as its cause."""
+        with Jobserver(context=FAST, slots=2) as js:
+            with JobserverExecutor(js) as exe:
+                f = exe.submit(helper_raise, ValueError, "raised")
+                exc = f.exception(timeout=TIMEOUT)
+        self.assertIsInstance(exc.__cause__, _RemoteTraceback)
+        self.assertIn("helper_raise", str(exc.__cause__))
 
     def test_exception_none_on_success(self) -> None:
         """exception() returns None on success."""

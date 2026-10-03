@@ -305,19 +305,25 @@ class JobserverExecutor(concurrent.futures.Executor):
                 if future is not None:
                     # Returns False when the future was cancelled before this
                     # Started message arrived.  The work is already running
-                    # in the dispatcher; the eventual Completed or Failed
+                    # in the dispatcher; the eventual Finished or Failed
                     # will be silently discarded by the cancelled() check
                     # below, so no further action is needed here.
                     try:
                         future.set_running_or_notify_cancel()
                     except concurrent.futures.InvalidStateError:
                         pass
-            elif isinstance(msg, _response.Completed):
+            elif isinstance(msg, _response.Finished):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
                 if future is not None and not future.cancelled():
-                    # Type erased to Any; see Completed docstring.
-                    future.set_result(msg.value)
+                    try:
+                        value = msg.wrapper.unwrap()
+                    except Exception as exc:
+                        # Drop receiver frames; __cause__ has the worker's.
+                        future.set_exception(exc.with_traceback(None))
+                    else:
+                        # Type erased to Any; see Finished docstring.
+                        future.set_result(value)
             elif isinstance(msg, _response.Failed):
                 with self._lock:
                     future = self._futures.pop(msg.work_id, None)
@@ -581,11 +587,11 @@ def _bridge_result(
     responses: SPSCQueue,
 ) -> None:
     """Transfer a completed jobserver Future's outcome to response queue."""
-    try:
-        value = f.result(timeout=0)
-        responses.put(_response.Completed(work_id=work_id, value=value))
-    except Exception as exc:
-        _responses_put_failed(responses, work_id, exc)
+    # Forward the wrapper so the receiver rebuilds the worker's traceback.
+    # TODO: Obtain the wrapper without reaching into Future's private state.
+    wrapper = f._wrapper
+    assert wrapper is not None
+    responses.put(_response.Finished(work_id=work_id, wrapper=wrapper))
 
 
 def _handle_shutdown(
