@@ -30,9 +30,9 @@ from jobserver import (
     LostResult,
 )
 from jobserver._jobserver import (
-    _ExceptionWrapper,
+    _RaisingWrapper,
     _RemoteTraceback,
-    _ResultWrapper,
+    _ReturningWrapper,
     _worker_entrypoint,
 )
 from jobserver._queue import SPSCQueue
@@ -863,7 +863,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, _ResultWrapper)
+        self.assertIsInstance(wrapper, _ReturningWrapper)
         self.assertEqual(3, wrapper.unwrap())
         self.assertTrue(send.closed)
 
@@ -875,7 +875,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, _ExceptionWrapper)
+        self.assertIsInstance(wrapper, _RaisingWrapper)
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
@@ -898,7 +898,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, _ExceptionWrapper)
+        self.assertIsInstance(wrapper, _RaisingWrapper)
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
@@ -912,7 +912,7 @@ class TestWorkerEntrypointPickleFallback(unittest.TestCase):
         )
         self.assertEqual(1, len(send.payloads))
         wrapper = ForkingPickler.loads(send.payloads[0])
-        self.assertIsInstance(wrapper, _ExceptionWrapper)
+        self.assertIsInstance(wrapper, _RaisingWrapper)
         with self.assertRaises(RuntimeError) as ctx:
             wrapper.unwrap()
         self.assertIn("not picklable", str(ctx.exception))
