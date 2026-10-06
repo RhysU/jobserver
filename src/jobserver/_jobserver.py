@@ -127,10 +127,10 @@ class _Wrapper(abc.ABC, Generic[T]):
         ...
 
 
-# Down the road, _ResultWrapper might be extended with "big object"
+# Down the road, _ReturningWrapper might be extended with "big object"
 # support that chooses to place data in shared memory or on disk
 # Likely only necessary if/when sending results via pipe breaks down
-class _ResultWrapper(_Wrapper[T]):
+class _ReturningWrapper(_Wrapper[T]):
     """Specialization of _Wrapper for when a result is available."""
 
     __slots__ = ("_result",)
@@ -160,7 +160,7 @@ class _RemoteTraceback(Exception):
         return self._traceback
 
 
-class _ExceptionWrapper(_Wrapper[Any]):
+class _RaisingWrapper(_Wrapper[Any]):
     """Specialization of _Wrapper for when an Exception has been raised.
 
     Captures the raised exception's traceback as a string at construction
@@ -183,10 +183,10 @@ class _ExceptionWrapper(_Wrapper[Any]):
         cause: Optional["_Wrapper"] = None,
     ) -> None:
         """Wrap raised; inherit cause's captured tb when cause is an
-        _ExceptionWrapper, else format from raised.__traceback__."""
+        _RaisingWrapper, else format from raised.__traceback__."""
         assert isinstance(raised, Exception), type(raised)
         self._raised = raised
-        if isinstance(cause, _ExceptionWrapper):
+        if isinstance(cause, _RaisingWrapper):
             self._raised_tb = cause._raised_tb
         elif raised.__traceback__ is not None:
             self._raised_tb = "".join(
@@ -211,7 +211,7 @@ class _ExceptionWrapper(_Wrapper[Any]):
             exc, BaseExceptionGroup  # type: ignore[name-defined]  # noqa: F821
         ):
             for member in exc.exceptions:
-                _ExceptionWrapper._strip_notes(member)
+                _RaisingWrapper._strip_notes(member)
 
     def __getstate__(self) -> tuple:
         return (self._raised, self._raised_tb)
@@ -486,7 +486,7 @@ class Future(Generic[T]):
             try:
                 self._wrapper = self._connection.recv()
             except EOFError:
-                self._wrapper = _ExceptionWrapper(LostResult())
+                self._wrapper = _RaisingWrapper(LostResult())
             except KeyboardInterrupt:
                 # A Ctrl-C may be local or may sneak in from the recv() itself.
                 raise
@@ -494,7 +494,7 @@ class Future(Generic[T]):
                 # A value can pickle in the child yet fail to reconstitute
                 # in the parent (e.g. a returned Connection raises
                 # FileNotFoundError deep in recv()).
-                self._wrapper = _ExceptionWrapper(
+                self._wrapper = _RaisingWrapper(
                     RuntimeError(f"Result not reconstructable: {e!r}")
                 )
             else:
@@ -1410,16 +1410,16 @@ def _worker_entrypoint(
                 os.environ[key] = value
         # preexec() may return a context manager wrapping fn execution.
         # If __exit__ suppresses an exception from fn, raw keeps its
-        # pre-call value of None so the result becomes _ResultWrapper(None).
+        # pre-call value of None so the result becomes _ReturningWrapper(None).
         raw = None
         with ExitStack() as stack:
             cm = preexec_fn(*preexec_args, **preexec_kwargs)
             if cm is not None:
                 stack.enter_context(cm)
             raw = fn(*args, **kwargs)
-        result = _ResultWrapper(raw)
+        result = _ReturningWrapper(raw)
     except Exception as exception:
-        result = _ExceptionWrapper(exception)
+        result = _RaisingWrapper(exception)
     except BaseException as base_exception:
         # When possible, send cause of death back to the parent to aid
         # users in debugging.  Raising LostResult() from the escaped
@@ -1430,7 +1430,7 @@ def _worker_entrypoint(
         try:
             raise LostResult() from base_exception
         except LostResult as lost:
-            result = _ExceptionWrapper(lost)
+            result = _RaisingWrapper(lost)
         raise  # Proceed with any BaseException-specific teardown
     finally:
         try:
@@ -1443,7 +1443,7 @@ def _worker_entrypoint(
                 except Exception as pe:
                     # Pickling user types can produce arbitrary exceptions.
                     payload = ForkingPickler.dumps(
-                        _ExceptionWrapper(
+                        _RaisingWrapper(
                             RuntimeError(
                                 f"{result.describe()} not picklable: {pe!r}"
                             ),
