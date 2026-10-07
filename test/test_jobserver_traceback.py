@@ -9,11 +9,14 @@ Pickle does not carry __traceback__ across the pipe, so the parent's
 result() must surface the child's traceback some other way (see #206).
 """
 
+import copyreg
+import gc
 import pickle
 import sys
 import traceback
 import typing
 import unittest
+import weakref
 
 from jobserver import Jobserver, LostResult
 from jobserver._jobserver import (
@@ -82,6 +85,53 @@ def _wrap_live_exception() -> _RaisingWrapper:
     except Exception as e:
         return _RaisingWrapper(e)
     raise AssertionError("unreachable")
+
+
+def _wrap_raised(e: Exception) -> _RaisingWrapper:
+    """Return a _RaisingWrapper around e once raised."""
+    try:
+        raise e
+    except Exception as caught:
+        return _RaisingWrapper(caught)
+    raise AssertionError("unreachable")
+
+
+class _PayloadError(Exception):
+    """Carries attributes a caller may mutate or rebind."""
+
+
+class _CopyRefusingError(Exception):
+    """Refuses copy.copy(...)."""
+
+    def __copy__(self) -> typing.NoReturn:
+        raise AssertionError("copied")
+
+
+class _ReducedError(Exception):
+    """Pickles through a reducer registered with copyreg."""
+
+
+def _rebuild_reduced(args: tuple) -> _ReducedError:
+    rebuilt = _ReducedError(*args)
+    rebuilt.via_reducer = True
+    return rebuilt
+
+
+copyreg.pickle(_ReducedError, lambda e: (_rebuild_reduced, (e.args,)))
+
+
+class _Local:
+    """Weakly referenceable stand-in for a caller's local."""
+
+
+def _catch_holding_local(w: _RaisingWrapper) -> weakref.ref:
+    """Catch w.unwrap() in a frame holding a local; return a weakref."""
+    local = _Local()
+    try:
+        w.unwrap()
+    except Exception:
+        pass
+    return weakref.ref(local)
 
 
 def _wrap_live_base_exception(klass: type, *args) -> _RaisingWrapper:
@@ -357,6 +407,106 @@ class TestRaisingWrapperPickle(unittest.TestCase):
                 self.assertEqual(w._raised_tb, str(e.__cause__))
         # Undesired: caller notes leak into later calls.
         self.assertEqual([[], ["caller 0"], ["caller 0", "caller 1"]], notes)
+
+    def test_unwrap_identity(self) -> None:
+        """Each unwrap() raises the one stored instance."""
+        w = self._round_trip(_wrap_raised(ValueError("same")))
+        raised = []
+        for _ in range(2):
+            try:
+                w.unwrap()
+            except ValueError as e:
+                raised.append(e)
+        first, second = raised
+        # Undesired: every call shares one instance.
+        self.assertIs(first, second)
+
+    def test_unwrap_attributes_shared(self) -> None:
+        """Caller changes to a caught exception reach later calls."""
+        sent = _PayloadError("payload")
+        sent.payload = []
+        w = self._round_trip(_wrap_raised(sent))
+        payloads, rebounds = [], []
+        for i in range(3):
+            try:
+                w.unwrap()
+            except _PayloadError as e:
+                payloads.append(list(e.payload))
+                rebounds.append(getattr(e, "rebound", None))
+                e.payload.append(i)
+                e.rebound = i
+        self.assertEqual([[], [0], [0, 1]], payloads)
+        # Undesired: rebinding reaches later calls.
+        self.assertEqual([None, 0, 1], rebounds)
+
+    @unittest.skipIf(sys.version_info < (3, 11), "requires add_note")
+    def test_unwrap_group_notes_shared(self) -> None:
+        """Caller notes on a group and its member reach later calls."""
+        sent = ExceptionGroup("group", [KeyError("member")])  # noqa: F821
+        w = self._round_trip(_wrap_raised(sent))
+        groups, members = [], []
+        for i in range(3):
+            try:
+                w.unwrap()
+            except ExceptionGroup as g:  # noqa: F821
+                (member,) = g.exceptions
+                groups.append(list(getattr(g, "__notes__", ())))
+                members.append(list(getattr(member, "__notes__", ())))
+                g.add_note(f"group {i}")
+                member.add_note(f"member {i}")
+        # Undesired: group notes reach later calls.
+        self.assertEqual([[], ["group 0"], ["group 0", "group 1"]], groups)
+        self.assertEqual([[], ["member 0"], ["member 0", "member 1"]], members)
+
+    def test_unwrap_retains_caller_frames(self) -> None:
+        """The stored traceback holds every caller frame unwrap() unwound."""
+        w = self._round_trip(_wrap_live_exception())
+        gc.disable()
+        try:
+            refs = [_catch_holding_local(w) for _ in range(3)]
+            alive = [ref() is not None for ref in refs]
+        finally:
+            gc.enable()
+        # Undesired: caller locals outlive their frames.
+        self.assertEqual([True, True, True], alive)
+
+    def test_unwrap_stored_chaining(self) -> None:
+        """Pickle drops chaining; only __setstate__ restores a cause."""
+        try:
+            try:
+                raise TypeError("context")
+            except TypeError:
+                raise ValueError("chained") from KeyError("cause")
+        except ValueError as e:
+            w = self._round_trip(_RaisingWrapper(e))
+        stored = w._raised
+        self.assertEqual(
+            (_RemoteTraceback, None, None, True),
+            (
+                type(stored.__cause__),
+                stored.__context__,
+                stored.__traceback__,
+                stored.__suppress_context__,
+            ),
+        )
+
+    def test_unwrap_ignores_copy(self) -> None:
+        """An exception refusing copy.copy(...) still raises each call."""
+        w = self._round_trip(_wrap_raised(_CopyRefusingError("kept")))
+        for _ in range(2):
+            with self.assertRaises(_CopyRefusingError):
+                w.unwrap()
+
+    def test_unwrap_copyreg_reducer(self) -> None:
+        """An exception pickled through copyreg arrives via its reducer."""
+        w = self._round_trip(_wrap_raised(_ReducedError("reduced")))
+        for _ in range(2):
+            with self.assertRaises(_ReducedError) as ctx:
+                w.unwrap()
+            self.assertEqual(
+                (("reduced",), True),
+                (ctx.exception.args, ctx.exception.via_reducer),
+            )
 
     def test_custom_init_exception_reconstruct_failure(self) -> None:
         """An exception whose __init__ has a non-standard signature
