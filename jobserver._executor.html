@@ -1,0 +1,883 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "DTD/xhtml1-strict.dtd">
+<html>
+  
+
+  <head>
+    
+    <title>jobserver._executor</title>
+    <meta name="generator" content="pydoctor 25.10.1"> 
+        
+    </meta>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1 maximum-scale=1" />
+    <link rel="stylesheet" type="text/css" href="bootstrap.min.css" />
+    <link rel="stylesheet" type="text/css" href="apidocs.css" />
+    <link rel="stylesheet" type="text/css" href="extra.css" />
+    
+</head>
+
+  <body>
+
+    
+
+    <nav class="navbar navbar-default mainnavbar">
+      
+  
+  <div class="container-fluid">
+
+
+    <div class="navbar-header">
+      
+      <div class="navlinks">
+        <span class="navbar-brand">
+          <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a> <a href="index.html">API Documentation</a>
+        </span>
+
+        <a href="moduleIndex.html">
+          Modules
+        </a>
+
+        <a href="classIndex.html">
+          Classes
+        </a>
+
+        <a href="nameIndex.html">
+          Names
+        </a>
+
+        <div id="search-box-container">
+          <div class="input-group">
+            <input id="search-box" type="search" name="search-query" placeholder="Search..." aria-label="Search" minlength="2" class="form-control" autocomplete="off" />
+            
+            <span class="input-group-btn">
+              <a style="display: none;" class="btn btn-default" id="search-clear-button" title="Clear" onclick="clearSearch()"><img src="fonts/x-circle.svg" alt="Clear" /></a>
+              <a class="btn btn-default" id="apidocs-help-button" title="Help" href="apidocs-help.html"><img src="fonts/info.svg" alt="Help" /></a>
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="search-results-container" style="display: none;">
+        
+        <div id="search-buttons">
+          <span class="label label-default" id="search-docstrings-button">
+          <label class="checkbox-inline">
+            <input type="checkbox" id="toggle-search-in-docstrings-checkbox" value="false" onclick="toggleSearchInDocstrings()">
+              search in docstrings
+            </input>
+          </label>
+          </span>
+          
+        </div>
+        
+        <noscript>
+            <h1>Cannot search: JavaScript is not supported/enabled in your browser.</h1>
+        </noscript>
+
+        <div id="search-status"> </div>
+
+        <div class="warning" id="search-warn-box" style="display: none;">
+          <p class="rst-last"><span id="search-warn"></span></p>
+        </div>
+
+        <table id="search-results">
+          <!-- Filled dynamically by JS -->
+        </table>
+        
+        <div style="margin-top: 10px;">
+          <p>For more information on the search, visit the <a href="apidocs-help.html#rst-search">help page</a>.</p>
+        </div>
+      </div>
+
+    </div>
+
+
+  </div>
+</nav>
+    
+    <div class="container-fluid">
+
+      <!-- Side navigation -->
+      <div class="sidebarcontainer" style="display: none;">
+        
+        <div class="sidebar"><nav class="sidebar">
+  
+
+  <div>
+
+      <div class="thingTitle">
+        <span>Module</span>
+        <code class="thisobject"><a href="jobserver._executor.html" class="internal-link" title="This module">_executor</a></code> 
+      </div>
+      
+      <div>
+        
+
+        
+         
+
+        <div class="childrenKindTitle">Classes</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_<wbr></wbr>Dispatch<wbr></wbr>State</a></code>
+            </div>
+        
+
+    </li>
+</ul>
+
+        <div class="childrenKindTitle">Functions</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_bridge_result" class="internal-link" title="jobserver._executor._bridge_result">_bridge<wbr></wbr>_result</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_cancel_observer" class="internal-link" title="jobserver._executor._cancel_observer">_cancel<wbr></wbr>_observer</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_dispatch_loop" class="internal-link" title="jobserver._executor._dispatch_loop">_dispatch<wbr></wbr>_loop</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_dispatch_pending" class="internal-link" title="jobserver._executor._dispatch_pending">_dispatch<wbr></wbr>_pending</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_drain_requests" class="internal-link" title="jobserver._executor._drain_requests">_drain<wbr></wbr>_requests</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_handle_request" class="internal-link" title="jobserver._executor._handle_request">_handle<wbr></wbr>_request</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_handle_shutdown" class="internal-link" title="jobserver._executor._handle_shutdown">_handle<wbr></wbr>_shutdown</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_poll_requests_briefly" class="internal-link" title="jobserver._executor._poll_requests_briefly">_poll<wbr></wbr>_requests<wbr></wbr>_briefly</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_poll_running" class="internal-link" title="jobserver._executor._poll_running">_poll<wbr></wbr>_running</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_responses_put_failed" class="internal-link" title="jobserver._executor._responses_put_failed">_responses<wbr></wbr>_put<wbr></wbr>_failed</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+
+        <div class="childrenKindTitle">Variables</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#T" class="internal-link" title="jobserver._executor.T">T</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_LOG" class="internal-link" title="jobserver._executor._LOG">_LOG</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div><div>
+
+      <div class="thingTitle">
+        <span>Package</span>
+        <code><a href="index.html" class="internal-link" title="The parent of this module">jobserver</a></code> 
+      </div>
+      
+      <div>
+        
+
+        <div class="childrenKindTitle">Modules</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._compat.html" class="internal-link" title="jobserver._compat">_compat</a></code>
+            </div>
+        
+
+    </li><li class="private thisobject">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._executor.html" class="internal-link" title="jobserver._executor">_executor</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._jobserver.html" class="internal-link" title="jobserver._jobserver">_jobserver</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.html" class="internal-link" title="jobserver._queue">_queue</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._request.html" class="internal-link" title="jobserver._request">_request</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._response.html" class="internal-link" title="jobserver._response">_response</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        <div class="childrenKindTitle">Classes</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Future.html" class="internal-link" title="jobserver.Future"><wbr></wbr>Future</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Jobserver.html" class="internal-link" title="jobserver.Jobserver"><wbr></wbr>Jobserver</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.JobserverExecutor.html" class="internal-link" title="jobserver.JobserverExecutor"><wbr></wbr>Jobserver<wbr></wbr>Executor</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Blocked.html" class="internal-link" title="jobserver.Blocked"><wbr></wbr>Blocked</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.CallbackRaised.html" class="internal-link" title="jobserver.CallbackRaised"><wbr></wbr>Callback<wbr></wbr>Raised</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.LostResult.html" class="internal-link" title="jobserver.LostResult"><wbr></wbr>Lost<wbr></wbr>Result</a></code>
+            </div>
+        
+
+    </li>
+</ul>
+
+        
+         
+
+        
+         
+
+        <div class="childrenKindTitle">Variables</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="index.html#__version__" class="internal-link" title="jobserver.__version__">__version__</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div>
+
+</nav>
+        </div>
+        <div id="collapse-sidebar">
+          <a class="btn btn-link" onclick="toggleSideBarCollapse()" title="Toggle Sidebar Collapse">
+          </a>
+        </div> 
+        <script src="sidebartoggle.js" type="text/javascript"></script>
+       
+      </div>
+
+      <main class="">
+        
+
+        
+
+        <div class="page-header">
+          <h1 class="module private"><code><code><a href="index.html" class="internal-link">jobserver</a></code><wbr></wbr>.<code><a href="jobserver._executor.html" class="internal-link" title="jobserver._executor">_executor</a></code></code></h1>
+          <div id="show-private">
+            <button class="btn btn-link" onclick="togglePrivate()">Toggle Private API</button>
+          </div>
+        </div>
+
+        <div class="categoryHeader">
+          module documentation
+        </div>
+
+        <div class="extrasDocstring">
+          
+        </div>
+
+        <div class="moduleDocstring">
+          <div><p>A concurrent.futures.Executor backed by a Jobserver.</p></div>
+        </div>
+
+        <div id="split-tables">
+          <table class="children sortable" id="id4">
+  
+  
+  <tr class="typevariable">
+    
+    <td>Type Variable</td>
+    <td><code><a href="#T" class="internal-link" title="jobserver._executor.T">T</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="class private">
+    
+    <td>Class</td>
+    <td><code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_<wbr></wbr>Dispatch<wbr></wbr>State</a></code></td>
+    <td>Mutable state owned by the dispatcher loop and its handlers.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_bridge_result" class="internal-link" title="jobserver._executor._bridge_result">_bridge<wbr></wbr>_result</a></code></td>
+    <td>Transfer a completed jobserver Future's outcome to response queue.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_cancel_observer" class="internal-link" title="jobserver._executor._cancel_observer">_cancel<wbr></wbr>_observer</a></code></td>
+    <td>Done-callback that prunes a cancelled PENDING future's work.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_dispatch_loop" class="internal-link" title="jobserver._executor._dispatch_loop">_dispatch<wbr></wbr>_loop</a></code></td>
+    <td>Main loop for the dispatcher process.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_dispatch_pending" class="internal-link" title="jobserver._executor._dispatch_pending">_dispatch<wbr></wbr>_pending</a></code></td>
+    <td>Dispatch pending work in insertion (FIFO) order.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_drain_requests" class="internal-link" title="jobserver._executor._drain_requests">_drain<wbr></wbr>_requests</a></code></td>
+    <td>Drain the request queue, setting state.shutdown on Shutdown or EOF.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_handle_request" class="internal-link" title="jobserver._executor._handle_request">_handle<wbr></wbr>_request</a></code></td>
+    <td>Handle a single request message, updating state in place.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_handle_shutdown" class="internal-link" title="jobserver._executor._handle_shutdown">_handle<wbr></wbr>_shutdown</a></code></td>
+    <td>Cancel pending work, drain running futures, signal completion.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_poll_requests_briefly" class="internal-link" title="jobserver._executor._poll_requests_briefly">_poll<wbr></wbr>_requests<wbr></wbr>_briefly</a></code></td>
+    <td>Brief blocking poll to pick up new work without busy-spinning.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_poll_running" class="internal-link" title="jobserver._executor._poll_running">_poll<wbr></wbr>_running</a></code></td>
+    <td>Poll running Futures and bridge completed results.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_responses_put_failed" class="internal-link" title="jobserver._executor._responses_put_failed">_responses<wbr></wbr>_put<wbr></wbr>_failed</a></code></td>
+    <td>Put a Failed response, falling back if exc is not picklable.</td>
+  </tr><tr class="constant private">
+    
+    <td>Constant</td>
+    <td><code><a href="#_LOG" class="internal-link" title="jobserver._executor._LOG">_LOG</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr>
+</table>
+          
+
+            
+        </div>
+
+        <div id="child-list">
+          <div class="basetypevariable">
+  
+  
+  <a name="jobserver._executor.T">
+    
+  </a>
+  <a name="T">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">T</span> =
+    
+    <a class="headerLink" href="#T" title="jobserver._executor.T">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code><a href="https://docs.python.org/3/library/typing.html#typing.TypeVar" class="intersphinx-link">TypeVar</a>(<wbr></wbr><span class="rst-variable-quote">'</span><span class="rst-variable-string">T</span><span class="rst-variable-quote">'</span>)</code></pre></td></tr></table>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._bridge_result">
+    
+  </a>
+  <a name="_bridge_result">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_bridge_result</span><span class="function-signature">(<span class="rst-sig-param">f: <code>Future</code>, </span><span class="rst-sig-param">work_id: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_bridge_result" title="jobserver._executor._bridge_result">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Transfer a completed jobserver Future's outcome to response queue.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._cancel_observer">
+    
+  </a>
+  <a name="_cancel_observer">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_cancel_observer</span><span class="function-signature long-signature">(<span class="rst-sig-param">executor_ref: <code><a href="https://docs.python.org/3/library/weakref.html#weakref.ref" class="intersphinx-link">weakref.ref</a>[<wbr></wbr><a href="jobserver.JobserverExecutor.html" class="internal-link" title="jobserver.JobserverExecutor">JobserverExecutor</a>]</code>, </span><span class="rst-sig-param">work_id: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>, </span><span class="rst-sig-param">future: <code><a href="https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future" class="intersphinx-link">concurrent.futures.Future</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_cancel_observer" title="jobserver._executor._cancel_observer">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Done-callback that prunes a cancelled PENDING future's work.</p>
+<p>Registered on every submitted future.  Done-callbacks fire exactly once,
+on the state transition, so a future cancelled while PENDING triggers a
+single Cancel(work_id) and the receiver's later re-cancel does not
+re-emit.  Non-cancel completions (result, exception) are ignored, and a
+dead weak reference means the executor is already gone -- nothing to do.</p>
+</div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._dispatch_loop">
+    
+  </a>
+  <a name="_dispatch_loop">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_dispatch_loop</span><span class="function-signature">(<span class="rst-sig-param">jobserver: <code>Jobserver</code>, </span><span class="rst-sig-param">requests: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_dispatch_loop" title="jobserver._executor._dispatch_loop">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Main loop for the dispatcher process.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._dispatch_pending">
+    
+  </a>
+  <a name="_dispatch_pending">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_dispatch_pending</span><span class="function-signature">(<span class="rst-sig-param">jobserver: <code>Jobserver</code>, </span><span class="rst-sig-param">state: <code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_DispatchState</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_dispatch_pending" title="jobserver._executor._dispatch_pending">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Dispatch pending work in insertion (FIFO) order.</p>
+<p>Keeps c.f.Future in PENDING (cancellable) until a process is
+spawned.  Stops on first Blocked since remaining will be too.</p>
+</div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._drain_requests">
+    
+  </a>
+  <a name="_drain_requests">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_drain_requests</span><span class="function-signature">(<span class="rst-sig-param">requests: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code>, </span><span class="rst-sig-param">state: <code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_DispatchState</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_drain_requests" title="jobserver._executor._drain_requests">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Drain the request queue, setting state.shutdown on Shutdown or EOF.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._handle_request">
+    
+  </a>
+  <a name="_handle_request">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_handle_request</span><span class="function-signature">(<span class="rst-sig-param">msg: <code><a href="https://docs.python.org/3/builtins/functions.html#object" class="intersphinx-link">object</a></code>, </span><span class="rst-sig-param">state: <code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_DispatchState</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_handle_request" title="jobserver._executor._handle_request">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Handle a single request message, updating state in place.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._handle_shutdown">
+    
+  </a>
+  <a name="_handle_shutdown">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_handle_shutdown</span><span class="function-signature">(<span class="rst-sig-param">state: <code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_DispatchState</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_handle_shutdown" title="jobserver._executor._handle_shutdown">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Cancel pending work, drain running futures, signal completion.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._poll_requests_briefly">
+    
+  </a>
+  <a name="_poll_requests_briefly">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_poll_requests_briefly</span><span class="function-signature">(<span class="rst-sig-param">requests: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code>, </span><span class="rst-sig-param">state: <code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_DispatchState</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_poll_requests_briefly" title="jobserver._executor._poll_requests_briefly">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Brief blocking poll to pick up new work without busy-spinning.</p>
+<p>Sets state.shutdown when a Shutdown()/EOF is observed.</p>
+</div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._poll_running">
+    
+  </a>
+  <a name="_poll_running">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_poll_running</span><span class="function-signature">(<span class="rst-sig-param">state: <code><a href="jobserver._executor._DispatchState.html" class="internal-link" title="jobserver._executor._DispatchState">_DispatchState</a></code>, </span><span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_poll_running" title="jobserver._executor._poll_running">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Poll running Futures and bridge completed results.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._executor._responses_put_failed">
+    
+  </a>
+  <a name="_responses_put_failed">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_responses_put_failed</span><span class="function-signature">(<span class="rst-sig-param">responses: <code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue">SPSCQueue</a></code>, </span><span class="rst-sig-param">work_id: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>, </span><span class="rst-sig-param">exc: <code><a href="https://docs.python.org/3/builtins/exceptions.html#Exception" class="intersphinx-link">Exception</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_responses_put_failed" title="jobserver._executor._responses_put_failed">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Put a Failed response, falling back if exc is not picklable.</p></div>
+  </div>
+</div><div class="baseconstant private">
+  
+  
+  <a name="jobserver._executor._LOG">
+    
+  </a>
+  <a name="_LOG">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_LOG</span> =
+    
+    <a class="headerLink" href="#_LOG" title="jobserver._executor._LOG">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code><a href="https://docs.python.org/3/library/logging.html#logging.getLogger" class="intersphinx-link">logging.getLogger</a>(<wbr></wbr>__name__)</code></pre></td></tr></table>
+  </div>
+</div>
+        </div>
+      
+      </main>
+    </div>
+
+    <footer class="navbar navbar-default">
+
+  
+  <div class="container-fluid">
+    <a href="index.html">API Documentation</a> for <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a>,
+  generated by <a href="https://github.com/twisted/pydoctor/">pydoctor</a>
+    25.10.1 at 2026-10-07 12:22:06.
+  </div>
+
+  <!-- Search related scripts needs to be loaded at the end of HTML 
+    parsing not to introduce overhead and display HTML data asap -->
+  <script src="ajax.js" type="text/javascript"></script>
+  <script src="searchlib.js" type="text/javascript"></script>
+  <script src="search.js" type="text/javascript"></script>
+
+</footer>
+  
+    <script src="pydoctor.js" type="text/javascript"></script>
+
+  </body>
+</html>

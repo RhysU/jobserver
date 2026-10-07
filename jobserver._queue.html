@@ -1,0 +1,978 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "DTD/xhtml1-strict.dtd">
+<html>
+  
+
+  <head>
+    
+    <title>jobserver._queue</title>
+    <meta name="generator" content="pydoctor 25.10.1"> 
+        
+    </meta>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1 maximum-scale=1" />
+    <link rel="stylesheet" type="text/css" href="bootstrap.min.css" />
+    <link rel="stylesheet" type="text/css" href="apidocs.css" />
+    <link rel="stylesheet" type="text/css" href="extra.css" />
+    
+</head>
+
+  <body>
+
+    
+
+    <nav class="navbar navbar-default mainnavbar">
+      
+  
+  <div class="container-fluid">
+
+
+    <div class="navbar-header">
+      
+      <div class="navlinks">
+        <span class="navbar-brand">
+          <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a> <a href="index.html">API Documentation</a>
+        </span>
+
+        <a href="moduleIndex.html">
+          Modules
+        </a>
+
+        <a href="classIndex.html">
+          Classes
+        </a>
+
+        <a href="nameIndex.html">
+          Names
+        </a>
+
+        <div id="search-box-container">
+          <div class="input-group">
+            <input id="search-box" type="search" name="search-query" placeholder="Search..." aria-label="Search" minlength="2" class="form-control" autocomplete="off" />
+            
+            <span class="input-group-btn">
+              <a style="display: none;" class="btn btn-default" id="search-clear-button" title="Clear" onclick="clearSearch()"><img src="fonts/x-circle.svg" alt="Clear" /></a>
+              <a class="btn btn-default" id="apidocs-help-button" title="Help" href="apidocs-help.html"><img src="fonts/info.svg" alt="Help" /></a>
+            </span>
+          </div>
+        </div>
+
+      </div>
+
+      <div id="search-results-container" style="display: none;">
+        
+        <div id="search-buttons">
+          <span class="label label-default" id="search-docstrings-button">
+          <label class="checkbox-inline">
+            <input type="checkbox" id="toggle-search-in-docstrings-checkbox" value="false" onclick="toggleSearchInDocstrings()">
+              search in docstrings
+            </input>
+          </label>
+          </span>
+          
+        </div>
+        
+        <noscript>
+            <h1>Cannot search: JavaScript is not supported/enabled in your browser.</h1>
+        </noscript>
+
+        <div id="search-status"> </div>
+
+        <div class="warning" id="search-warn-box" style="display: none;">
+          <p class="rst-last"><span id="search-warn"></span></p>
+        </div>
+
+        <table id="search-results">
+          <!-- Filled dynamically by JS -->
+        </table>
+        
+        <div style="margin-top: 10px;">
+          <p>For more information on the search, visit the <a href="apidocs-help.html#rst-search">help page</a>.</p>
+        </div>
+      </div>
+
+    </div>
+
+
+  </div>
+</nav>
+    
+    <div class="container-fluid">
+
+      <!-- Side navigation -->
+      <div class="sidebarcontainer" style="display: none;">
+        
+        <div class="sidebar"><nav class="sidebar">
+  
+
+  <div>
+
+      <div class="thingTitle">
+        <span>Module</span>
+        <code class="thisobject"><a href="jobserver._queue.html" class="internal-link" title="This module">_queue</a></code> 
+      </div>
+      
+      <div>
+        
+
+        
+         
+
+        <div class="childrenKindTitle">Classes</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.FixedBytesQueue.html" class="internal-link" title="jobserver._queue.FixedBytesQueue"><wbr></wbr>Fixed<wbr></wbr>Bytes<wbr></wbr>Queue</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.MPMCQueue.html" class="internal-link" title="jobserver._queue.MPMCQueue"><wbr></wbr>MPMCQueue</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue"><wbr></wbr>SPSCQueue</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue._AbstractPicklingQueue.html" class="internal-link" title="jobserver._queue._AbstractPicklingQueue">_<wbr></wbr>Abstract<wbr></wbr>Pickling<wbr></wbr>Queue</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue._AbstractQueue.html" class="internal-link" title="jobserver._queue._AbstractQueue">_<wbr></wbr>Abstract<wbr></wbr>Queue</a></code>
+            </div>
+        
+
+    </li>
+</ul>
+
+        <div class="childrenKindTitle">Functions</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#deadline_to_timeout" class="internal-link" title="jobserver._queue.deadline_to_timeout">deadline<wbr></wbr>_to<wbr></wbr>_timeout</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#from_fds" class="internal-link" title="jobserver._queue.from_fds">from<wbr></wbr>_fds</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#from_fifo" class="internal-link" title="jobserver._queue.from_fifo">from<wbr></wbr>_fifo</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#resolve_context" class="internal-link" title="jobserver._queue.resolve_context">resolve<wbr></wbr>_context</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#timeout_to_deadline" class="internal-link" title="jobserver._queue.timeout_to_deadline">timeout<wbr></wbr>_to<wbr></wbr>_deadline</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_check_fixedlen" class="internal-link" title="jobserver._queue._check_fixedlen">_check<wbr></wbr>_fixedlen</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_conn_repr" class="internal-link" title="jobserver._queue._conn_repr">_conn<wbr></wbr>_repr</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_to_ends_factory" class="internal-link" title="jobserver._queue._to_ends_factory">_to<wbr></wbr>_ends<wbr></wbr>_factory</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+
+        <div class="childrenKindTitle">Variables</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#Self" class="internal-link" title="jobserver._queue.Self"><wbr></wbr>Self</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#T" class="internal-link" title="jobserver._queue.T">T</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#EndsFactory" class="internal-link" title="jobserver._queue.EndsFactory"><wbr></wbr>Ends<wbr></wbr>Factory</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#Source" class="internal-link" title="jobserver._queue.Source"><wbr></wbr>Source</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="#_MAX_TIMEOUT_SECS" class="internal-link" title="jobserver._queue._MAX_TIMEOUT_SECS">_MAX<wbr></wbr>_TIMEOUT<wbr></wbr>_SECS</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div><div>
+
+      <div class="thingTitle">
+        <span>Package</span>
+        <code><a href="index.html" class="internal-link" title="The parent of this module">jobserver</a></code> 
+      </div>
+      
+      <div>
+        
+
+        <div class="childrenKindTitle">Modules</div>
+        <ul>
+    
+    <li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._compat.html" class="internal-link" title="jobserver._compat">_compat</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._executor.html" class="internal-link" title="jobserver._executor">_executor</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._jobserver.html" class="internal-link" title="jobserver._jobserver">_jobserver</a></code>
+            </div>
+        
+
+    </li><li class="private thisobject">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._queue.html" class="internal-link" title="jobserver._queue">_queue</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._request.html" class="internal-link" title="jobserver._request">_request</a></code>
+            </div>
+        
+
+    </li><li class="private">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver._response.html" class="internal-link" title="jobserver._response">_response</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        <div class="childrenKindTitle">Classes</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Future.html" class="internal-link" title="jobserver.Future"><wbr></wbr>Future</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Jobserver.html" class="internal-link" title="jobserver.Jobserver"><wbr></wbr>Jobserver</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.JobserverExecutor.html" class="internal-link" title="jobserver.JobserverExecutor"><wbr></wbr>Jobserver<wbr></wbr>Executor</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.Blocked.html" class="internal-link" title="jobserver.Blocked"><wbr></wbr>Blocked</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.CallbackRaised.html" class="internal-link" title="jobserver.CallbackRaised"><wbr></wbr>Callback<wbr></wbr>Raised</a></code>
+            </div>
+        
+
+    </li><li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="jobserver.LostResult.html" class="internal-link" title="jobserver.LostResult"><wbr></wbr>Lost<wbr></wbr>Result</a></code>
+            </div>
+        
+
+    </li>
+</ul>
+
+        
+         
+
+        
+         
+
+        <div class="childrenKindTitle">Variables</div>
+        <ul>
+    
+    <li class="">
+        
+        
+        
+
+        
+            <div class="itemName"><code><a href="index.html#__version__" class="internal-link" title="jobserver.__version__">__version__</a></code>
+            </div>
+        
+
+    </li>
+</ul> 
+
+        
+         
+        
+      </div>
+  </div>
+
+</nav>
+        </div>
+        <div id="collapse-sidebar">
+          <a class="btn btn-link" onclick="toggleSideBarCollapse()" title="Toggle Sidebar Collapse">
+          </a>
+        </div> 
+        <script src="sidebartoggle.js" type="text/javascript"></script>
+       
+      </div>
+
+      <main class="">
+        
+
+        
+
+        <div class="page-header">
+          <h1 class="module private"><code><code><a href="index.html" class="internal-link">jobserver</a></code><wbr></wbr>.<code><a href="jobserver._queue.html" class="internal-link" title="jobserver._queue">_queue</a></code></code></h1>
+          <div id="show-private">
+            <button class="btn btn-link" onclick="togglePrivate()">Toggle Private API</button>
+          </div>
+        </div>
+
+        <div class="categoryHeader">
+          module documentation
+        </div>
+
+        <div class="extrasDocstring">
+          
+        </div>
+
+        <div class="moduleDocstring">
+          <div><p>FixedBytesQueue, MPMCQueue, SPSCQueue, and related utility functions.</p></div>
+        </div>
+
+        <div id="split-tables">
+          <table class="children sortable" id="id13">
+  
+  
+  <tr class="class">
+    
+    <td>Class</td>
+    <td><code><a href="jobserver._queue.FixedBytesQueue.html" class="internal-link" title="jobserver._queue.FixedBytesQueue"><wbr></wbr>Fixed<wbr></wbr>Bytes<wbr></wbr>Queue</a></code></td>
+    <td>A lockless queue of fixed-length byte tokens.</td>
+  </tr><tr class="class">
+    
+    <td>Class</td>
+    <td><code><a href="jobserver._queue.MPMCQueue.html" class="internal-link" title="jobserver._queue.MPMCQueue"><wbr></wbr>MPMCQueue</a></code></td>
+    <td>A multiple-producer, multiple-consumer _AbstractQueue.</td>
+  </tr><tr class="class">
+    
+    <td>Class</td>
+    <td><code><a href="jobserver._queue.SPSCQueue.html" class="internal-link" title="jobserver._queue.SPSCQueue"><wbr></wbr>SPSCQueue</a></code></td>
+    <td>A single-producer, single-consumer _AbstractQueue.</td>
+  </tr><tr class="function">
+    
+    <td>Function</td>
+    <td><code><a href="#deadline_to_timeout" class="internal-link" title="jobserver._queue.deadline_to_timeout">deadline<wbr></wbr>_to<wbr></wbr>_timeout</a></code></td>
+    <td>Return seconds remaining until deadline, non-negative and finite.</td>
+  </tr><tr class="function">
+    
+    <td>Function</td>
+    <td><code><a href="#from_fds" class="internal-link" title="jobserver._queue.from_fds">from<wbr></wbr>_fds</a></code></td>
+    <td>A source over a private dup of the given fds.</td>
+  </tr><tr class="function">
+    
+    <td>Function</td>
+    <td><code><a href="#from_fifo" class="internal-link" title="jobserver._queue.from_fifo">from<wbr></wbr>_fifo</a></code></td>
+    <td>A source over a named FIFO the queue will own.</td>
+  </tr><tr class="function">
+    
+    <td>Function</td>
+    <td><code><a href="#resolve_context" class="internal-link" title="jobserver._queue.resolve_context">resolve<wbr></wbr>_context</a></code></td>
+    <td>Return a multiprocessing BaseContext, resolving None/str as needed.</td>
+  </tr><tr class="function">
+    
+    <td>Function</td>
+    <td><code><a href="#timeout_to_deadline" class="internal-link" title="jobserver._queue.timeout_to_deadline">timeout<wbr></wbr>_to<wbr></wbr>_deadline</a></code></td>
+    <td>Convert timeout in seconds into a monotonic, absolute deadline.</td>
+  </tr><tr class="typevariable">
+    
+    <td>Type Variable</td>
+    <td><code><a href="#Self" class="internal-link" title="jobserver._queue.Self"><wbr></wbr>Self</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="typevariable">
+    
+    <td>Type Variable</td>
+    <td><code><a href="#T" class="internal-link" title="jobserver._queue.T">T</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="typealias">
+    
+    <td>Type Alias</td>
+    <td><code><a href="#EndsFactory" class="internal-link" title="jobserver._queue.EndsFactory"><wbr></wbr>Ends<wbr></wbr>Factory</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="typealias">
+    
+    <td>Type Alias</td>
+    <td><code><a href="#Source" class="internal-link" title="jobserver._queue.Source"><wbr></wbr>Source</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr><tr class="class private">
+    
+    <td>Class</td>
+    <td><code><a href="jobserver._queue._AbstractPicklingQueue.html" class="internal-link" title="jobserver._queue._AbstractPicklingQueue">_<wbr></wbr>Abstract<wbr></wbr>Pickling<wbr></wbr>Queue</a></code></td>
+    <td>_AbstractQueue whose get()/put() pickle generic objects.</td>
+  </tr><tr class="class private">
+    
+    <td>Class</td>
+    <td><code><a href="jobserver._queue._AbstractQueue.html" class="internal-link" title="jobserver._queue._AbstractQueue">_<wbr></wbr>Abstract<wbr></wbr>Queue</a></code></td>
+    <td>Abstract pipe-backed queue; subclasses implement get()/put().</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_check_fixedlen" class="internal-link" title="jobserver._queue._check_fixedlen">_check<wbr></wbr>_fixedlen</a></code></td>
+    <td>Validate a fixedlen token length.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_conn_repr" class="internal-link" title="jobserver._queue._conn_repr">_conn<wbr></wbr>_repr</a></code></td>
+    <td>Describe a pipe end for __repr__, tolerating closed fds.</td>
+  </tr><tr class="function private">
+    
+    <td>Function</td>
+    <td><code><a href="#_to_ends_factory" class="internal-link" title="jobserver._queue._to_ends_factory">_to<wbr></wbr>_ends<wbr></wbr>_factory</a></code></td>
+    <td>Pass a source through, or wrap a context as a pipe source.</td>
+  </tr><tr class="constant private">
+    
+    <td>Constant</td>
+    <td><code><a href="#_MAX_TIMEOUT_SECS" class="internal-link" title="jobserver._queue._MAX_TIMEOUT_SECS">_MAX<wbr></wbr>_TIMEOUT<wbr></wbr>_SECS</a></code></td>
+    <td><span class="rst-undocumented">Undocumented</span></td>
+  </tr>
+</table>
+          
+
+            
+        </div>
+
+        <div id="child-list">
+          <div class="basefunction">
+  
+  
+  <a name="jobserver._queue.deadline_to_timeout">
+    
+  </a>
+  <a name="deadline_to_timeout">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">deadline_to_timeout</span><span class="function-signature">(<span class="rst-sig-param">deadline: <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a></code></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a></code>:</span>
+    
+    <a class="headerLink" href="#deadline_to_timeout" title="jobserver._queue.deadline_to_timeout">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Return seconds remaining until deadline, non-negative and finite.</p>
+<p>Intended to be paired with timeout_to_deadline().  The result is safe to
+pass directly to poll()/select() on any platform.</p>
+</div>
+  </div>
+</div><div class="basefunction">
+  
+  
+  <a name="jobserver._queue.from_fds">
+    
+  </a>
+  <a name="from_fds">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">from_fds</span><span class="function-signature">(<span class="rst-sig-param">read_fd: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code>, </span><span class="rst-sig-param">write_fd: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code></span>) -&gt; <code><a href="#EndsFactory" class="internal-link" title="jobserver._queue.EndsFactory">EndsFactory</a></code>:</span>
+    
+    <a class="headerLink" href="#from_fds" title="jobserver._queue.from_fds">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>A source over a private dup of the given fds.</p></div>
+  </div>
+</div><div class="basefunction">
+  
+  
+  <a name="jobserver._queue.from_fifo">
+    
+  </a>
+  <a name="from_fifo">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">from_fifo</span><span class="function-signature">(<span class="rst-sig-param">path: <code><a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a></code></span>) -&gt; <code><a href="#EndsFactory" class="internal-link" title="jobserver._queue.EndsFactory">EndsFactory</a></code>:</span>
+    
+    <a class="headerLink" href="#from_fifo" title="jobserver._queue.from_fifo">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>A source over a named FIFO the queue will own.</p></div>
+  </div>
+</div><div class="basefunction">
+  
+  
+  <a name="jobserver._queue.resolve_context">
+    
+  </a>
+  <a name="resolve_context">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">resolve_context</span><span class="function-signature">(<span class="rst-sig-param">context: <code><a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a> | <a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a> | BaseContext</code></span>) -&gt; <code>BaseContext</code>:</span>
+    
+    <a class="headerLink" href="#resolve_context" title="jobserver._queue.resolve_context">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Return a multiprocessing BaseContext, resolving None/str as needed.</p></div>
+  </div>
+</div><div class="basefunction">
+  
+  
+  <a name="jobserver._queue.timeout_to_deadline">
+    
+  </a>
+  <a name="timeout_to_deadline">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">timeout_to_deadline</span><span class="function-signature">(<span class="rst-sig-param">timeout: <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/functions.html#float" class="intersphinx-link">float</a></code>:</span>
+    
+    <a class="headerLink" href="#timeout_to_deadline" title="jobserver._queue.timeout_to_deadline">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Convert timeout in seconds into a monotonic, absolute deadline.</p>
+<p>When timeout is None a large, finite deadline is returned per
+poll()/select() restrictions.</p>
+</div>
+  </div>
+</div><div class="basetypevariable">
+  
+  
+  <a name="jobserver._queue.Self">
+    
+  </a>
+  <a name="Self">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">Self</span> =
+    
+    <a class="headerLink" href="#Self" title="jobserver._queue.Self">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code><a href="https://docs.python.org/3/library/typing.html#typing.TypeVar" class="intersphinx-link">TypeVar</a>(<wbr></wbr><span class="rst-variable-quote">'</span><span class="rst-variable-string">Self</span><span class="rst-variable-quote">'</span>,
+        <wbr></wbr>bound=<span class="rst-variable-quote">'</span><span class="rst-variable-string">_AbstractQueue</span><span class="rst-variable-quote">'</span>)</code></pre></td></tr></table>
+  </div>
+</div><div class="basetypevariable">
+  
+  
+  <a name="jobserver._queue.T">
+    
+  </a>
+  <a name="T">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">T</span> =
+    
+    <a class="headerLink" href="#T" title="jobserver._queue.T">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code><a href="https://docs.python.org/3/library/typing.html#typing.TypeVar" class="intersphinx-link">TypeVar</a>(<wbr></wbr><span class="rst-variable-quote">'</span><span class="rst-variable-string">T</span><span class="rst-variable-quote">'</span>)</code></pre></td></tr></table>
+  </div>
+</div><div class="basetypealias">
+  
+  
+  <a name="jobserver._queue.EndsFactory">
+    
+  </a>
+  <a name="EndsFactory">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">EndsFactory</span> =
+    
+    <a class="headerLink" href="#EndsFactory" title="jobserver._queue.EndsFactory">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code><a href="https://docs.python.org/3/library/typing.html#typing.Callable" class="intersphinx-link">Callable</a>[<wbr></wbr>[], <wbr></wbr><a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" class="intersphinx-link">tuple</a>[<wbr></wbr><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.connection.Connection" class="intersphinx-link">Connection</a>, <wbr></wbr><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.connection.Connection" class="intersphinx-link">Connection</a>]]</code></pre></td></tr></table>
+  </div>
+</div><div class="basetypealias">
+  
+  
+  <a name="jobserver._queue.Source">
+    
+  </a>
+  <a name="Source">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">Source</span> =
+    
+    <a class="headerLink" href="#Source" title="jobserver._queue.Source">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code><a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a> | <a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a> | BaseContext | <a href="#EndsFactory" class="internal-link" title="jobserver._queue.EndsFactory">EndsFactory</a></code></pre></td></tr></table>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._queue._check_fixedlen">
+    
+  </a>
+  <a name="_check_fixedlen">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_check_fixedlen</span><span class="function-signature">(<span class="rst-sig-param">fixedlen: <code><a href="https://docs.python.org/3/builtins/functions.html#int" class="intersphinx-link">int</a></code></span>):</span>
+    
+    <a class="headerLink" href="#_check_fixedlen" title="jobserver._queue._check_fixedlen">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Validate a fixedlen token length.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._queue._conn_repr">
+    
+  </a>
+  <a name="_conn_repr">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_conn_repr</span><span class="function-signature">(<span class="rst-sig-param">conn: <code><a href="https://docs.python.org/3/library/multiprocessing.html#multiprocessing.connection.Connection" class="intersphinx-link">Connection</a> | <a href="https://docs.python.org/3/builtins/constants.html#None" class="intersphinx-link">None</a></code></span>) -&gt; <code><a href="https://docs.python.org/3/builtins/stdtypes.html#str" class="intersphinx-link">str</a></code>:</span>
+    
+    <a class="headerLink" href="#_conn_repr" title="jobserver._queue._conn_repr">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Describe a pipe end for __repr__, tolerating closed fds.</p></div>
+  </div>
+</div><div class="basefunction private">
+  
+  
+  <a name="jobserver._queue._to_ends_factory">
+    
+  </a>
+  <a name="_to_ends_factory">
+    
+  </a>
+  <div class="functionHeader">
+    
+    
+    <span class="py-keyword">def</span>&#160;<span class="py-defname">_to_ends_factory</span><span class="function-signature">(<span class="rst-sig-param">source: <code><a href="#Source" class="internal-link" title="jobserver._queue.Source">Source</a></code>, </span><span class="rst-sig-symbol">/</span>) -&gt; <code><a href="#EndsFactory" class="internal-link" title="jobserver._queue.EndsFactory">EndsFactory</a></code>:</span>
+    
+    <a class="headerLink" href="#_to_ends_factory" title="jobserver._queue._to_ends_factory">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="docstring functionBody">
+    
+    <div><p>Pass a source through, or wrap a context as a pipe source.</p></div>
+  </div>
+</div><div class="baseconstant private">
+  
+  
+  <a name="jobserver._queue._MAX_TIMEOUT_SECS">
+    
+  </a>
+  <a name="_MAX_TIMEOUT_SECS">
+    
+  </a>
+  <div class="functionHeader">
+    
+    <span class="py-defname">_MAX_TIMEOUT_SECS</span> =
+    
+    <a class="headerLink" href="#_MAX_TIMEOUT_SECS" title="jobserver._queue._MAX_TIMEOUT_SECS">
+      
+      
+      ¶
+    </a>
+  </div>
+  <div class="functionBody">
+    
+    <div><p class="undocumented">Undocumented</p></div>
+    <table class="valueTable"><tr class="fieldStart"><td class="fieldName">Value</td></tr><tr><td><pre class="constant-value"><code>(2 ** 31 - 1) / 1000</code></pre></td></tr></table>
+  </div>
+</div>
+        </div>
+      
+      </main>
+    </div>
+
+    <footer class="navbar navbar-default">
+
+  
+  <div class="container-fluid">
+    <a href="index.html">API Documentation</a> for <a href="https://github.com/RhysU/jobserver" class="projecthome">jobserver</a>,
+  generated by <a href="https://github.com/twisted/pydoctor/">pydoctor</a>
+    25.10.1 at 2026-10-07 12:22:06.
+  </div>
+
+  <!-- Search related scripts needs to be loaded at the end of HTML 
+    parsing not to introduce overhead and display HTML data asap -->
+  <script src="ajax.js" type="text/javascript"></script>
+  <script src="searchlib.js" type="text/javascript"></script>
+  <script src="search.js" type="text/javascript"></script>
+
+</footer>
+  
+    <script src="pydoctor.js" type="text/javascript"></script>
+
+  </body>
+</html>
